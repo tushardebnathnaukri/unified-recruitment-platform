@@ -120,6 +120,59 @@
     --sidebar-ring: oklch(0.552 0.016 285.938);
 }
 
+/* ---------------------------------------------------------------------------
+ * Brand layers
+ *
+ * One design system, two brands. Components are authored once — a brand only
+ * ever redefines accent tokens here. Neutrals, radii and typography are shared
+ * on purpose: if the two products ever unify, a brand layer is deleted and no
+ * component changes.
+ *
+ * `data-brand` and the `light`/`dark` class must sit on the SAME element (the
+ * <html> element, set by BrandProvider and ThemeProvider). The `:root` prefix
+ * and `:not(.dark)` below depend on that.
+ *
+ * TODO(design): hirist below is still a PLACEHOLDER, chosen only to be visibly
+ * distinct from iimjobs while the switcher is wired up. Replace with the real
+ * hirist brand values.
+ * ------------------------------------------------------------------------- */
+
+/* iimjobs — emerald. Values are Tailwind v4's emerald ramp verbatim, so they
+ * stay legible next to the `emerald-*` utilities and match the emerald already
+ * used by the shared sidebar tokens. Dark mode lightens the accent and darkens
+ * its foreground rather than reusing the light pairing. */
+:root[data-brand="iimjobs"]:not(.dark) {
+    --primary: oklch(0.596 0.145 163.225); /* emerald-600 */
+    --primary-foreground: oklch(0.979 0.021 166.113); /* emerald-50 */
+    --ring: oklch(0.596 0.145 163.225 / 60%);
+    --sidebar-primary: oklch(0.596 0.145 163.225);
+    --sidebar-primary-foreground: oklch(0.979 0.021 166.113);
+}
+
+:root[data-brand="iimjobs"].dark {
+    --primary: oklch(0.696 0.17 162.48); /* emerald-500 */
+    --primary-foreground: oklch(0.262 0.051 172.552); /* emerald-950 */
+    --ring: oklch(0.696 0.17 162.48 / 60%);
+    --sidebar-primary: oklch(0.696 0.17 162.48);
+    --sidebar-primary-foreground: oklch(0.262 0.051 172.552);
+}
+
+:root[data-brand="hirist"]:not(.dark) {
+    --primary: oklch(0.58 0.17 40);
+    --primary-foreground: oklch(0.99 0.01 40);
+    --ring: oklch(0.58 0.17 40 / 60%);
+    --sidebar-primary: oklch(0.58 0.17 40);
+    --sidebar-primary-foreground: oklch(0.99 0.01 40);
+}
+
+:root[data-brand="hirist"].dark {
+    --primary: oklch(0.7 0.15 40);
+    --primary-foreground: oklch(0.18 0.04 40);
+    --ring: oklch(0.7 0.15 40 / 60%);
+    --sidebar-primary: oklch(0.7 0.15 40);
+    --sidebar-primary-foreground: oklch(0.18 0.04 40);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
