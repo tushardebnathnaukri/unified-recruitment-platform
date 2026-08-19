@@ -15,11 +15,15 @@ const VARIANTS = [
  */
 export function PlaygroundPage() {
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 px-4 lg:px-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-semibold">Playground</h1>
+        {/* Title comes from SiteHeader. */}
         <p className="text-sm leading-relaxed text-muted-foreground">
-          Flip the brand and theme in the header to see tokens resolve.
+          Flip the brand or theme on Settings to see tokens resolve — or press{" "}
+          <kbd className="rounded border border-border px-1 font-mono text-xs">
+            d
+          </kbd>{" "}
+          for theme without leaving this page.
         </p>
       </div>
 

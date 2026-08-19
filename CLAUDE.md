@@ -102,10 +102,23 @@ React Router v8 **declarative mode** — plain `<Routes>`/`<Route>`, no loaders,
 framework mode. Import from `react-router` (`react-router-dom` is a deprecated shim). Routes in
 `src/App.tsx`, pages in `src/routes/`.
 
-`AppShell` is the layout route: `SidebarProvider` → `AppSidebar` + `SidebarInset`, with the brand
-switcher and theme toggle in the inset's top bar so they survive sidebar collapse. Nav items are
-`AppSidebar`'s `NAV_ITEMS`; each is its own `NavMenuItem` because active state comes from
-`useMatch`, which can't be called in a loop body.
+`AppShell` is the layout route: `SidebarProvider` → `AppSidebar variant="inset"` + `SidebarInset`
+→ `SiteHeader` + `<Outlet />`. Shell dimensions (`--sidebar-width`, `--header-height`) are set as
+inline CSS variables on `SidebarProvider` so the header and sidebar read the same numbers; the
+structure follows shadcn's `dashboard-01` block. Pages own their gutters (`px-4 lg:px-6`) — the
+shell only supplies vertical rhythm.
+
+Nav lives in `src/lib/nav.ts`, not in the sidebar component: `SiteHeader` needs it for the page
+title, and `react-refresh/only-export-components` is on in `apps/web`. `NAV_ITEMS` renders through
+`NavMain`, `SECONDARY_ITEMS` through `NavSecondary`. Every routed item is its own component
+(`NavMenuItem`, `SecondaryLinkItem`) because active state comes from `useMatch`, which can't be
+called in a loop body — and it's why `NavSecondary` splits link and button variants rather than
+branching inside one component.
+
+**Both the brand switcher and the theme toggle live on `/settings`**, leaving the top bar as
+trigger + title. That was a deliberate call, against the earlier arrangement of keeping both in the
+header for side-by-side comparison — flipping either now costs a navigation, and the bare `d`
+keypress bound in `ThemeProvider` is the only global way to change theme.
 
 ## Authoring components
 

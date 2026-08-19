@@ -34,3 +34,6 @@ storybook-static
 
 # typescript
 *.tsbuildinfo
+
+# claude code (local permission grants; launch.json is shared)
+.claude/settings.local.json

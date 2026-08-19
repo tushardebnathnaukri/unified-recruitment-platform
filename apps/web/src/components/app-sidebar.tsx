@@ -1,81 +1,59 @@
-import type { LucideIcon } from "lucide-react"
-import { LayoutDashboardIcon, SwatchBookIcon } from "lucide-react"
-import { NavLink, useMatch } from "react-router"
+import * as React from "react"
+import { Link } from "react-router"
 
 import { useBrand } from "@workspace/ui/components/brand-provider"
 import {
   Sidebar,
   SidebarContent,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
+  SidebarFooter,
   SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
   SidebarRail,
 } from "@workspace/ui/components/sidebar"
-
-type NavItem = {
-  to: string
-  label: string
-  icon: LucideIcon
-  end: boolean
-}
-
-const NAV_ITEMS: NavItem[] = [
-  { to: "/", label: "Overview", icon: LayoutDashboardIcon, end: true },
-  { to: "/playground", label: "Playground", icon: SwatchBookIcon, end: false },
-]
+import { NavMain } from "@/components/nav-main"
+import { NavSecondary } from "@/components/nav-secondary"
+import { NavUser } from "@/components/nav-user"
+import { NAV_ITEMS } from "@/lib/nav"
 
 /**
- * `useMatch` is a hook, so each item needs its own component rather than a
- * loop body — that is why this is split out rather than inlined into the map.
+ * Structure follows shadcn's dashboard-01 block: a brand row in the header,
+ * primary nav, then utility nav pushed to the bottom by `mt-auto`, with the
+ * account menu in the footer.
+ *
+ * The brand mark is a plain `bg-primary` swatch rather than a logo — it is the
+ * fastest way to see the active brand's accent, and it costs nothing when the
+ * real marks land. The row links to Overview, which is otherwise reachable only
+ * from Settings now that it is out of the sidebar.
  */
-function NavMenuItem({ item }: { item: NavItem }) {
-  const match = useMatch({ path: item.to, end: item.end })
-  const Icon = item.icon
-
-  return (
-    <SidebarMenuItem>
-      <SidebarMenuButton
-        render={<NavLink to={item.to} end={item.end} />}
-        isActive={Boolean(match)}
-        tooltip={item.label}
-      >
-        <Icon />
-        <span>{item.label}</span>
-      </SidebarMenuButton>
-    </SidebarMenuItem>
-  )
-}
-
-export function AppSidebar() {
+export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { brand } = useBrand()
 
   return (
-    <Sidebar collapsible="icon">
+    <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
-        <div className="flex items-center gap-2 px-2 py-1.5">
-          <div className="size-6 shrink-0 rounded-md bg-primary" />
-          <span className="truncate text-sm font-semibold group-data-[collapsible=icon]:hidden">
-            {brand}
-          </span>
-        </div>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              render={<Link to="/" />}
+              className="data-[slot=sidebar-menu-button]:p-1.5!"
+            >
+              <div className="size-5 shrink-0 rounded-md bg-primary" />
+              <span className="text-base font-semibold">{brand}</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarHeader>
 
       <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Prototype</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {NAV_ITEMS.map((item) => (
-                <NavMenuItem key={item.to} item={item} />
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <NavMain items={NAV_ITEMS} />
+        <NavSecondary className="mt-auto" />
       </SidebarContent>
+
+      <SidebarFooter>
+        <NavUser />
+      </SidebarFooter>
 
       <SidebarRail />
     </Sidebar>
