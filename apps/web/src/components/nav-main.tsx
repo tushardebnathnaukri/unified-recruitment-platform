@@ -46,15 +46,18 @@ export function NavMain({ items }: { items: NavItem[] }) {
       <SidebarGroupContent className="flex flex-col gap-2">
         <SidebarMenu>
           <SidebarMenuItem className="flex items-center gap-2">
-            {/* TODO(design): "Post a job" is a placeholder for whatever the
-                recruiter's primary create action turns out to be. */}
+            {/* The primary create action is a MANDATE, not a job post. Posting
+                is one of two things a mandate does — searching the database is
+                the other — so making the post the top-level verb was the thing
+                that kept the two halves of sourcing separate. Post a job is
+                still one click away, from the Jobs page. */}
             <SidebarMenuButton
-              render={<NavLink to="/post-job" />}
-              tooltip="Post a job"
+              render={<NavLink to="/projects/new" />}
+              tooltip="Create Project"
               className="min-w-8 bg-primary text-primary-foreground duration-200 ease-linear hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground"
             >
               <PlusCircleIcon />
-              <span>Post a job</span>
+              <span>Create Project</span>
             </SidebarMenuButton>
             <Button
               size="icon"
