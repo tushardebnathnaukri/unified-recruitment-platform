@@ -28,6 +28,7 @@ import {
 import { Switch } from "@workspace/ui/components/switch"
 import { Textarea } from "@workspace/ui/components/textarea"
 import { cn } from "@workspace/ui/lib/utils"
+import { Field, OptionSelect } from "@/components/form-field"
 import { TagInput } from "@/components/tag-input"
 import {
   CATEGORIES,
@@ -41,85 +42,6 @@ import {
 } from "@/lib/post-job"
 
 const MAX_LOCATIONS = 3
-
-/** Label, required marker, optional marker and helper text in one place. */
-function Field({
-  label,
-  htmlFor,
-  required,
-  optional,
-  hint,
-  action,
-  children,
-}: {
-  label: string
-  htmlFor?: string
-  required?: boolean
-  optional?: boolean
-  hint?: string
-  action?: React.ReactNode
-  children: React.ReactNode
-}) {
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex min-h-8 flex-wrap items-center justify-between gap-2">
-        <Label htmlFor={htmlFor} className="gap-1.5">
-          {label}
-          {required && (
-            <span className="text-destructive" aria-hidden="true">
-              *
-            </span>
-          )}
-          {optional && (
-            <span className="text-xs font-normal text-muted-foreground">
-              Optional
-            </span>
-          )}
-        </Label>
-        {action}
-      </div>
-
-      {children}
-
-      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-    </div>
-  )
-}
-
-/** A single-line select whose option values double as their labels. */
-function OptionSelect({
-  id,
-  value,
-  onValueChange,
-  placeholder,
-  options,
-  className,
-}: {
-  id?: string
-  value: string
-  onValueChange: (value: string) => void
-  placeholder: string
-  options: string[]
-  className?: string
-}) {
-  return (
-    <Select
-      value={value}
-      onValueChange={(next) => onValueChange(next as string)}
-    >
-      <SelectTrigger id={id} className={cn("w-full", className)}>
-        <SelectValue placeholder={placeholder} />
-      </SelectTrigger>
-      <SelectContent>
-        {options.map((option) => (
-          <SelectItem key={option} value={option}>
-            {option}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  )
-}
 
 /**
  * A row whose whole surface is the control — used for the two switch rows the
@@ -322,7 +244,7 @@ export function PostJobPage() {
   const maxLocations = plan === "pro" ? MAX_LOCATIONS : 1
 
   return (
-    <div className="flex w-full max-w-3xl flex-col gap-4 px-4 lg:px-6">
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-4 lg:px-6">
       <PlanPicker
         plan={plan}
         onPlanChange={setPlan}

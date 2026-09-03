@@ -55,7 +55,6 @@ import {
   compareByAttention,
   EXPIRY_WARNING_DAYS,
   formatExperience,
-  JOB_STATUS,
   primaryActionFor,
   JOB_TIER,
   JOBS,
@@ -89,10 +88,14 @@ const TABS_FIT = "(min-width: 768px)"
  * flag is what let the tab bar keep a threshold sized for the table long after
  * the tabs were the only thing left asking for room.
  *
- * Measured, with the column widths below: nothing collides at 1024, 1152 or
- * 1280 — the fixed action column guarantees its own room — so what degrades is
- * the title, which wraps to 4 lines at 1024, 3 at 1152 and 2 at 1280. This is
- * a legibility line, not a breakage one.
+ * Measured, with the column widths below: nothing collides — the fixed action
+ * column guarantees its own room — so what degrades is the title. At 1024 it
+ * wraps to 2 lines and at 1280 it fits on one.
+ *
+ * Those numbers were 4 lines and 2 until the Expires column folded into the
+ * facts row and handed its width back to the title, which makes 1024 a
+ * conservative floor now rather than a tight one. Left where it is because it
+ * has not been measured below 1024; re-measure before moving it.
  */
 const TABLE_FITS = "(min-width: 1024px)"
 
@@ -181,24 +184,31 @@ function StatusSelect({ value, onValueChange }: StatusFilterProps) {
   )
 }
 
-/** Title plus tier badge — the pair the eye lands on first in either view. */
+/**
+ * The row's title, and the row's link. The tier badge used to sit with it —
+ * trailing it inline, then above it — until it earned a column of its own,
+ * which is also what finally gives every title a common left edge to scan down.
+ *
+ * Titles wrap rather than truncate: the legacy page cuts location mid-word, and
+ * a clipped title is unreadable.
+ *
+ * Every title reads the same regardless of status. The legacy page links
+ * published titles and greys the rest, which hides the rule until you click;
+ * here it is one link per row, whatever state the job is in.
+ *
+ * `after:inset-0` stretches the hit target over the whole row while the link
+ * wraps only the title, so a screen reader's link list reads as a list of job
+ * names rather than repeating each row's contents. Anything else interactive in
+ * the row has to sit above this with `relative z-10`.
+ */
 function JobTitle({ job }: { job: Job }) {
   return (
-    // Inline flow rather than a flex row. Real titles run long and often
-    // restate the experience range, so the badge has to wrap along with the
-    // text instead of being pinned to the far edge of the column. Titles wrap
-    // rather than truncate — the legacy page cuts location mid-word, and a
-    // clipped title is unreadable.
-    //
-    // Every title reads the same regardless of status. The legacy page links
-    // published titles and greys the rest, which hides the rule until you
-    // click. Linking waits on a job-detail route.
-    <p className="text-sm font-medium text-pretty">
-      {job.title}{" "}
-      <Badge variant="outline" className="align-middle">
-        {JOB_TIER[job.tier].label}
-      </Badge>
-    </p>
+    <Link
+      to={`/jobs/${job.id}`}
+      className="text-sm font-medium text-pretty after:absolute after:inset-0 after:content-['']"
+    >
+      {job.title}
+    </Link>
   )
 }
 
@@ -212,7 +222,9 @@ function NotPublishedReason({ job }: { job: Job }) {
   if (job.status !== "not-published" || !job.notPublishedReason) return null
 
   return (
-    <details className="group/reason mt-1">
+    // `relative z-10` for the same reason as the overflow menu: this sits
+    // inside the row's stretched link and has to stay clickable itself.
+    <details className="group/reason relative z-10 mt-1 w-fit">
       <summary className="flex w-fit cursor-pointer list-none items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground">
         <ChevronRightIcon className="size-3 transition-transform group-open/reason:rotate-90" />
         What needs changing?
@@ -245,46 +257,55 @@ function MetaFact({
 }
 
 /**
- * Every fact about a job that is not its title, status or applicant count, as
- * one wrapping row. Shared by both views so a job reads the same either way.
+ * Every fact about a job that is not its title or applicant count. Shared by
+ * both views so a job reads the same either way.
  *
  * Icon + label rather than bullet-joined text, from the reference design: the
  * facts stay legible as they wrap, and each one labels itself instead of
- * relying on position. Created is context rather than a decision input, so it
- * sits here rather than earning a column; expiry sits beside it because that is
- * the date worth acting on.
+ * relying on position.
+ *
+ * Expiry gets its own line rather than joining the wrapping run above it. It
+ * had a column of its own until this, and before that it ran fourth of four
+ * inside that run, which is where it was genuinely buried. A line to itself is
+ * the middle: no column to pay for, but the warning colour lands on its own
+ * row instead of in a queue behind two facts nobody is scanning for.
+ *
+ * Created takes that line only when there is no expiry to take it. It drives no
+ * decision, so it never competes with the date that does — but stripping it
+ * would leave the under review, paused and rejected rows with no point in time
+ * at all. One date per row, and it is expiry whenever there is one.
  */
 function JobFacts({ job }: { job: Job }) {
   return (
-    <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
-      <MetaFact icon={MapPinIcon}>{job.location}</MetaFact>
-      <MetaFact icon={BriefcaseIcon}>
-        {formatExperience(job.experience)}
-      </MetaFact>
+    <div className="flex flex-col gap-1">
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground">
+        <MetaFact icon={MapPinIcon}>{job.location}</MetaFact>
+        <MetaFact icon={BriefcaseIcon}>
+          {formatExperience(job.experience)}
+        </MetaFact>
+      </div>
+
+      {job.daysToExpiry === null ? (
+        <MetaFact icon={CalendarIcon} className="text-xs text-muted-foreground">
+          Created {job.createdOn}
+        </MetaFact>
+      ) : (
+        <JobExpiry job={job} />
+      )}
     </div>
   )
 }
 
 /**
- * The one date the row carries, sat next to status rather than in the facts
- * row. Expiry is the only genuinely time-critical fact here and it used to run
- * fourth of four, behind location, experience and a created date that drives no
- * decision at all — the most urgent thing on the row in the position hardest to
- * see. It answers the same question status does, so it sits with it.
+ * Expiry, and nothing else — `null` for the rows that have none. Lives inside
+ * `JobFacts`, which owns the choice between this and the created date.
  *
- * One date, not two: expiry while there is one, created otherwise. That keeps
- * the rows with no expiry (under review, paused, rejected) anchored in time
- * instead of stripping their date, and it keeps every row the same shape —
- * badge, then one line — rather than some carrying twice as much as others.
+ * The warning colour is the whole point: it is the only fact on the row that
+ * changes what the recruiter should do today, so it is the only one allowed to
+ * shout.
  */
-function JobDate({ job }: { job: Job }) {
-  if (job.daysToExpiry === null) {
-    return (
-      <MetaFact icon={CalendarIcon} className="text-xs text-muted-foreground">
-        Created {job.createdOn}
-      </MetaFact>
-    )
-  }
+function JobExpiry({ job }: { job: Job }) {
+  if (job.daysToExpiry === null) return null
 
   const expiring = job.daysToExpiry <= EXPIRY_WARNING_DAYS
 
@@ -409,16 +430,6 @@ function JobOverflowMenu({ job }: { job: Job }) {
   )
 }
 
-/** Table rows keep the action and the menu together in one right-aligned cell. */
-function JobActions({ job }: { job: Job }) {
-  return (
-    <div className="flex items-center justify-end gap-1">
-      <JobPrimaryAction job={job} />
-      <JobOverflowMenu job={job} />
-    </div>
-  )
-}
-
 function JobsTable({ jobs }: { jobs: Job[] }) {
   return (
     <div className="rounded-lg border border-border">
@@ -439,21 +450,27 @@ function JobsTable({ jobs }: { jobs: Job[] }) {
                 into a soft one — below the breakpoint the title wraps more, and
                 nothing lands on top of anything else. */}
             <TableHead>Job</TableHead>
-            {/* Fits "Expires in 21 days" on one line under the badge; wrapping
-                the date would make every row taller. */}
-            <TableHead className="w-40">Status</TableHead>
+            {/* "Job type" rather than "Tier" or "Plan" — it is what the posting
+                form calls this field, and one name per field beats a better
+                name in one place. Sized to "Pro + Boost", the widest label. */}
+            <TableHead className="w-32">Job type</TableHead>
             {/* Keeps a three-digit count and its "N new" badge on one line, so
                 the column does not reflow row to row. */}
             <TableHead className="w-32">Applicants</TableHead>
-            {/* Sized to the longest action, "Edit and resubmit", plus the
-                overflow trigger. */}
-            <TableHead className="w-48 text-right">Actions</TableHead>
+            {/* Only the overflow trigger lives here now that the row itself
+                carries the primary action. Sized to the header rather than to
+                the button: "Actions" is 51px of text, and at the 64px this was
+                it had 40px of content box, so the label overflowed 11px to the
+                left — right-aligned text spills leftward — and bled into the
+                applicants column. 80px fits the word with the cell's usual
+                12px either side. */}
+            <TableHead className="w-20 text-right">Actions</TableHead>
           </TableRow>
         </TableHeader>
 
         <TableBody>
           {jobs.map((job) => (
-            <TableRow key={job.id}>
+            <TableRow key={job.id} className="relative cursor-pointer">
               <TableCell className="align-top">
                 <div className="flex max-w-lg flex-col gap-1.5">
                   <JobTitle job={job} />
@@ -463,12 +480,7 @@ function JobsTable({ jobs }: { jobs: Job[] }) {
               </TableCell>
 
               <TableCell className="align-top">
-                <div className="flex flex-col items-start gap-1.5">
-                  <Badge variant={JOB_STATUS[job.status].variant}>
-                    {JOB_STATUS[job.status].label}
-                  </Badge>
-                  <JobDate job={job} />
-                </div>
+                <Badge variant="outline">{JOB_TIER[job.tier].label}</Badge>
               </TableCell>
 
               <TableCell className="align-top">
@@ -476,7 +488,11 @@ function JobsTable({ jobs }: { jobs: Job[] }) {
               </TableCell>
 
               <TableCell className="align-top">
-                <JobActions job={job} />
+                {/* `relative z-10` to sit above the title's stretched hit
+                    target — without it the menu trigger navigates. */}
+                <div className="relative z-10 flex items-center justify-end">
+                  <JobOverflowMenu job={job} />
+                </div>
               </TableCell>
             </TableRow>
           ))}
@@ -540,7 +556,6 @@ function JobsCards({ jobs }: { jobs: Job[] }) {
   return (
     <ul className="flex flex-col gap-3">
       {jobs.map((job) => {
-        const status = JOB_STATUS[job.status]
         const hasStats =
           job.status === "published" || job.status === "unpublished"
         // The footer used to hang off the stats alone, so a rejected job — the
@@ -551,11 +566,7 @@ function JobsCards({ jobs }: { jobs: Job[] }) {
           <li key={job.id}>
             <Card className="gap-0 p-4">
               <div className="flex items-start justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant={status.variant}>{status.label}</Badge>
-                  <Badge variant="outline">{JOB_TIER[job.tier].label}</Badge>
-                  <JobDate job={job} />
-                </div>
+                <Badge variant="outline">{JOB_TIER[job.tier].label}</Badge>
 
                 <JobOverflowMenu job={job} />
               </div>
@@ -638,7 +649,7 @@ export function JobsPage() {
     // the page is. Capped because a card stretched across a 1600px window puts
     // its status badge and its actions a screen apart — but left-aligned rather
     // than centred, so the content stays anchored to the sidebar.
-    <div className="flex w-full max-w-6xl flex-col gap-4 px-4 lg:px-6">
+    <div className="flex w-full flex-col gap-4 px-4 lg:px-6">
       {/* Sticky so the filter and the view switch stay reachable down a long
           list. The negative margins cancel the page gutters, so the background
           spans the full content column and rows scroll under it rather than
@@ -675,7 +686,7 @@ export function JobsPage() {
           </ToggleGroup>
 
           {/* Navigates, so it stays a link wearing the button's styling —
-              same call as the Overview CTA. */}
+              same call as the sidebar's other CTAs. */}
           <Link to="/post-job" className={buttonVariants()}>
             <PlusIcon data-icon="inline-start" />
             Post a job

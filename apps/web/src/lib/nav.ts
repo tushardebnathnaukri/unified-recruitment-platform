@@ -3,7 +3,7 @@ import {
   BriefcaseIcon,
   ChartColumnIcon,
   CircleHelpIcon,
-  HouseIcon,
+  DatabaseIcon,
   LayoutDashboardIcon,
   SearchIcon,
   Settings2Icon,
@@ -37,6 +37,9 @@ export const NAV_ITEMS: NavItem[] = [
     end: false,
   },
   { to: "/jobs", label: "Jobs", icon: BriefcaseIcon, end: false },
+  // Sits next to Jobs because it is the other way into a candidate: Jobs is
+  // who came to you, Database is who you go and find.
+  { to: "/database", label: "Database", icon: DatabaseIcon, end: false },
   { to: "/analytics", label: "Analytics", icon: ChartColumnIcon, end: false },
 ]
 
@@ -45,9 +48,12 @@ export const NAV_ITEMS: NavItem[] = [
  * rather than the recruiter product, so they hang off Settings instead. Listed
  * here rather than hardcoded into the Settings page so `titleForPath` keeps
  * naming them in the header, and so adding one only means editing this array.
+ *
+ * There is no "/" entry any more — Dashboard is the landing page now, reached
+ * through `NAV_ITEMS` like every other recruiter surface, so there is nothing
+ * left here for the index route to point at.
  */
 export const PROTOTYPE_ITEMS: NavItem[] = [
-  { to: "/", label: "Overview", icon: HouseIcon, end: true },
   { to: "/playground", label: "Playground", icon: SwatchBookIcon, end: false },
 ]
 
@@ -68,6 +74,9 @@ export const SECONDARY_ITEMS: SecondaryItem[] = [
  */
 const UNLISTED_TITLES: { to: string; label: string; end: boolean }[] = [
   { to: "/post-job", label: "Post a job", end: false },
+  // Where the database search submits. Longest-match ordering below means this
+  // beats "/database" for the header title rather than being swallowed by it.
+  { to: "/database/results", label: "Search results", end: false },
 ]
 
 /** Longest matching nav item wins, so nested routes keep their parent's title. */

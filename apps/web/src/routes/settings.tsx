@@ -63,8 +63,8 @@ export function SettingsPage() {
         <div className="flex flex-col gap-1">
           <h2 className="text-sm font-medium">Prototype pages</h2>
           <p className="text-sm leading-relaxed text-muted-foreground">
-            Kept out of the sidebar so it only carries recruiter surfaces. These
-            two describe the prototype itself.
+            Kept out of the sidebar so it only carries recruiter surfaces — this
+            describes the prototype itself rather than the product.
           </p>
         </div>
 
