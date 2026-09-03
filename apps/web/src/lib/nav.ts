@@ -73,12 +73,7 @@ export const SECONDARY_ITEMS: SecondaryItem[] = [
  * sidebar. Listed only so the header can still name them.
  */
 const UNLISTED_TITLES: { to: string; label: string; end: boolean }[] = [
-  { to: "/post-job", label: "Post a job", end: false },
-  { to: "/projects/new", label: "Create Project", end: true },
-  { to: "/projects", label: "Project", end: false },
-  // Where the database search submits. Longest-match ordering below means this
-  // beats "/database" for the header title rather than being swallowed by it.
-  { to: "/database/results", label: "Search results", end: false },
+  { to: "/projects/new", label: "Create Project", end: false },
 ]
 
 /** Longest matching nav item wins, so nested routes keep their parent's title. */

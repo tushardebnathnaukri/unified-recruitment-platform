@@ -1,15 +1,23 @@
 import { Navigate, Route, Routes } from "react-router"
 
 import { AppShell } from "@/components/app-shell"
-import { CreateProjectPage } from "@/routes/create-project"
-import { DatabasePage } from "@/routes/database"
-import { JobCandidatesPage } from "@/routes/job-candidates"
-import { JobsPage } from "@/routes/jobs"
 import { PlaceholderPage } from "@/routes/placeholder"
-import { PostJobPage } from "@/routes/post-job"
 import { PlaygroundPage } from "@/routes/playground"
 import { SettingsPage } from "@/routes/settings"
 
+/**
+ * CLEAN SLATE. Every recruiter surface is a placeholder — the names and the
+ * navigation between them survive, the designs do not. The point is to be able
+ * to take a fresh run at the product without the shell, the theming or the
+ * design system having to be rebuilt first.
+ *
+ * Settings and Playground are the two exceptions, and they are not recruiter
+ * product: Settings is the brand and theme switcher this prototype is steered
+ * with, and Playground is the design system's own showcase.
+ *
+ * The earlier attempt is not lost — it is on `feat/design-system-foundation`,
+ * two commits deep, if a screen is worth pulling back.
+ */
 export function App() {
   return (
     <Routes>
@@ -19,37 +27,25 @@ export function App() {
             redirect out of history, so back from Dashboard leaves the app
             rather than bouncing through "/". */}
         <Route index element={<Navigate to="/dashboard" replace />} />
+
         <Route
           path="dashboard"
           element={<PlaceholderPage title="Dashboard" />}
         />
-        <Route path="jobs" element={<JobsPage />} />
-        {/* Where a row in the jobs table lands: the job's applicants, as a
-            pipeline. The list has been linking here since its title became a
-            link. */}
-        <Route path="jobs/:id" element={<JobCandidatesPage />} />
-        <Route path="post-job" element={<PostJobPage />} />
-        {/* A mandate: one statement of who you need, which the post-a-job form
-            and the database search both come off. The project surface it
-            creates is not designed yet. */}
-        <Route path="projects/new" element={<CreateProjectPage />} />
-        <Route
-          path="projects/:id"
-          element={<PlaceholderPage title="Project" />}
-        />
-        {/* Resume database: a search form, and the results surface it hands
-            off to. Only the form is designed — the results page is a slot the
-            search button already points at. */}
-        <Route path="database" element={<DatabasePage />} />
-        <Route
-          path="database/results"
-          element={<PlaceholderPage title="Search results" />}
-        />
-        <Route path="search" element={<PlaceholderPage title="Search" />} />
+        <Route path="jobs" element={<PlaceholderPage title="Jobs" />} />
+        <Route path="database" element={<PlaceholderPage title="Database" />} />
         <Route
           path="analytics"
           element={<PlaceholderPage title="Analytics" />}
         />
+        <Route path="search" element={<PlaceholderPage title="Search" />} />
+
+        {/* The primary create action. Named, routed and going nowhere yet. */}
+        <Route
+          path="projects/new"
+          element={<PlaceholderPage title="Create Project" />}
+        />
+
         <Route path="playground" element={<PlaygroundPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>
