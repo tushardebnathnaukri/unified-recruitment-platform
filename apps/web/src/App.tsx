@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router"
 
 import { AppShell } from "@/components/app-shell"
+import { DashboardPage } from "@/routes/dashboard"
 import { LegacyDashboardPage } from "@/routes/legacy-dashboard"
 import { PlaceholderPage } from "@/routes/placeholder"
 import { PlaygroundPage } from "@/routes/playground"
@@ -29,10 +30,7 @@ export function App() {
             rather than bouncing through "/". */}
         <Route index element={<Navigate to="/dashboard" replace />} />
 
-        <Route
-          path="dashboard"
-          element={<PlaceholderPage title="Dashboard" />}
-        />
+        <Route path="dashboard" element={<DashboardPage />} />
         <Route path="jobs" element={<PlaceholderPage title="Jobs" />} />
         <Route path="database" element={<PlaceholderPage title="Database" />} />
         <Route
