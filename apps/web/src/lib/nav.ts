@@ -4,6 +4,7 @@ import {
   ChartColumnIcon,
   CircleHelpIcon,
   DatabaseIcon,
+  HistoryIcon,
   LayoutDashboardIcon,
   SearchIcon,
   Settings2Icon,
@@ -55,6 +56,15 @@ export const NAV_ITEMS: NavItem[] = [
  */
 export const PROTOTYPE_ITEMS: NavItem[] = [
   { to: "/playground", label: "Playground", icon: SwatchBookIcon, end: false },
+  // A replica of the live recruiter dashboard, kept for side-by-side reference.
+  // It belongs here rather than on /dashboard: it is what the product looks
+  // like today, not a claim about what it should look like next.
+  {
+    to: "/reference/dashboard",
+    label: "Live dashboard (replica)",
+    icon: HistoryIcon,
+    end: false,
+  },
 ]
 
 /**

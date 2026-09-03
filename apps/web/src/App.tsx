@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router"
 
 import { AppShell } from "@/components/app-shell"
+import { LegacyDashboardPage } from "@/routes/legacy-dashboard"
 import { PlaceholderPage } from "@/routes/placeholder"
 import { PlaygroundPage } from "@/routes/playground"
 import { SettingsPage } from "@/routes/settings"
@@ -45,6 +46,10 @@ export function App() {
           path="projects/new"
           element={<PlaceholderPage title="Create Project" />}
         />
+
+        {/* Reference, not product: a rebuild of the live recruiter dashboard
+            so the current design can sit beside the next one. */}
+        <Route path="reference/dashboard" element={<LegacyDashboardPage />} />
 
         <Route path="playground" element={<PlaygroundPage />} />
         <Route path="settings" element={<SettingsPage />} />
