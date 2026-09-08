@@ -4,6 +4,7 @@ import { buttonVariants } from "@workspace/ui/components/button"
 import { Kbd } from "@workspace/ui/components/kbd"
 import { Separator } from "@workspace/ui/components/separator"
 import { BrandSwitcher } from "@/components/brand-switcher"
+import { CardVariantSwitcher } from "@/components/card-variant-switcher"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { PROTOTYPE_ITEMS } from "@/lib/nav"
 
@@ -50,10 +51,27 @@ export function SettingsPage() {
 
         <Separator />
 
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 flex-1 basis-64 flex-col gap-1">
+            <h2 className="text-sm font-medium">Candidate card</h2>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Two layouts for the same facts on the response manager. Stacked
+              runs the labels down the left and reads like a profile; Columns
+              lays the buckets across the card and fits roughly twice as many
+              candidates on a screen. A real recruiter would never see this
+              control — it is here so the two can be compared before one wins.
+            </p>
+          </div>
+
+          <CardVariantSwitcher />
+        </div>
+
+        <Separator />
+
         <p className="text-xs leading-relaxed text-muted-foreground">
-          Both persist to <code className="font-mono">localStorage</code> and
-          sync across tabs, so a shared preview link opens on whichever brand
-          and theme you last picked.
+          All three persist to <code className="font-mono">localStorage</code>{" "}
+          and sync across tabs, so a shared preview link opens on whichever
+          brand, theme and card layout you last picked.
         </p>
       </div>
 
