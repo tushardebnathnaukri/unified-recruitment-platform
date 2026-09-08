@@ -169,7 +169,7 @@ Storybook 10 (`@storybook/react-vite`) lives in `packages/ui`, beside the compon
 the `exports` map does. `tags: ["autodocs"]` is global, so every story file gets a Docs page; the
 component's documentation goes in `parameters.docs.description.component` (markdown).
 
-The sidebar is four layers, in `storySort` order:
+The sidebar is five layers, in `storySort` order:
 
 - **Overview** — MDX in `src/docs/` (introduction, component inventory).
 - **Foundations** — `src/foundations/`: token swatches drawn live from the CSS variables.
@@ -179,6 +179,10 @@ The sidebar is four layers, in `storySort` order:
 - **Compositions** — `src/compositions/`: recipes (the dashboard, a settings row, a posting form)
   built from the layers above, with mock data copied inline because `packages/ui` cannot import
   from the app. A composition repeated a third time becomes a Pattern.
+
+The assembled app shell — sidebar, header and content column — is **not** in Compositions. It lives
+in `sidebar.stories.tsx` as `Components/Sidebar → App shell` and `→ Collapsed`, because it is what
+the Sidebar component looks like in situ. Check there before adding a screen that shows the nav.
 
 The dashboard route in `apps/web` and "Compositions → Dashboard" are the same tree; a change to a
 row's *shape* belongs in the pattern, a change to its *content* in the app.
@@ -202,16 +206,25 @@ Primitives + Semantic + Radius variable collections, foundations documentation, 
 across 135 variants** — every Component and every Pattern. Storybook's sidebar is mirrored as Figma
 pages, one per component, alphabetical within each section so the two read the same top to bottom.
 
+The file is **published as a library**, so its components can be instanced from other Figma files
+rather than only used inside AthenaDS.
+
 Overlay components (Select, DropdownMenu, Sheet, Tooltip, Sidebar) are built in their **open** state.
 A closed dropdown is not designable, and Figma has no hover or focus, so where a treatment only
 exists on `:focus` — a highlighted menu row, a select item — it is shown on one row so the treatment
 is visible at all.
 
-The **Compositions** layer is mirrored too — Dashboard, Post a job form, Settings row — assembled
+The **Compositions** layer is mirrored too — Dashboard, Post a job form and Settings row — assembled
 from instances rather than redrawn, so a change to Input or Chip lands in the screens. Icons in the
 compositions are placeholders; swap in real instances rather than adding an icon variant. A frame
 cannot hold a description or `documentationLinks`, so each composition carries its Storybook URL as
 an on-canvas caption instead.
+
+The assembled app shell is the exception, and it follows the rule that governs the whole file: **a
+Figma page mirrors wherever Storybook puts the story.** Storybook keeps the shell under
+`Components/Sidebar`, so the Figma frames sit on the **Sidebar** page beside the component, not in
+Compositions. That correspondence is the only thing making the two sidebars readable against each
+other — if you move a story, move the Figma frames with it.
 
 **`globals.css` remains the single source of truth. Tokens are generated, never drawn.**
 
@@ -223,7 +236,7 @@ npm run tokens:check   # fails if tokens.json is stale, or the ring invariant br
 `tokens.json` is committed and is what created every Figma variable. Editing a variable inside Figma
 is drift and will be overwritten — change the CSS instead.
 
-Three things about the mirror that are easy to trip over:
+Five things about the mirror that are easy to trip over:
 
 - **Semantic has four modes** — `iimjobs Light/Dark`, `hirist Light/Dark` — because `--primary` and
   friends vary on *both* axes. Four is also the Figma ceiling on a Professional plan, so a third
@@ -236,6 +249,14 @@ Three things about the mirror that are easy to trip over:
   `bg-destructive/10`, `ring-foreground/10` — is built as a separate stretched layer at
   `node.opacity`, so the label or card contents do not fade with it. `node.opacity` on the component
   itself is only right when everything inside should fade together (a disabled control).
+- **Two sidebar widths, both correct.** The Sidebar component is 256px (`SIDEBAR_WIDTH`, the package
+  default in `sidebar.tsx`); the app shell is 288px, because `AppShell` overrides `--sidebar-width`
+  to `calc(var(--spacing) * 72)`. Do not "fix" one to match the other.
+- **Figma fixtures track the app's mock data.** Nav labels come from `apps/web/src/lib/nav.ts`
+  (Dashboard / Jobs / Database / Analytics — Database sits next to Jobs deliberately: Jobs is who
+  came to you, Database is who you go and find), and the recruiter in the sidebar footer is
+  `nav-user.tsx`'s Priya Raman. When the app's fixtures change the Figma ones should follow, or a
+  side-by-side comparison starts quietly lying.
 
 Two more traps worth knowing before editing anything in Figma with the Plugin API:
 
