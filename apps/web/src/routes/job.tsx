@@ -119,7 +119,7 @@ type View = "cards" | "table"
 
 const BUCKETS: { value: ResponseBucket; label: string }[] = [
   { value: "all", label: "All" },
-  { value: "new", label: "New" },
+  { value: "unread", label: "Unread" },
   { value: "reviewing", label: "Reviewing" },
   { value: "shortlisted", label: "Shortlisted" },
   { value: "contacted", label: "Contacted" },
@@ -209,7 +209,15 @@ function ResponseManager({ job }: { job: Job }) {
 
   const filters: Filters = {
     q: searchParams.get("q") ?? "",
-    showing: searchParams.get("showing") ?? "",
+    // Normalised, like `bucket` and `view` above: a value no longer in SHOWING
+    // — a link from before an option was removed — has to fall back to All,
+    // or it sets no filter while still counting as one, and the panel offers
+    // to clear something that was never applied.
+    showing: SHOWING.some(
+      (option) => option.value === searchParams.get("showing")
+    )
+      ? (searchParams.get("showing") ?? "")
+      : "",
     exp: searchParams.get("exp") ?? "",
     notice: searchParams.get("notice") ?? "",
     location: searchParams.get("location") ?? "",
@@ -248,7 +256,7 @@ function ResponseManager({ job }: { job: Job }) {
   const counts = React.useMemo(() => {
     const tally: Record<ResponseBucket, number> = {
       all: applicants.length,
-      new: 0,
+      unread: 0,
       reviewing: 0,
       shortlisted: 0,
       contacted: 0,
@@ -564,7 +572,8 @@ function EmptyBucket({
 }) {
   const copy: Record<ResponseBucket, string> = {
     all: "Nobody has applied to this posting yet.",
-    new: "Everybody who has applied has been looked at. Nothing is waiting on a first read.",
+    unread:
+      "Everybody who has applied has been looked at. Nothing is waiting on a first read.",
     reviewing:
       "Nobody is under consideration. The middle button on a card puts somebody here — the pile you want to come back to rather than decide on now.",
     shortlisted:
@@ -951,8 +960,8 @@ function initials(name: string) {
 
 function ApplicantStatusBadge({ status }: { status: ApplicantStatus }) {
   switch (status) {
-    case "new":
-      return <Badge>New</Badge>
+    case "unread":
+      return <Badge>Unread</Badge>
     case "reviewing":
       return <Badge variant="warning">Reviewing</Badge>
     case "shortlisted":

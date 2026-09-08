@@ -22,7 +22,8 @@ import type { Job } from "@/lib/jobs"
  */
 
 export type ApplicantStatus =
-  | "new"
+  /** Nobody has opened them. Named for the fact, not for how recent they are. */
+  | "unread"
   /**
    * Opened, no decision taken. Called `seen` rather than `reviewed` because
    * `reviewing` is a real decision one line below it, and two statuses a
@@ -89,7 +90,7 @@ export type ResponseBucket = Exclude<ApplicantStatus, "seen"> | "all"
 export function responseCounts(job: Job) {
   const counts = {
     all: 0,
-    new: 0,
+    unread: 0,
     // Nobody starts in Reviewing: it is a decision, so it only exists once
     // somebody makes it. The tab fills up as you work through the list.
     reviewing: 0,
@@ -100,7 +101,7 @@ export function responseCounts(job: Job) {
 
   if (job.status === "live") {
     counts.all = job.applicants
-    counts.new = job.unread
+    counts.unread = job.unread
     counts.shortlisted = job.shortlisted
     counts.contacted = job.followUp
     counts.rejected = job.notAFit
@@ -331,7 +332,7 @@ export function applicantsFor(job: Job): Applicant[] {
     ...Array<ApplicantStatus>(
       Math.max(
         counts.all -
-          counts.new -
+          counts.unread -
           counts.reviewing -
           counts.shortlisted -
           counts.contacted -
@@ -348,7 +349,7 @@ export function applicantsFor(job: Job): Applicant[] {
   }
 
   const statuses: ApplicantStatus[] = [
-    ...Array<ApplicantStatus>(counts.new).fill("new"),
+    ...Array<ApplicantStatus>(counts.unread).fill("unread"),
     ...decided,
   ]
 
@@ -471,10 +472,15 @@ export type Filters = {
  * opened is unread and not new. Collapsing them into one control would lose
  * whichever question you were not asking.
  *
- * NOTE(design): Unread is the same set as the New tab, which counts unopened
- * applicants rather than recent ones. Two controls that mean the same thing is
- * one too many — either the tab should be renamed to Unread, or this option
- * should go. Worth settling before this ships.
+ * OPENED, NOT "REVIEWED". There is a Reviewing tab three inches away that means
+ * something else entirely — a decision somebody made about a candidate, rather
+ * than the fact that anybody looked. Two labels off by one letter, meaning
+ * different things, on the same screen, is a trap for whoever reads it fastest.
+ *
+ * THERE IS NO "UNREAD" HERE, deliberately. It used to be, and it selected
+ * exactly what the Unread TAB selects — two controls with the same name and
+ * the same result, one of them only visible on the All tab. The tab won: it is
+ * always on screen and it carries a count.
  */
 export const SHOWING: {
   value: string
@@ -490,16 +496,10 @@ export const SHOWING: {
     test: (applicant) => applicant.appliedDaysAgo <= 7,
   },
   {
-    value: "unread",
-    label: "Unread",
-    hint: "Nobody has opened them yet",
-    test: (applicant) => applicant.status === "new",
-  },
-  {
-    value: "seen",
-    label: "Reviewed",
-    hint: "Opened, decided or not",
-    test: (applicant) => applicant.status !== "new",
+    value: "opened",
+    label: "Opened",
+    hint: "Somebody has looked at them, decided or not",
+    test: (applicant) => applicant.status !== "unread",
   },
 ]
 
