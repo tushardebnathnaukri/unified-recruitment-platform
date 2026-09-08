@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router"
 
 import { AppShell } from "@/components/app-shell"
 import { DashboardPage } from "@/routes/dashboard"
+import { JobDetailPage } from "@/routes/job"
 import { JobsPage } from "@/routes/jobs"
 import { LegacyDashboardPage } from "@/routes/legacy-dashboard"
 import { PlaceholderPage } from "@/routes/placeholder"
@@ -42,7 +43,7 @@ export function App() {
           path="jobs/new"
           element={<PlaceholderPage title="Post a job" />}
         />
-        <Route path="jobs/:jobId" element={<PlaceholderPage title="Job" />} />
+        <Route path="jobs/:jobId" element={<JobDetailPage />} />
         <Route path="database" element={<PlaceholderPage title="Database" />} />
         <Route
           path="analytics"

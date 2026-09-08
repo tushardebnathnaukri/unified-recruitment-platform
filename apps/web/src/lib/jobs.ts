@@ -44,8 +44,13 @@ export type LiveJob = JobBase & {
   recommendations: number
   /** Of those, the ones nobody has looked at yet. */
   recommendationsNew: number
-  /** Candidates you moved forward who are now waiting on you. */
+  /** Candidates you moved forward who are now waiting on you. Also the
+   * "Contacted" bucket on the response manager — they are the same people. */
   followUp: number
+  /** Marked worth talking to, not yet reached out to. */
+  shortlisted: number
+  /** Turned down. */
+  notAFit: number
   /** Age of the oldest of those, in days. 0 when nobody is waiting. */
   followUpOldestDays: number
   /** Days until the posting expires. Under 7 gets called out. */
@@ -61,6 +66,9 @@ export type PendingJob = JobBase & {
 export type ClosedJob = JobBase & {
   status: "closed"
   applicants: number
+  shortlisted: number
+  contacted: number
+  notAFit: number
   closedOn: string
   outcome: "Filled" | "Expired" | "Withdrawn"
 }
@@ -99,6 +107,8 @@ export const LIVE_JOBS: LiveJob[] = [
     recommendations: 42,
     recommendationsNew: 12,
     followUp: 9,
+    shortlisted: 12,
+    notAFit: 24,
     followUpOldestDays: 6,
     expiresInDays: 6,
     plan: "Pro",
@@ -113,6 +123,8 @@ export const LIVE_JOBS: LiveJob[] = [
     recommendations: 28,
     recommendationsNew: 0,
     followUp: 4,
+    shortlisted: 8,
+    notAFit: 15,
     followUpOldestDays: 2,
     expiresInDays: 3,
     plan: "Pro",
@@ -127,6 +139,8 @@ export const LIVE_JOBS: LiveJob[] = [
     recommendations: 31,
     recommendationsNew: 9,
     followUp: 0,
+    shortlisted: 0,
+    notAFit: 0,
     followUpOldestDays: 0,
     expiresInDays: 14,
     plan: "Basic",
@@ -141,6 +155,8 @@ export const LIVE_JOBS: LiveJob[] = [
     recommendations: 12,
     recommendationsNew: 0,
     followUp: 3,
+    shortlisted: 6,
+    notAFit: 12,
     followUpOldestDays: 11,
     expiresInDays: 21,
     plan: "Basic",
@@ -155,6 +171,8 @@ export const LIVE_JOBS: LiveJob[] = [
     recommendations: 46,
     recommendationsNew: 46,
     followUp: 0,
+    shortlisted: 0,
+    notAFit: 0,
     followUpOldestDays: 0,
     expiresInDays: 29,
     plan: "Basic",
@@ -169,6 +187,8 @@ export const LIVE_JOBS: LiveJob[] = [
     recommendations: 0,
     recommendationsNew: 0,
     followUp: 0,
+    shortlisted: 0,
+    notAFit: 0,
     followUpOldestDays: 0,
     expiresInDays: 27,
     plan: "Pro",
@@ -207,6 +227,9 @@ export const CLOSED_JOBS: ClosedJob[] = [
     title: "Senior Backend Engineer — Ads",
     location: "Bengaluru",
     applicants: 212,
+    shortlisted: 18,
+    contacted: 11,
+    notAFit: 46,
     closedOn: "12 Aug",
     outcome: "Filled",
     plan: "Pro",
@@ -217,6 +240,9 @@ export const CLOSED_JOBS: ClosedJob[] = [
     title: "Regional Sales Head, West",
     location: "Mumbai",
     applicants: 34,
+    shortlisted: 4,
+    contacted: 2,
+    notAFit: 9,
     closedOn: "28 Jul",
     outcome: "Expired",
     plan: "Basic",
@@ -227,6 +253,9 @@ export const CLOSED_JOBS: ClosedJob[] = [
     title: "Product Manager, Growth",
     location: "Bengaluru",
     applicants: 96,
+    shortlisted: 9,
+    contacted: 6,
+    notAFit: 21,
     closedOn: "19 Jul",
     outcome: "Withdrawn",
     plan: "Pro",

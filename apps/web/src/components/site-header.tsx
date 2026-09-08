@@ -8,6 +8,11 @@ import { SidebarTrigger } from "@workspace/ui/components/sidebar"
  * The brand switcher and theme toggle both used to live here and now sit on
  * /settings, which leaves this bar as trigger + title. Flipping either costs a
  * navigation; the `d` shortcut in ThemeProvider is the only global escape.
+ *
+ * It carried a breadcrumb for a while — trigger + trail, with a job's response
+ * manager reading "Jobs › <job title>". It is a plain title again: the trail
+ * was two crumbs on exactly one route and a single crumb everywhere else, which
+ * is a title with extra machinery behind it.
  */
 export function SiteHeader({ title }: { title: string }) {
   return (
