@@ -2,6 +2,7 @@ import { Outlet, useLocation } from "react-router"
 
 import { SidebarInset, SidebarProvider } from "@workspace/ui/components/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
+import { MessageDock } from "@/components/message-dock"
 import { SiteHeader } from "@/components/site-header"
 import { titleForPath } from "@/lib/nav"
 
@@ -35,6 +36,11 @@ export function AppShell() {
           </div>
         </div>
       </SidebarInset>
+
+      {/* Outside SidebarInset because it is `fixed` to the viewport corner and
+          should not shift when the sidebar collapses. Mounted here rather than
+          per page so a half-written message survives navigation. */}
+      <MessageDock />
     </SidebarProvider>
   )
 }
