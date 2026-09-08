@@ -98,7 +98,7 @@ export function activeJobsFor(brand: Brand): DashboardJob[] {
  * fills the box rather than launching — a starter is a first draft, and the
  * point of these is that you edit the numbers before you go.
  */
-export const SUGGESTED_REQUIREMENTS: { label: string; text: string }[] = [
+const HIRIST_REQUIREMENTS: Requirement[] = [
   {
     label: "Platform engineer",
     text: "Staff platform engineer in Bengaluru, 9–14 years, has run Kafka at scale",
@@ -112,6 +112,8 @@ export const SUGGESTED_REQUIREMENTS: { label: string; text: string }[] = [
     text: "Senior product designer, 6+ years, owns a design system end to end",
   },
 ]
+
+export type Requirement = { label: string; text: string }
 
 export type RecentSearch = {
   id: string
@@ -132,7 +134,7 @@ export type RecentSearch = {
  * to invent. `newSince` is the reason to come back: the pool moves even when
  * the query does not.
  */
-export const RECENT_SEARCHES: RecentSearch[] = [
+const HIRIST_SEARCHES: RecentSearch[] = [
   {
     id: "s1",
     query: "Kafka, Kubernetes, platform",
@@ -176,7 +178,7 @@ export type RecentProject = {
  * what says whether a project is actually moving. A project with channels but
  * no contacts has stalled, and that is the state worth spotting from here.
  */
-export const RECENT_PROJECTS: RecentProject[] = [
+const HIRIST_PROJECTS: RecentProject[] = [
   {
     id: "p1",
     name: "Staff Platform Engineer",
@@ -202,3 +204,94 @@ export const RECENT_PROJECTS: RecentProject[] = [
     updatedAgo: "5 days ago",
   },
 ]
+
+/**
+ * iimjobs' half of the same three lists.
+ *
+ * A recruiter's projects, saved searches and starter prompts are the clearest
+ * tell of which product they are in — more than the job list, because these are
+ * things THEY wrote rather than postings they happened to receive. Leaving them
+ * tech-only meant the iimjobs dashboard suggested "Platform engineer" and
+ * offered a saved search for Kafka, which is the half-converted state that
+ * makes a prototype look like a theme switcher again.
+ */
+const IIMJOBS_REQUIREMENTS: Requirement[] = [
+  {
+    label: "Sales leader",
+    text: "VP of enterprise sales in Mumbai, 12–18 years, has carried a 100Cr quota",
+  },
+  {
+    label: "Marketing head",
+    text: "Head of brand marketing for a consumer business, 10–15 years, FMCG background",
+  },
+  {
+    label: "Finance controller",
+    text: "Financial controller, CA, 10+ years, has closed books for a listed company",
+  },
+]
+
+const IIMJOBS_SEARCHES: RecentSearch[] = [
+  {
+    id: "s1",
+    query: "P&L ownership, FMCG sales",
+    filters: ["Mumbai", "12–18 yrs"],
+    matches: 96,
+    ranAgo: "3 hours ago",
+    newSince: 4,
+  },
+  {
+    id: "s2",
+    query: "Category manager, personal care",
+    filters: ["Mumbai", "8–12 yrs"],
+    matches: 54,
+    ranAgo: "Yesterday",
+    newSince: 0,
+  },
+  {
+    id: "s3",
+    query: "Financial controller, CA",
+    filters: ["Bengaluru", "10+ yrs"],
+    matches: 41,
+    ranAgo: "4 days ago",
+    newSince: 2,
+  },
+]
+
+const IIMJOBS_PROJECTS: RecentProject[] = [
+  {
+    id: "p1",
+    name: "VP Enterprise Sales",
+    channels: ["Posted", "Sourcing"],
+    shortlisted: 9,
+    contacted: 4,
+    updatedAgo: "Today",
+  },
+  {
+    id: "p2",
+    name: "Head of Brand Marketing",
+    channels: ["Sourcing"],
+    shortlisted: 5,
+    contacted: 0,
+    updatedAgo: "2 days ago",
+  },
+  {
+    id: "p3",
+    name: "CFO — confidential",
+    channels: [],
+    shortlisted: 0,
+    contacted: 0,
+    updatedAgo: "4 days ago",
+  },
+]
+
+export function suggestedRequirementsFor(brand: Brand): Requirement[] {
+  return brand === "hirist" ? HIRIST_REQUIREMENTS : IIMJOBS_REQUIREMENTS
+}
+
+export function recentSearchesFor(brand: Brand): RecentSearch[] {
+  return brand === "hirist" ? HIRIST_SEARCHES : IIMJOBS_SEARCHES
+}
+
+export function recentProjectsFor(brand: Brand): RecentProject[] {
+  return brand === "hirist" ? HIRIST_PROJECTS : IIMJOBS_PROJECTS
+}

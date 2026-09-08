@@ -22,10 +22,10 @@ import { useBrand } from "@workspace/ui/components/brand-provider"
 import { AuroraBand } from "@/components/aurora-band"
 import {
   activeJobsFor,
-  RECENT_PROJECTS,
-  RECENT_SEARCHES,
+  recentProjectsFor,
+  recentSearchesFor,
   statsFor,
-  SUGGESTED_REQUIREMENTS,
+  suggestedRequirementsFor,
   type DashboardJob,
   type RecentProject,
   type RecentSearch,
@@ -181,6 +181,7 @@ function Greeting() {
  */
 function RequirementBox() {
   const navigate = useNavigate()
+  const { brand } = useBrand()
   const [draft, setDraft] = React.useState("")
 
   const start = () => {
@@ -219,7 +220,7 @@ function RequirementBox() {
           <span className="text-xs text-muted-foreground">Try</span>
           {/* Action chips, not filters: picking one fills the box rather than
               launching, so there is no `selected` — a starter is a first draft. */}
-          {SUGGESTED_REQUIREMENTS.map((suggestion) => (
+          {suggestedRequirementsFor(brand).map((suggestion) => (
             <Chip
               key={suggestion.label}
               onClick={() => setDraft(suggestion.text)}
@@ -346,6 +347,8 @@ function JobRow({ job }: { job: DashboardJob }) {
 }
 
 function RecentSearches() {
+  const { brand } = useBrand()
+
   return (
     <section className="grid min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
       <SectionHeader
@@ -354,7 +357,7 @@ function RecentSearches() {
       />
 
       <ListCard>
-        {RECENT_SEARCHES.map((search) => (
+        {recentSearchesFor(brand).map((search) => (
           <SearchRow key={search.id} search={search} />
         ))}
       </ListCard>
@@ -407,6 +410,8 @@ function SearchRow({ search }: { search: RecentSearch }) {
 }
 
 function RecentProjects() {
+  const { brand } = useBrand()
+
   return (
     <section className="flex min-w-0 flex-col gap-3">
       <SectionHeader
@@ -415,7 +420,7 @@ function RecentProjects() {
       />
 
       <ListCard>
-        {RECENT_PROJECTS.map((project) => (
+        {recentProjectsFor(brand).map((project) => (
           <ProjectRow key={project.id} project={project} />
         ))}
       </ListCard>
