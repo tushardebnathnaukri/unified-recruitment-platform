@@ -25,7 +25,9 @@ export default defineConfig([
     // That is the upstream shape of every component the CLI generates, so the
     // rule is off here rather than patched into each new file. It stays on in
     // apps/web, where HMR boundaries actually matter.
-    files: ['src/components/**/*.tsx'],
+    // Stories and composition recipes export `meta` objects and story
+    // configs next to any helper components, which trips the same rule.
+    files: ['src/components/**/*.tsx', 'src/**/*.stories.tsx'],
     rules: {
       'react-refresh/only-export-components': 'off',
     },

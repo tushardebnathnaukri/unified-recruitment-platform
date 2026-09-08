@@ -9,7 +9,9 @@
     "build-storybook": "turbo build-storybook",
     "lint": "turbo lint",
     "format": "turbo format",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "tokens": "npm run tokens -w @workspace/ui",
+    "tokens:check": "npm run tokens:check -w @workspace/ui"
   },
   "devDependencies": {
     "prettier": "^3.8.3",

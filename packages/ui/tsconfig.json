@@ -8,6 +8,10 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    // src/lib/figma.ts and foundations/colors.stories.tsx import figma-map.json
+    // and tokens.json; without this they fail typecheck. Vite resolves JSON
+    // natively at runtime.
+    "resolveJsonModule": true,
     "paths": {
       "@workspace/ui/*": ["./src/*"]
     }

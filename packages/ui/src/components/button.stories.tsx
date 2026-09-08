@@ -2,10 +2,14 @@ import type { Meta, StoryObj } from "@storybook/react-vite"
 import { ArrowRightIcon, PlusIcon } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
+import { design } from "@workspace/ui/lib/figma"
 
 const meta = {
   title: "Components/Button",
   component: Button,
+  parameters: {
+    design: design("button"),
+  },
   argTypes: {
     variant: {
       control: "select",

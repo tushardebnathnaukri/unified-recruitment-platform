@@ -1,0 +1,78 @@
+import { Meta } from "@storybook/addon-docs/blocks"
+
+<Meta title="Overview/Introduction" />
+
+# Recruiter design system
+
+The component library behind the iimjobs and hirist recruiter prototype.
+One design system, two brand theme layers: every component here is authored
+once, and the only thing that changes between brands is five accent tokens.
+
+This Storybook is the documentation. The app at `apps/web` is the clickable
+prototype built from it, and `/playground` there is for checking a component
+in situ against the real shell.
+
+## How it is organised
+
+| Section | What lives there | Where the code is |
+| --- | --- | --- |
+| **Foundations** | Colour tokens, type scale, radius — the values components are made of. Flip **Brand** and **Theme** in the toolbar to see the layers. | `packages/ui/src/styles/globals.css` |
+| **Components** | The shadcn/ui components this project has adopted, on Base UI primitives, unchanged except for tokens. | `packages/ui/src/components/<name>.tsx` |
+| **Patterns** | Our own small components, extracted from the prototype once the same shape showed up more than once. Stat card, section header, list card, meta line, chip. | `packages/ui/src/components/<name>.tsx` |
+| **Compositions** | Recipes, not components: the dashboard, a settings row, a posting form, built from the layers above. When a composition is repeated a third time it becomes a Pattern. | `packages/ui/src/compositions/` |
+
+The line between Components and Patterns matters when a shadcn update lands:
+Components are re-generated from the CLI, Patterns are ours to keep.
+
+## Two rules that outrank everything else
+
+**Never hardcode a brand colour in a component.** Add a token to the brand
+layer in `globals.css`. The Colours page marks the five tokens a brand may set.
+
+**Never write `if (brand === "hirist")` in a component.** That is a real
+product divergence. Surface it to the design team instead of absorbing it.
+
+## Base UI, not Radix
+
+These components sit on [Base UI](https://base-ui.com), which looks like
+Radix and is not. Two things bite:
+
+- **Composition is a `render` prop, not `asChild`.**
+  `<Button render={<Link to="/x" />}>`, `<DropdownMenuTrigger render={<Button />}>`.
+- **Roots often do not self-provide.** `Tooltip` needs a `TooltipProvider`
+  above it (the app mounts one in `main.tsx`; this preview does too).
+  `DropdownMenuLabel` throws outside a `DropdownMenuGroup`.
+
+State props follow Base UI's names: `defaultChecked` / `onCheckedChange`,
+`defaultPressed` / `onPressedChange`, `defaultValue` as an **array** on
+`ToggleGroup`.
+
+## Theme and brand
+
+Theme is two-state, light or dark, with no "system" mode — a shared preview
+link has to render identically for everyone. The palette is class-driven
+(`light` / `dark` on `<html>`); the brand is `data-brand` on the same
+element, and the CSS selectors depend on both sitting there.
+
+iimjobs is real (Tailwind's emerald ramp). **hirist is still a placeholder
+orange** pending the real brand values.
+
+## Adding a component
+
+```bash
+npx shadcn@latest add <name> -c apps/web
+```
+
+Then check four things — the CLI has a monorepo blind spot:
+
+1. Hooks landed in `packages/ui/src/hooks/`, not `apps/web`.
+2. `globals.css` was not clobbered (`git diff` it; confirm the brand layers survived).
+3. It does not need a root provider in `main.tsx`.
+4. **It imports `cn` from `@workspace/ui/lib/utils`**, not from a bare `"cn"`
+   package. The CLI has been seen to write `import { cn } from "cn"` and
+   install an npm package by that name. Fix the import, `npm uninstall cn -w @workspace/ui`.
+
+Write its story as `src/components/<name>.stories.tsx`, importing through
+the public entry point (`@workspace/ui/components/<name>`), and put the
+component's documentation in `parameters.docs.description.component` — that
+is what fills the generated Docs page.

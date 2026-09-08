@@ -1,0 +1,66 @@
+import { Meta } from "@storybook/addon-docs/blocks"
+
+<Meta title="Overview/Component inventory" />
+
+# Component inventory
+
+Every component in `packages/ui`, what it wraps, and where the prototype
+uses it today. Style is shadcn's `base-maia` preset with neutral base colour
+and CSS variables.
+
+## Components (shadcn/ui on Base UI)
+
+| Component | Primitive | Used in the prototype | Notes |
+| --- | --- | --- | --- |
+| Avatar | Base UI `Avatar` | Sidebar account menu | Fallback initials are the common case. Group and badge sub-parts. |
+| Badge | `useRender` | Dashboard: plan tier, search filters, "6 new" | Read-only pill. `success` / `warning` are shared status tokens, not brand. |
+| Button | Base UI `Button` | Everywhere | Reference shape for authoring: `cva` + `cn`, `data-slot`, `data-icon` for icon padding. |
+| Card | plain `div` | Dashboard, Settings | Pads vertically only; sub-parts pad horizontally. `size="sm"` for tiles. |
+| Checkbox | Base UI `Checkbox` | — | Checked state takes `--primary`. |
+| Dropdown menu | Base UI `Menu` | Sidebar account menu | `Label` must sit in a `Group`. |
+| Empty | plain `div` | — (the live site's four empty states) | First-class state; copy pattern kept from the live product. |
+| Input | Base UI `Input` | — | Pill-shaped; `aria-invalid` drives the error look. |
+| Item | `useRender` | Dashboard rows (via List card) | The generic row. `render={<Link />}` makes it a link and turns on hover. |
+| Kbd | plain `kbd` | Settings, Playground (the `d` shortcut) | Restyles itself inside a tooltip. |
+| Label | plain `label` | — | Dims after a disabled `peer`. |
+| Radio group | Base UI `RadioGroup` | — | For a short exclusive list with a label per option. |
+| Select | Base UI `Select` | — | Pass `items` for label display. Aligns selected item over the trigger by default. |
+| Separator | Base UI `Separator` | Site header, Settings | Vertical stretches unless told otherwise. |
+| Sheet | Base UI `Dialog` | Mobile sidebar | Side panel; `SheetFooter` pins to the bottom. |
+| Sidebar | shadcn block | App shell | `variant="inset"`, `collapsible="icon"`, `⌘B`. Dimensions are CSS variables on the provider. |
+| Skeleton | plain `div` | — | No backend to wait on; for designing the state. |
+| Switch | Base UI `Switch` | — | Immediate-effect settings. Two sizes. |
+| Table | plain table | — | For comparing rows; a list of destinations is a List card instead. |
+| Tabs | Base UI `Tabs` | — | Pill list for view switching, `line` for page sections. |
+| Textarea | plain `textarea` | Dashboard requirement box | Grows with content. The one non-pill field. |
+| Toggle | Base UI `Toggle` | — | Icon button with pressed state. |
+| Toggle group | Base UI `ToggleGroup` | — (Settings' brand switcher is a hand-built one) | `spacing={0}` + `outline` is a segmented control. Value is always an array. |
+| Tooltip | Base UI `Tooltip` | Sidebar rail labels | Needs `TooltipProvider` above it. |
+
+Also in the package, undocumented because they have no visual: `BrandProvider`
+/ `useBrand` (writes `data-brand`), and the hooks `useIsMobile` and
+`useMediaQuery`.
+
+## Patterns (ours)
+
+| Pattern | Built from | Extracted from | Rule it encodes |
+| --- | --- | --- | --- |
+| Stat card + Stat grid | Card | Dashboard stat row | Detail is a sentence, not a delta. Two or four across, never three. |
+| Section header | — | Dashboard section heads | Reserves a small button's height so sections with and without actions align. |
+| List card | Card + Item | Dashboard's three lists | The card owns the dividers; rows never know if they are first. |
+| Meta + Meta item | — | Every dashboard row's grey line | Dot separators only between rendered children; colour only for the fact that changes what you do. |
+| Chip | Base UI `Button` | Requirement box starters | A pill you press. `selected` makes it a filter toggle. Badge is the pill you read. |
+
+## App-only components
+
+Live in `apps/web/src/components` because they depend on the router, the
+theme provider or the app's data, and so have no story here:
+
+`AppShell`, `AppSidebar`, `NavMain`, `NavSecondary`, `NavUser`, `SiteHeader`
+(the shell — see Components → Sidebar for the same tree without the router);
+`BrandSwitcher`, `ThemeToggle` (Settings controls); `BrandWordmark` (the
+iimjobs mark, vendored SVG; hirist has none yet); `AuroraBand` (the WebGL
+hero, reads `--primary` so it re-tunes with the brand).
+
+`BrandSwitcher` depends only on `packages/ui` and could move here; it is
+left in the app until a second surface needs it.

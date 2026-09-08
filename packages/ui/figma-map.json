@@ -1,0 +1,169 @@
+{
+  "$comment": "Maps each code component to its node in the AthenaDS Figma library. Hand-maintained: node ids are only knowable after a component is created in Figma. Read by src/lib/figma.ts (the story `design` parameter) and by the description sync. Update when a component is rebuilt in Figma — a rebuild produces a new node id.",
+  "fileKey": "dtzCyVUdopiY2n46tpvF8R",
+  "fileUrl": "https://www.figma.com/design/dtzCyVUdopiY2n46tpvF8R/AthenaDS",
+  "storybookBaseUrl": "http://localhost:6006",
+  "components": {
+    "button": {
+      "nodeId": "28:59",
+      "figmaName": "Button",
+      "storyId": "components-button--docs"
+    },
+    "button-icon": {
+      "nodeId": "40:59",
+      "figmaName": "Button (icon)",
+      "storyId": "components-button--docs"
+    },
+    "badge": {
+      "nodeId": "29:23",
+      "figmaName": "Badge",
+      "storyId": "components-badge--docs"
+    },
+    "card": {
+      "nodeId": "33:17",
+      "figmaName": "Card",
+      "storyId": "components-card--docs"
+    },
+    "input": {
+      "nodeId": "31:16",
+      "figmaName": "Input",
+      "storyId": "components-input--docs"
+    },
+    "label": {
+      "nodeId": "31:3",
+      "figmaName": "Label",
+      "storyId": "components-label--docs"
+    },
+    "checkbox": {
+      "nodeId": "31:28",
+      "figmaName": "Checkbox",
+      "storyId": "components-checkbox--docs"
+    },
+    "switch": {
+      "nodeId": "32:11",
+      "figmaName": "Switch",
+      "storyId": "components-switch--docs"
+    },
+    "avatar": {
+      "nodeId": "30:9",
+      "figmaName": "Avatar",
+      "storyId": "components-avatar--docs"
+    },
+    "separator": {
+      "nodeId": "30:13",
+      "figmaName": "Separator",
+      "storyId": "components-separator--docs"
+    },
+    "skeleton": {
+      "nodeId": "30:18",
+      "figmaName": "Skeleton",
+      "storyId": "components-skeleton--docs"
+    },
+    "item": {
+      "nodeId": "34:51",
+      "figmaName": "Item",
+      "storyId": "components-item--docs"
+    },
+    "chip": {
+      "nodeId": "35:12",
+      "figmaName": "Chip",
+      "storyId": "patterns-chip--docs"
+    },
+    "meta": {
+      "nodeId": "36:11",
+      "figmaName": "MetaItem",
+      "storyId": "patterns-meta--docs"
+    },
+    "stat-card": {
+      "nodeId": "37:3",
+      "figmaName": "StatCard",
+      "storyId": "patterns-stat-card--docs"
+    },
+    "section-header": {
+      "nodeId": "38:3",
+      "figmaName": "SectionHeader",
+      "storyId": "patterns-section-header--docs"
+    },
+    "list-card": {
+      "nodeId": "39:3",
+      "figmaName": "ListCard",
+      "storyId": "patterns-list-card--docs"
+    },
+    "textarea": {
+      "nodeId": "47:13",
+      "figmaName": "Textarea",
+      "storyId": "components-textarea--docs"
+    },
+    "kbd": {
+      "nodeId": "48:3",
+      "figmaName": "Kbd",
+      "storyId": "components-kbd--docs"
+    },
+    "radio-group": {
+      "nodeId": "48:18",
+      "figmaName": "RadioGroupItem",
+      "storyId": "components-radio-group--docs"
+    },
+    "toggle": {
+      "nodeId": "48:55",
+      "figmaName": "Toggle",
+      "storyId": "components-toggle--docs"
+    },
+    "toggle-group": {
+      "nodeId": "49:3",
+      "figmaName": "ToggleGroup (segmented)",
+      "storyId": "components-toggle-group--docs"
+    },
+    "tabs": {
+      "nodeId": "50:18",
+      "figmaName": "TabsList",
+      "storyId": "components-tabs--docs"
+    },
+    "empty": {
+      "nodeId": "51:22",
+      "figmaName": "Empty",
+      "storyId": "components-empty--docs"
+    },
+    "table": {
+      "nodeId": "52:3",
+      "figmaName": "Table",
+      "storyId": "components-table--docs"
+    },
+    "select": {
+      "nodeId": "54:12",
+      "figmaName": "SelectContent",
+      "storyId": "components-select--docs"
+    },
+    "select-trigger": {
+      "nodeId": "54:11",
+      "figmaName": "SelectTrigger",
+      "storyId": "components-select--docs"
+    },
+    "dropdown-menu": {
+      "nodeId": "55:3",
+      "figmaName": "DropdownMenuContent",
+      "storyId": "components-dropdown-menu--docs"
+    },
+    "tooltip": {
+      "nodeId": "56:15",
+      "figmaName": "Tooltip",
+      "storyId": "components-tooltip--docs"
+    },
+    "sheet": {
+      "nodeId": "58:3",
+      "figmaName": "SheetContent (side=right)",
+      "storyId": "components-sheet--docs"
+    },
+    "sidebar": {
+      "nodeId": "61:39",
+      "figmaName": "Sidebar",
+      "storyId": "components-sidebar--docs"
+    }
+  },
+  "pages": {
+    "colors": "16:4",
+    "typography-radius": "16:5",
+    "cover": "0:1",
+    "getting-started": "16:2"
+  }
+}

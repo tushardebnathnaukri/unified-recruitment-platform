@@ -2,12 +2,15 @@ import { defineMain } from "@storybook/react-vite/node"
 
 export default defineMain({
   framework: "@storybook/react-vite",
-  // Add "../src/**/*.mdx" here if you start writing MDX docs pages.
-  stories: ["../src/**/*.stories.@(ts|tsx)"],
+  // Stories sit beside their components; MDX pages live in `src/docs`.
+  stories: ["../src/**/*.mdx", "../src/**/*.stories.@(ts|tsx)"],
   addons: [
     "@storybook/addon-docs",
     "@storybook/addon-a11y",
     "@storybook/addon-themes",
+    // Renders the AthenaDS Figma node for a story in a side panel. Parameter-
+    // driven, so it adds no decorator and leaves preview.tsx alone.
+    "@storybook/addon-designs",
   ],
   core: {
     builder: {
