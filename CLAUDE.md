@@ -34,6 +34,12 @@ No test runner. `typecheck` also catches less than you'd expect — path aliases
 directories, so a wrong import path passes clean, and nothing type-checks CSS. Both dev servers
 are curl-inspectable (they can run at once):
 
+**`apps/web`'s typecheck used to check nothing at all.** Its `tsconfig.json` is `"files": []` plus
+project references, so the old `tsc --noEmit` compiled an empty program and exited 0 — undefined
+identifiers, missing imports and duplicate declarations all reached the browser instead of the
+terminal, because esbuild strips types without checking them. The script is `tsc -b --noEmit` now,
+which honours the references. `packages/ui` was never affected; its tsconfig has a real `include`.
+
 ```bash
 # Vite compiles the module (catches bad imports typecheck misses)
 curl -s -o /dev/null -w "%{http_code}\n" http://localhost:5173/src/components/app-shell.tsx
@@ -78,6 +84,14 @@ Two rules matter more than anything else here:
 - **Never write `if (brand === "hirist")` in a component** — that's a real product divergence;
   surface it to the design team instead of absorbing it.
 
+**Per-brand DATA is not what that second rule forbids.** The two products have different postings
+and different candidates, which is them being different products rather than one component being
+forked. So the rosters are a `Record<Brand, Job[]>` lookup in `apps/web/src/lib/jobs.ts`, screens
+ask for the active brand's roster (`jobsFor`, `liveJobsFor`, `jobStatusesFor`, `statsFor`,
+`activeJobsFor`), and no component branches on brand. A `domain: "tech" | "management"` on each job
+picks which title, skill, school and company pools `lib/applicants.ts` generates from — hirist is
+technology, iimjobs is management and senior non-tech.
+
 `BrandProvider` writes `data-brand` onto `<html>`; the roster is `packages/ui/src/lib/brands.ts`.
 Selectors are `:root[data-brand="x"]:not(.dark)` / `:root[data-brand="x"].dark`, which **assume
 `data-brand` and the theme class sit on the same element** — keep both on `<html>`.
@@ -102,6 +116,13 @@ React Router v8 **declarative mode** — plain `<Routes>`/`<Route>`, no loaders,
 framework mode. Import from `react-router` (`react-router-dom` is a deprecated shim). Routes in
 `src/App.tsx`, pages in `src/routes/`.
 
+Designed so far: `/dashboard`, `/jobs` (four status tabs), and `/jobs/:jobId` — the response
+manager, which is the biggest surface in here. Everything else is still `PlaceholderPage`. The
+response manager keeps its tab, view, sort and filters in the query string, so any state worth
+showing someone is in the URL; `applicants.ts` generates its people from a seeded LCG so a row can
+be pointed at in a review, and their bucket sizes come from the job's own counts so the Jobs list
+and the detail page cannot disagree.
+
 `AppShell` is the layout route: `SidebarProvider` → `AppSidebar variant="inset"` + `SidebarInset`
 → `SiteHeader` + `<Outlet />`. Shell dimensions (`--sidebar-width`, `--header-height`) are set as
 inline CSS variables on `SidebarProvider` so the header and sidebar read the same numbers; the
@@ -115,10 +136,23 @@ title, and `react-refresh/only-export-components` is on in `apps/web`. `NAV_ITEM
 called in a loop body — and it's why `NavSecondary` splits link and button variants rather than
 branching inside one component.
 
-**Both the brand switcher and the theme toggle live on `/settings`**, leaving the top bar as
-trigger + title. That was a deliberate call, against the earlier arrangement of keeping both in the
-header for side-by-side comparison — flipping either now costs a navigation, and the bare `d`
-keypress bound in `ThemeProvider` is the only global way to change theme.
+**The theme toggle lives on `/settings`**, leaving the top bar as title only — the sidebar owns the
+collapse trigger, beside the wordmark. That was a deliberate call against keeping controls in the
+header for side-by-side comparison; the bare `d` keypress bound in `ThemeProvider` is the only
+global way to change theme.
+
+**Brand is different, because it is a product and not a preference.** `ProductSwitcher` sits in the
+sidebar header — the wordmark, pressable, opening the list of products — and `?brand=hirist` in the
+URL picks one, so a review link can show a product the recipient has never opened. Without the
+param the brand lives only in `localStorage`, which means a shared link opens on whatever the
+*recipient* last picked. `BrandUrlSync` in `apps/web/src/components` keeps the two in step; it only
+applies the param when the PARAM changes, because "follow the param whenever it disagrees with the
+brand" is a loop that undoes every switch. `/settings` keeps a brand switcher too, but as a
+token-layer control for design review rather than a way to move product.
+
+The switcher is also the unification question made concrete, and reversible in the way this file
+asks for: delete the component and they are two apps again, with no token, route or component
+having taken a position.
 
 ## Authoring components
 
