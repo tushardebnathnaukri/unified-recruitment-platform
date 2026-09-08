@@ -9,6 +9,12 @@ import { SidebarTrigger } from "@workspace/ui/components/sidebar"
  * /settings, which leaves this bar as trigger + title. Flipping either costs a
  * navigation; the `d` shortcut in ThemeProvider is the only global escape.
  *
+ * THE COLLAPSE TRIGGER HAS MOVED TO THE SIDEBAR, beside the wordmark, which
+ * leaves this bar saying what page you are on and nothing else. What is left
+ * here is the mobile copy of it: under 768px the sidebar is a Sheet and is not
+ * in the DOM while closed, so the trigger has to live outside it to be able to
+ * open it. Above that width this one hides and the sidebar's own takes over.
+ *
  * It carried a breadcrumb for a while — trigger + trail, with a job's response
  * manager reading "Jobs › <job title>". It is a plain title again: the trail
  * was two crumbs on exactly one route and a single crumb everywhere else, which
@@ -18,11 +24,13 @@ export function SiteHeader({ title }: { title: string }) {
   return (
     <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
       <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">
-        <SidebarTrigger className="-ml-1" />
-        <Separator
-          orientation="vertical"
-          className="mx-2 h-4 data-vertical:self-auto"
-        />
+        <div className="flex items-center md:hidden">
+          <SidebarTrigger className="-ml-1" />
+          <Separator
+            orientation="vertical"
+            className="mx-2 h-4 data-vertical:self-auto"
+          />
+        </div>
         <h1 className="text-base font-medium">{title}</h1>
       </div>
     </header>
