@@ -9,11 +9,16 @@ import {
 } from "lucide-react"
 
 import { Badge } from "@workspace/ui/components/badge"
-import { Button, buttonVariants } from "@workspace/ui/components/button"
+import { Button } from "@workspace/ui/components/button"
 import { Card } from "@workspace/ui/components/card"
-import { AuroraBand } from "@/components/aurora-band"
+import { Chip } from "@workspace/ui/components/chip"
+import { Item, ItemActions, ItemContent } from "@workspace/ui/components/item"
+import { ListCard } from "@workspace/ui/components/list-card"
+import { Meta, MetaItem } from "@workspace/ui/components/meta"
+import { SectionHeader } from "@workspace/ui/components/section-header"
+import { StatCard, StatGrid } from "@workspace/ui/components/stat-card"
 import { Textarea } from "@workspace/ui/components/textarea"
-import { cn } from "@workspace/ui/lib/utils"
+import { AuroraBand } from "@/components/aurora-band"
 import {
   ACTIVE_JOBS,
   RECENT_PROJECTS,
@@ -44,9 +49,15 @@ import {
  * content column when the sidebar collapses — a viewport query would keep a
  * four-across stat row while the column beneath it narrowed by 200px.
  *
+ * BUILT FROM THE DESIGN SYSTEM'S PARTS. The stat tiles, section heads, list
+ * cards, meta lines and chips used to be local to this file; they are now
+ * `packages/ui` patterns with stories, and Storybook's "Compositions →
+ * Dashboard" is this same tree without the router or the aurora. If a change
+ * here is about a row's shape rather than its content, it belongs there.
+ *
  * The replica of the live page is still at /reference/dashboard for
- * comparison; it is a photograph and stays hardcoded. This one is built out of
- * the design system, so it follows the brand switcher and dark mode.
+ * comparison; it is a photograph and stays hardcoded. This one follows the
+ * brand switcher and dark mode.
  */
 export function DashboardPage() {
   return (
@@ -76,7 +87,24 @@ export function DashboardPage() {
       <div className="relative mx-auto -mt-16 flex w-full max-w-7xl flex-col gap-6 px-4 lg:px-6">
         <RequirementBox />
 
-        <StatRow />
+        {/* The grid rule (two across, four when there is room, never three)
+            lives in StatGrid. Its query is unnamed, so it resolves against the
+            nearest container — the shell's `@container/main`.
+
+            NOTE(design): these four are parked. Three of them are standing
+            totals that can never prompt an action; the agreed replacement is
+            queues with an age on them. See the StatCard story. */}
+        <StatGrid>
+          {STATS.map((stat) => (
+            <StatCard
+              key={stat.label}
+              label={stat.label}
+              value={stat.value}
+              detail={stat.detail}
+              icon={<stat.icon />}
+            />
+          ))}
+        </StatGrid>
 
         {/* Projects get the full width and sit above the other two, in the order
             the work moves: a project states what you need, then the job collects
@@ -158,7 +186,7 @@ function RequirementBox() {
   }
 
   return (
-    <Card className="gap-0 overflow-hidden p-0 shadow-lg">
+    <Card className="gap-0 overflow-hidden py-0 shadow-lg">
       <label className="flex cursor-text items-start gap-3 p-4">
         <SparklesIcon className="mt-1 size-4 shrink-0 text-primary" />
         <Textarea
@@ -185,15 +213,15 @@ function RequirementBox() {
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-muted/40 px-4 py-3">
         <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <span className="text-xs text-muted-foreground">Try</span>
+          {/* Action chips, not filters: picking one fills the box rather than
+              launching, so there is no `selected` — a starter is a first draft. */}
           {SUGGESTED_REQUIREMENTS.map((suggestion) => (
-            <button
+            <Chip
               key={suggestion.label}
-              type="button"
               onClick={() => setDraft(suggestion.text)}
-              className="rounded-4xl border border-border bg-background px-2.5 py-1 text-xs transition-colors hover:bg-muted"
             >
               {suggestion.label}
-            </button>
+            </Chip>
           ))}
         </div>
 
@@ -211,74 +239,35 @@ function RequirementBox() {
   )
 }
 
-/**
- * Two across on a narrow column, four when there is room. Never three — an
- * orphan tile on the second row reads as a rendering fault.
- */
-function StatRow() {
-  return (
-    <div className="grid grid-cols-2 gap-3 @3xl/main:grid-cols-4 @3xl/main:gap-4">
-      {STATS.map((stat) => {
-        const Icon = stat.icon
-
-        return (
-          <Card key={stat.label} className="gap-3 p-4">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm text-muted-foreground">
-                {stat.label}
-              </span>
-              <Icon className="size-4 shrink-0 text-muted-foreground" />
-            </div>
-            <p className="text-2xl font-medium tabular-nums">{stat.value}</p>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              {stat.detail}
-            </p>
-          </Card>
-        )
-      })}
-    </div>
-  )
-}
-
-function SectionHead({
-  title,
-  action,
+/** The section action: a link that looks like a link, routed. */
+function SectionLink({
+  to,
+  children,
 }: {
-  title: string
-  action?: React.ReactNode
+  to: string
+  children: React.ReactNode
 }) {
   return (
-    <div className="flex min-h-8 items-center justify-between gap-3">
-      <h2 className="text-sm font-medium">{title}</h2>
-      {action}
-    </div>
+    <Button variant="link" size="sm" className="px-0" render={<Link to={to} />}>
+      {children}
+      <ArrowRightIcon data-icon="inline-end" />
+    </Button>
   )
 }
 
 function ActiveJobs() {
   return (
     <section className="grid min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
-      <SectionHead
+      <SectionHeader
         title="Active jobs"
-        action={
-          <Link
-            to="/jobs"
-            className={cn(
-              buttonVariants({ variant: "link", size: "sm" }),
-              "px-0"
-            )}
-          >
-            View all
-            <ArrowRightIcon data-icon="inline-end" />
-          </Link>
-        }
+        action={<SectionLink to="/jobs">View all</SectionLink>}
       />
 
-      <Card className="gap-0 p-0">
-        {ACTIVE_JOBS.map((job, index) => (
-          <JobRow key={job.id} job={job} first={index === 0} />
+      <ListCard>
+        {ACTIVE_JOBS.map((job) => (
+          <JobRow key={job.id} job={job} />
         ))}
-      </Card>
+      </ListCard>
     </section>
   )
 }
@@ -286,20 +275,15 @@ function ActiveJobs() {
 /**
  * The row wraps rather than truncating. A job title is the one thing on this
  * page a recruiter identifies the row by, and an ellipsis in the middle of
- * "Principal Engineer, Platform Infra…" costs more than a second line does.
+ * "Principal Engineer, Platform Infra…" costs more than a second line does —
+ * which is why this skips `ItemTitle` and its one-line clamp.
  */
-function JobRow({ job, first }: { job: DashboardJob; first: boolean }) {
+function JobRow({ job }: { job: DashboardJob }) {
   const expiringSoon = job.expiresInDays <= 7
 
   return (
-    <Link
-      to="/jobs"
-      className={cn(
-        "flex flex-wrap items-start gap-x-4 gap-y-3 p-4 transition-colors hover:bg-muted/50",
-        !first && "border-t border-border"
-      )}
-    >
-      <div className="flex min-w-0 flex-1 basis-56 flex-col gap-1.5">
+    <Item render={<Link to="/jobs" />} className="items-start">
+      <ItemContent className="min-w-0 basis-56 gap-1.5">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium">{job.title}</span>
           <Badge variant={job.plan === "Pro" ? "secondary" : "outline"}>
@@ -307,26 +291,21 @@ function JobRow({ job, first }: { job: DashboardJob; first: boolean }) {
           </Badge>
         </div>
 
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <MapPinIcon className="size-3.5" />
+        <Meta separator={false}>
+          <MetaItem>
+            <MapPinIcon />
             {job.location}
-          </span>
-          <span
-            className={cn(
-              "flex items-center gap-1",
-              expiringSoon && "text-warning"
-            )}
-          >
-            <ClockIcon className="size-3.5" />
+          </MetaItem>
+          <MetaItem tone={expiringSoon ? "warning" : "default"}>
+            <ClockIcon />
             Expires in {job.expiresInDays} days
-          </span>
-        </div>
-      </div>
+          </MetaItem>
+        </Meta>
+      </ItemContent>
 
       {/* Unread is the number that decides whether this row needs you, so it
           gets the emphasis and the total is the quiet one beside it. */}
-      <div className="flex items-baseline gap-2">
+      <ItemActions className="items-baseline">
         {job.unread > 0 ? (
           <>
             <span className="text-lg font-medium tabular-nums">
@@ -341,35 +320,24 @@ function JobRow({ job, first }: { job: DashboardJob; first: boolean }) {
             {job.applicants} applicants
           </span>
         )}
-      </div>
-    </Link>
+      </ItemActions>
+    </Item>
   )
 }
 
 function RecentSearches() {
   return (
     <section className="grid min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
-      <SectionHead
+      <SectionHeader
         title="Recent searches"
-        action={
-          <Link
-            to="/database"
-            className={cn(
-              buttonVariants({ variant: "link", size: "sm" }),
-              "px-0"
-            )}
-          >
-            New search
-            <ArrowRightIcon data-icon="inline-end" />
-          </Link>
-        }
+        action={<SectionLink to="/database">New search</SectionLink>}
       />
 
-      <Card className="gap-0 p-0">
-        {RECENT_SEARCHES.map((search, index) => (
-          <SearchRow key={search.id} search={search} first={index === 0} />
+      <ListCard>
+        {RECENT_SEARCHES.map((search) => (
+          <SearchRow key={search.id} search={search} />
         ))}
-      </Card>
+      </ListCard>
     </section>
   )
 }
@@ -378,21 +346,15 @@ function RecentSearches() {
  * The query is the row's identity, so it gets the weight; the filters sit under
  * it as chips because two searches with the same keywords and different
  * locations are different searches and nothing else would tell them apart.
+ *
+ * Stacked, not media/content/actions: the query, its filters and its numbers
+ * are three lines of one thing, so the Item is turned into a column.
  */
-function SearchRow({
-  search,
-  first,
-}: {
-  search: RecentSearch
-  first: boolean
-}) {
+function SearchRow({ search }: { search: RecentSearch }) {
   return (
-    <Link
-      to="/database"
-      className={cn(
-        "flex flex-col gap-2 p-4 transition-colors hover:bg-muted/50",
-        !first && "border-t border-border"
-      )}
+    <Item
+      render={<Link to="/database" />}
+      className="flex-col items-stretch gap-2"
     >
       <div className="flex items-start gap-2">
         <SearchIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
@@ -409,9 +371,8 @@ function SearchRow({
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-        <span className="tabular-nums">{search.matches} matches</span>
-        <span aria-hidden="true">&middot;</span>
+      <Meta>
+        <span>{search.matches} matches</span>
         <span>{search.ranAgo}</span>
         {/* The only reason to re-run a saved search, so it is the only thing
             here that gets a colour. */}
@@ -420,35 +381,24 @@ function SearchRow({
             {search.newSince} new
           </Badge>
         )}
-      </div>
-    </Link>
+      </Meta>
+    </Item>
   )
 }
 
 function RecentProjects() {
   return (
     <section className="flex min-w-0 flex-col gap-3">
-      <SectionHead
+      <SectionHeader
         title="Recent projects"
-        action={
-          <Link
-            to="/projects/new"
-            className={cn(
-              buttonVariants({ variant: "link", size: "sm" }),
-              "px-0"
-            )}
-          >
-            New project
-            <ArrowRightIcon data-icon="inline-end" />
-          </Link>
-        }
+        action={<SectionLink to="/projects/new">New project</SectionLink>}
       />
 
-      <Card className="gap-0 p-0">
-        {RECENT_PROJECTS.map((project, index) => (
-          <ProjectRow key={project.id} project={project} first={index === 0} />
+      <ListCard>
+        {RECENT_PROJECTS.map((project) => (
+          <ProjectRow key={project.id} project={project} />
         ))}
-      </Card>
+      </ListCard>
     </section>
   )
 }
@@ -458,25 +408,13 @@ function RecentProjects() {
  * state worth spotting from a dashboard — so the row says so in words rather
  * than leaving a recruiter to infer it from two zeroes.
  */
-function ProjectRow({
-  project,
-  first,
-}: {
-  project: RecentProject
-  first: boolean
-}) {
+function ProjectRow({ project }: { project: RecentProject }) {
   const notStarted = project.channels.length === 0
   const stalled = !notStarted && project.contacted === 0
 
   return (
-    <Link
-      to="/projects/new"
-      className={cn(
-        "flex flex-wrap items-center gap-x-4 gap-y-2 p-4 transition-colors hover:bg-muted/50",
-        !first && "border-t border-border"
-      )}
-    >
-      <div className="flex min-w-0 flex-1 basis-64 flex-wrap items-center gap-2">
+    <Item render={<Link to="/projects/new" />}>
+      <ItemContent className="min-w-0 basis-64 flex-row flex-wrap items-center gap-2">
         <span className="text-sm font-medium">{project.name}</span>
         {notStarted ? (
           <Badge variant="outline" className="font-normal">
@@ -489,17 +427,15 @@ function ProjectRow({
             </Badge>
           ))
         )}
-      </div>
+      </ItemContent>
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-        <span className="tabular-nums">{project.shortlisted} shortlisted</span>
-        <span aria-hidden="true">&middot;</span>
-        <span className={cn("tabular-nums", stalled && "text-warning")}>
+      <Meta>
+        <MetaItem>{project.shortlisted} shortlisted</MetaItem>
+        <MetaItem tone={stalled ? "warning" : "default"}>
           {project.contacted} contacted
-        </span>
-        <span aria-hidden="true">&middot;</span>
-        <span className="whitespace-nowrap">{project.updatedAgo}</span>
-      </div>
-    </Link>
+        </MetaItem>
+        <MetaItem className="whitespace-nowrap">{project.updatedAgo}</MetaItem>
+      </Meta>
+    </Item>
   )
 }

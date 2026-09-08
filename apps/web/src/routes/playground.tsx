@@ -1,4 +1,5 @@
 import { Button } from "@workspace/ui/components/button"
+import { Kbd } from "@workspace/ui/components/kbd"
 
 const VARIANTS = [
   "default",
@@ -20,10 +21,7 @@ export function PlaygroundPage() {
         {/* Title comes from SiteHeader. */}
         <p className="text-sm leading-relaxed text-muted-foreground">
           Flip the brand or theme on Settings to see tokens resolve — or press{" "}
-          <kbd className="rounded border border-border px-1 font-mono text-xs">
-            d
-          </kbd>{" "}
-          for theme without leaving this page.
+          <Kbd>d</Kbd> for theme without leaving this page.
         </p>
       </div>
 

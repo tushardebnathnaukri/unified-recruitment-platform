@@ -1,6 +1,7 @@
 import { Link } from "react-router"
 
 import { buttonVariants } from "@workspace/ui/components/button"
+import { Kbd } from "@workspace/ui/components/kbd"
 import { Separator } from "@workspace/ui/components/separator"
 import { BrandSwitcher } from "@/components/brand-switcher"
 import { ThemeToggle } from "@/components/theme-toggle"
@@ -39,11 +40,8 @@ export function SettingsPage() {
             <h2 className="text-sm font-medium">Theme</h2>
             <p className="text-sm leading-relaxed text-muted-foreground">
               Light and dark only — no system mode, so a shared preview link
-              renders the same for everyone. Press{" "}
-              <kbd className="rounded border border-border px-1 font-mono text-xs">
-                d
-              </kbd>{" "}
-              anywhere to flip it without coming back here.
+              renders the same for everyone. Press <Kbd>d</Kbd> anywhere to flip
+              it without coming back here.
             </p>
           </div>
 
