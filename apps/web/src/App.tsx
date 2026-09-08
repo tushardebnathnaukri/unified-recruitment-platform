@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router"
 
 import { AppShell } from "@/components/app-shell"
 import { DashboardPage } from "@/routes/dashboard"
+import { JobsPage } from "@/routes/jobs"
 import { LegacyDashboardPage } from "@/routes/legacy-dashboard"
 import { PlaceholderPage } from "@/routes/placeholder"
 import { PlaygroundPage } from "@/routes/playground"
@@ -31,7 +32,17 @@ export function App() {
         <Route index element={<Navigate to="/dashboard" replace />} />
 
         <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="jobs" element={<PlaceholderPage title="Jobs" />} />
+        {/* Jobs is a real page now; its four states are tabs on it rather
+            than routes, so the list stays one component and the state a
+            recruiter is looking at stays in `?status=`. The two routes under
+            it are where the rows and the create button point — named and
+            routed, not designed. */}
+        <Route path="jobs" element={<JobsPage />} />
+        <Route
+          path="jobs/new"
+          element={<PlaceholderPage title="Post a job" />}
+        />
+        <Route path="jobs/:jobId" element={<PlaceholderPage title="Job" />} />
         <Route path="database" element={<PlaceholderPage title="Database" />} />
         <Route
           path="analytics"

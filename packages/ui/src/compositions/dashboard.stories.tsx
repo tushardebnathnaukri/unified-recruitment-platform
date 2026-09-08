@@ -233,7 +233,6 @@ function ActiveJobs() {
       <SectionHeader title="Active jobs" action={<ViewAll>View all</ViewAll>} />
       <ListCard>
         {JOBS.map((job) => {
-          const expiringSoon = job.expiresInDays <= 7
           return (
             <Item
               key={job.id}
@@ -254,7 +253,9 @@ function ActiveJobs() {
                     <MapPinIcon />
                     {job.location}
                   </MetaItem>
-                  <MetaItem tone={expiringSoon ? "warning" : "default"}>
+                  {/* Untoned, matching the app: an expiry is a date, not a
+                      problem. */}
+                  <MetaItem>
                     <ClockIcon />
                     Expires in {job.expiresInDays} days
                   </MetaItem>

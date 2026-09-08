@@ -239,7 +239,13 @@ function RequirementBox() {
   )
 }
 
-/** The section action: a link that looks like a link, routed. */
+/**
+ * The section action: a link that looks like a link, routed.
+ *
+ * `nativeButton={false}` because it renders as an anchor. Base UI logs an error
+ * without it, and it is a real one — button semantics on a link cost the
+ * middle-click and copy-link that navigation is expected to have.
+ */
 function SectionLink({
   to,
   children,
@@ -248,7 +254,13 @@ function SectionLink({
   children: React.ReactNode
 }) {
   return (
-    <Button variant="link" size="sm" className="px-0" render={<Link to={to} />}>
+    <Button
+      variant="link"
+      size="sm"
+      className="px-0"
+      nativeButton={false}
+      render={<Link to={to} />}
+    >
       {children}
       <ArrowRightIcon data-icon="inline-end" />
     </Button>
@@ -279,8 +291,6 @@ function ActiveJobs() {
  * which is why this skips `ItemTitle` and its one-line clamp.
  */
 function JobRow({ job }: { job: DashboardJob }) {
-  const expiringSoon = job.expiresInDays <= 7
-
   return (
     <Item render={<Link to="/jobs" />} className="items-start">
       <ItemContent className="min-w-0 basis-56 gap-1.5">
@@ -296,7 +306,11 @@ function JobRow({ job }: { job: DashboardJob }) {
             <MapPinIcon />
             {job.location}
           </MetaItem>
-          <MetaItem tone={expiringSoon ? "warning" : "default"}>
+          {/* No warning tone under seven days. An expiry is a date, not a
+              problem — the posting is doing what it was bought to do, and
+              ambering every second row spends the colour on something nobody
+              needs to act on. Matches the Jobs page, which dropped it first. */}
+          <MetaItem>
             <ClockIcon />
             Expires in {job.expiresInDays} days
           </MetaItem>

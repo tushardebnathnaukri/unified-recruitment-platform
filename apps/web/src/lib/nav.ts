@@ -84,6 +84,9 @@ export const SECONDARY_ITEMS: SecondaryItem[] = [
  */
 const UNLISTED_TITLES: { to: string; label: string; end: boolean }[] = [
   { to: "/projects/new", label: "Create Project", end: false },
+  // Longer than "/jobs", so it wins the longest-match sort and the header says
+  // "Post a job" rather than inheriting the list's title.
+  { to: "/jobs/new", label: "Post a job", end: false },
 ]
 
 /** Longest matching nav item wins, so nested routes keep their parent's title. */

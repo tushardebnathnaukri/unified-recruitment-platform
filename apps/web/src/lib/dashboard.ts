@@ -6,6 +6,8 @@ import {
   UsersIcon,
 } from "lucide-react"
 
+import { LIVE_JOBS, type LiveJob } from "@/lib/jobs"
+
 /**
  * Mock data for the recruiter dashboard.
  *
@@ -15,9 +17,18 @@ import {
  * page behaves when it is doing its job. The empty states still matter and are
  * worth designing — but as a second state, not the only one.
  *
- * The numbers are internally consistent: the applicant totals on the job rows
- * add up to the stat tile, and the interview count matches the list.
+ * The numbers are internally consistent because the job ones are not written
+ * down twice — the tiles and the active list are both computed from
+ * `LIVE_JOBS`, which is the same roster the Jobs page renders. Hardcoding them
+ * here is how "View all" ends up on a list that does not contain the row you
+ * clicked from.
  */
+
+const APPLICANTS = LIVE_JOBS.reduce((total, job) => total + job.applicants, 0)
+const UNREAD = LIVE_JOBS.reduce((total, job) => total + job.unread, 0)
+const EXPIRING_THIS_WEEK = LIVE_JOBS.filter(
+  (job) => job.expiresInDays <= 7
+).length
 
 export type Stat = {
   label: string
@@ -30,14 +41,14 @@ export type Stat = {
 export const STATS: Stat[] = [
   {
     label: "Active jobs",
-    value: "6",
-    detail: "2 expiring this week",
+    value: `${LIVE_JOBS.length}`,
+    detail: `${EXPIRING_THIS_WEEK} expiring this week`,
     icon: BriefcaseIcon,
   },
   {
     label: "Applicants",
-    value: "271",
-    detail: "48 you haven't opened",
+    value: `${APPLICANTS}`,
+    detail: `${UNREAD} you haven't opened`,
     icon: UsersIcon,
   },
   {
@@ -54,55 +65,19 @@ export const STATS: Stat[] = [
   },
 ]
 
-export type DashboardJob = {
-  id: string
-  title: string
-  location: string
-  applicants: number
-  unread: number
-  /** Days until the posting expires. Under 7 gets called out. */
-  expiresInDays: number
-  plan: "Pro" | "Basic"
-}
+/** The Jobs page owns the shape; the dashboard shows a slice of the same rows. */
+export type DashboardJob = LiveJob
 
-export const ACTIVE_JOBS: DashboardJob[] = [
-  {
-    id: "j1",
-    title: "Principal Engineer, Platform Infrastructure",
-    location: "Bengaluru",
-    applicants: 148,
-    unread: 32,
-    expiresInDays: 6,
-    plan: "Pro",
-  },
-  {
-    id: "j2",
-    title: "Engineering Manager — Payments",
-    location: "Multiple locations",
-    applicants: 61,
-    unread: 0,
-    expiresInDays: 3,
-    plan: "Pro",
-  },
-  {
-    id: "j3",
-    title: "Product Designer II",
-    location: "Pune",
-    applicants: 7,
-    unread: 7,
-    expiresInDays: 14,
-    plan: "Basic",
-  },
-  {
-    id: "j4",
-    title: "Head of Talent Acquisition",
-    location: "Gurugram",
-    applicants: 55,
-    unread: 9,
-    expiresInDays: 21,
-    plan: "Basic",
-  },
-]
+/**
+ * The live jobs somebody has actually applied to.
+ *
+ * A rule rather than a hand-picked four: a freshly posted job with nobody in it
+ * has nothing for this list to say, and it is the Jobs page's business anyway.
+ * The full roster, including those, is one click away under "View all".
+ */
+export const ACTIVE_JOBS: DashboardJob[] = LIVE_JOBS.filter(
+  (job) => job.applicants > 0
+)
 
 /**
  * Starters for the dashboard's requirement box.
