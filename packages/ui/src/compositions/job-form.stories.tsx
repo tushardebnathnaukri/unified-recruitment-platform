@@ -26,6 +26,7 @@ import {
 } from "@workspace/ui/components/select"
 import { Switch } from "@workspace/ui/components/switch"
 import { Textarea } from "@workspace/ui/components/textarea"
+import { designComposition } from "@workspace/ui/lib/figma"
 
 const LOCATIONS = {
   bengaluru: "Bengaluru",
@@ -63,6 +64,7 @@ function Field({
 const meta = {
   title: "Compositions/Post a job form",
   parameters: {
+    design: designComposition("job-form"),
     layout: "padded",
     docs: {
       description: {

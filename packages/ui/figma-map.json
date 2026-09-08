@@ -160,6 +160,23 @@
       "storyId": "components-sidebar--docs"
     }
   },
+  "compositions": {
+    "dashboard": {
+      "nodeId": "66:2",
+      "figmaName": "Dashboard — full page",
+      "storyId": "compositions-dashboard--docs"
+    },
+    "job-form": {
+      "nodeId": "68:2",
+      "figmaName": "Post a job form — board",
+      "storyId": "compositions-post-a-job-form--docs"
+    },
+    "settings-row": {
+      "nodeId": "69:2",
+      "figmaName": "Settings row — board",
+      "storyId": "compositions-settings-row--docs"
+    }
+  },
   "pages": {
     "colors": "16:4",
     "typography-radius": "16:5",

@@ -16,6 +16,7 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@workspace/ui/components/toggle-group"
+import { designComposition } from "@workspace/ui/lib/figma"
 
 /**
  * A settings row: title and description on the left, the control on the
@@ -57,6 +58,7 @@ const DIGESTS = { daily: "Daily", weekly: "Weekly", never: "Never" }
 const meta = {
   title: "Compositions/Settings row",
   parameters: {
+    design: designComposition("settings-row"),
     layout: "padded",
     docs: {
       description: {

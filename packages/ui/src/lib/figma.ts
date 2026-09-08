@@ -30,6 +30,17 @@ export function figmaUrl(name: FigmaComponent) {
   return design(name).url
 }
 
+export type FigmaComposition = keyof typeof map.compositions
+
+/** Same as `design`, for a Compositions screen rather than a component. */
+export function designComposition(name: FigmaComposition) {
+  const { nodeId } = map.compositions[name]
+  return {
+    type: "figma" as const,
+    url: `${map.fileUrl}?node-id=${nodeId.replace(":", "-")}`,
+  }
+}
+
 export type FigmaPage = keyof typeof map.pages
 
 /** Same as `design`, for the documentation pages rather than a component. */

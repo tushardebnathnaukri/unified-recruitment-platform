@@ -207,6 +207,12 @@ A closed dropdown is not designable, and Figma has no hover or focus, so where a
 exists on `:focus` — a highlighted menu row, a select item — it is shown on one row so the treatment
 is visible at all.
 
+The **Compositions** layer is mirrored too — Dashboard, Post a job form, Settings row — assembled
+from instances rather than redrawn, so a change to Input or Chip lands in the screens. Icons in the
+compositions are placeholders; swap in real instances rather than adding an icon variant. A frame
+cannot hold a description or `documentationLinks`, so each composition carries its Storybook URL as
+an on-canvas caption instead.
+
 **`globals.css` remains the single source of truth. Tokens are generated, never drawn.**
 
 ```bash

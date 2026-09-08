@@ -22,6 +22,7 @@ import { Meta as MetaLine, MetaItem } from "@workspace/ui/components/meta"
 import { SectionHeader } from "@workspace/ui/components/section-header"
 import { StatCard, StatGrid } from "@workspace/ui/components/stat-card"
 import { Textarea } from "@workspace/ui/components/textarea"
+import { designComposition } from "@workspace/ui/lib/figma"
 
 /**
  * The recruiter dashboard, rebuilt from the design system's parts and
@@ -377,6 +378,7 @@ function RecentProjects() {
 const meta = {
   title: "Compositions/Dashboard",
   parameters: {
+    design: designComposition("dashboard"),
     layout: "fullscreen",
     docs: {
       description: {
