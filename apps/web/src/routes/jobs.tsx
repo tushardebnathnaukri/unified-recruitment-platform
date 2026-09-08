@@ -13,6 +13,7 @@ import {
   TriangleAlertIcon,
 } from "lucide-react"
 
+import { useBrand } from "@workspace/ui/components/brand-provider"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -39,7 +40,7 @@ import {
   TabsTrigger,
 } from "@workspace/ui/components/tabs"
 import {
-  JOB_STATUSES,
+  jobStatusesFor,
   toJobStatus,
   type ClosedJob,
   type Job,
@@ -75,6 +76,9 @@ import {
 export function JobsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const active = toJobStatus(searchParams.get("status"))
+  // The postings are the active product's; the four states are not.
+  const { brand } = useBrand()
+  const statuses = jobStatusesFor(brand)
 
   return (
     <div className="flex flex-col gap-4 px-4 lg:px-6">
@@ -96,7 +100,7 @@ export function JobsPage() {
             single button. */}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <TabsList className="max-w-full overflow-x-auto">
-            {JOB_STATUSES.map((status) => (
+            {statuses.map((status) => (
               <TabsTrigger key={status.value} value={status.value}>
                 {status.label}
                 {/* The count is the reason the tabs are worth having. It stays
@@ -123,7 +127,7 @@ export function JobsPage() {
           </Button>
         </div>
 
-        {JOB_STATUSES.map((status) => (
+        {statuses.map((status) => (
           <TabsContent key={status.value} value={status.value}>
             {status.jobs.length > 0 ? (
               // A card each, not one card of hairline-divided rows. `ListCard`

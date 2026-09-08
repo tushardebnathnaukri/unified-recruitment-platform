@@ -233,6 +233,81 @@ const DESIGN_TITLES: [max: number, titles: string[]][] = [
   [99, ["Staff Product Designer", "Principal Designer", "Head of Design"]],
 ]
 
+/**
+ * iimjobs' side of the market: management and senior non-tech.
+ *
+ * Separate pools rather than a wider shared one, because the point of the split
+ * is that a VP Sales posting and a platform engineering posting draw different
+ * people. A single pool with Kafka and P&L in it would put both on the same
+ * card, which is the exact thing this is meant to stop.
+ */
+const MANAGEMENT_TITLES: [max: number, titles: string[]][] = [
+  [8, ["Manager, Sales", "Marketing Manager", "Business Analyst"]],
+  [
+    12,
+    [
+      "Senior Manager, Sales",
+      "Category Manager",
+      "Finance Manager",
+      "HR Business Partner",
+    ],
+  ],
+  [
+    99,
+    [
+      "Vice President, Sales",
+      "Head of Marketing",
+      "Director, Operations",
+      "General Manager",
+      "Chief Financial Officer",
+    ],
+  ],
+]
+
+const MANAGEMENT_SKILLS = [
+  "P&L ownership",
+  "GTM strategy",
+  "Channel sales",
+  "Key accounts",
+  "Category management",
+  "Budgeting",
+  "Vendor management",
+  "Team building",
+  "Forecasting",
+  "Trade marketing",
+]
+
+/** Where this market's people actually come from — hence the product's name. */
+const MANAGEMENT_SCHOOLS = [
+  "IIM Ahmedabad",
+  "IIM Bangalore",
+  "IIM Calcutta",
+  "IIM Lucknow",
+  "XLRI Jamshedpur",
+  "FMS Delhi",
+  "ISB Hyderabad",
+  "MDI Gurgaon",
+  "SP Jain Mumbai",
+  "NMIMS Mumbai",
+]
+
+const MANAGEMENT_DEGREES = ["MBA", "PGDM", "CA", "B.Com"]
+
+const MANAGEMENT_COMPANIES = [
+  "Hindustan Unilever",
+  "Asian Paints",
+  "ICICI Bank",
+  "Mahindra",
+  "Titan",
+  "Marico",
+  "Godrej",
+  "Tata Motors",
+  "Bajaj Finserv",
+  "Aditya Birla Group",
+  "Dabur",
+  "HDFC Bank",
+]
+
 const DESIGN_SKILLS = [
   "Figma",
   "Design systems",
@@ -266,6 +341,36 @@ const DESIGN_DEGREES = ["B.Des", "M.Des", "B.F.A.", "B.Arch"]
 
 /** "Now" for every date on a card. A constant, so the mock data cannot age. */
 const CURRENT_YEAR = 2026
+
+/**
+ * Which market a job draws from.
+ *
+ * The domain comes off the job — hirist postings are `tech`, iimjobs' are
+ * `management` — and design is the one split INSIDE a domain, because a product
+ * designer and a backend engineer are both technology hires but share almost
+ * nothing on a card.
+ */
+function poolsFor(job: Job) {
+  if (job.domain === "management") {
+    return {
+      titleBands: MANAGEMENT_TITLES,
+      skillPool: MANAGEMENT_SKILLS,
+      companies: MANAGEMENT_COMPANIES,
+      schools: MANAGEMENT_SCHOOLS,
+      degrees: MANAGEMENT_DEGREES,
+    }
+  }
+
+  const design = job.title.toLowerCase().includes("design")
+
+  return {
+    titleBands: design ? DESIGN_TITLES : ENGINEERING_TITLES,
+    skillPool: design ? DESIGN_SKILLS : ENGINEERING_SKILLS,
+    companies: COMPANIES,
+    schools: SCHOOLS,
+    degrees: design ? DESIGN_DEGREES : ENGINEERING_DEGREES,
+  }
+}
 
 /**
  * A 32-bit LCG. Not good randomness — good *repeatable* randomness, which is
@@ -319,9 +424,8 @@ export function applicantsFor(job: Job): Applicant[] {
   const counts = responseCounts(job)
   if (counts.all === 0) return []
 
-  const design = job.title.toLowerCase().includes("design")
-  const titleBands = design ? DESIGN_TITLES : ENGINEERING_TITLES
-  const skillPool = design ? DESIGN_SKILLS : ENGINEERING_SKILLS
+  const pools = poolsFor(job)
+  const { titleBands, skillPool } = pools
 
   const random = seededRandom(seedFrom(job.id))
 
@@ -364,7 +468,7 @@ export function applicantsFor(job: Job): Applicant[] {
 
     const daysAgo = appliedDaysAgo(index, counts.all)
     const title = pick(band[1])
-    const company = pick(COMPANIES)
+    const company = pick(pools.companies)
     const careerStart = CURRENT_YEAR - experienceYears
 
     /**
@@ -396,7 +500,7 @@ export function applicantsFor(job: Job): Applicant[] {
 
       positions.push({
         title: positions.length === 0 ? title : pick(earlier),
-        company: positions.length === 0 ? company : pick(COMPANIES),
+        company: positions.length === 0 ? company : pick(pools.companies),
         from: start,
         to: positions.length === 0 ? null : cursor,
       })
@@ -427,8 +531,8 @@ export function applicantsFor(job: Job): Applicant[] {
         random() * 900000 + 100000
       )}`,
       education: {
-        school: pick(SCHOOLS),
-        degree: pick(design ? DESIGN_DEGREES : ENGINEERING_DEGREES),
+        school: pick(pools.schools),
+        degree: pick(pools.degrees),
         // Four years, ending the year the career starts. Nobody on this screen
         // has a gap between graduating and their first job, which is a
         // simplification, not a claim about the market.
@@ -609,8 +713,7 @@ export function sortApplicants(applicants: Applicant[], sort: string) {
  * first skills its applicants happen to have.
  */
 export function requiredSkillsFor(job: Job) {
-  const design = job.title.toLowerCase().includes("design")
-  const pool = design ? DESIGN_SKILLS : ENGINEERING_SKILLS
+  const pool = poolsFor(job).skillPool
   const random = seededRandom(seedFrom(`${job.id}-requirements`))
 
   const required = new Set<string>()

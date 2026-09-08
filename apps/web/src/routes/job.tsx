@@ -45,6 +45,7 @@ import {
 import { Input } from "@workspace/ui/components/input"
 import { Item } from "@workspace/ui/components/item"
 import { Label } from "@workspace/ui/components/label"
+import { useBrand } from "@workspace/ui/components/brand-provider"
 import { useCardVariant } from "@/components/card-variant-provider"
 import { Meta, MetaItem } from "@workspace/ui/components/meta"
 import {
@@ -100,7 +101,7 @@ import {
   type ApplicantStatus,
   type ResponseBucket,
 } from "@/lib/applicants"
-import { JOBS, type Job } from "@/lib/jobs"
+import { jobsFor, type Job } from "@/lib/jobs"
 
 /** How many cards a page of responses is. */
 const PAGE_SIZE = 20
@@ -148,7 +149,10 @@ const BUCKETS: { value: ResponseBucket; label: string }[] = [
  */
 export function JobDetailPage() {
   const { jobId } = useParams()
-  const job = JOBS.find((candidate) => candidate.id === jobId)
+  const { brand } = useBrand()
+  // Scoped to the active product: a job id from the other one is not found
+  // here, which is right — it is a posting on a different product.
+  const job = jobsFor(brand).find((candidate) => candidate.id === jobId)
 
   if (!job) return <JobNotFound />
 

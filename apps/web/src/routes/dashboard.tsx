@@ -18,12 +18,13 @@ import { Meta, MetaItem } from "@workspace/ui/components/meta"
 import { SectionHeader } from "@workspace/ui/components/section-header"
 import { StatCard, StatGrid } from "@workspace/ui/components/stat-card"
 import { Textarea } from "@workspace/ui/components/textarea"
+import { useBrand } from "@workspace/ui/components/brand-provider"
 import { AuroraBand } from "@/components/aurora-band"
 import {
-  ACTIVE_JOBS,
+  activeJobsFor,
   RECENT_PROJECTS,
   RECENT_SEARCHES,
-  STATS,
+  statsFor,
   SUGGESTED_REQUIREMENTS,
   type DashboardJob,
   type RecentProject,
@@ -60,6 +61,9 @@ import {
  * brand switcher and dark mode.
  */
 export function DashboardPage() {
+  // The tiles and the job list are the active product's, not a shared set.
+  const { brand } = useBrand()
+
   return (
     // `-mt-4 md:-mt-6` cancels the shell's top padding so the band can run edge
     // to edge under the header. The shell owns vertical rhythm for every other
@@ -95,7 +99,7 @@ export function DashboardPage() {
             totals that can never prompt an action; the agreed replacement is
             queues with an age on them. See the StatCard story. */}
         <StatGrid>
-          {STATS.map((stat) => (
+          {statsFor(brand).map((stat) => (
             <StatCard
               key={stat.label}
               label={stat.label}
@@ -268,6 +272,8 @@ function SectionLink({
 }
 
 function ActiveJobs() {
+  const { brand } = useBrand()
+
   return (
     <section className="grid min-w-0 grid-rows-[auto_minmax(0,1fr)] gap-3">
       <SectionHeader
@@ -276,7 +282,7 @@ function ActiveJobs() {
       />
 
       <ListCard>
-        {ACTIVE_JOBS.map((job) => (
+        {activeJobsFor(brand).map((job) => (
           <JobRow key={job.id} job={job} />
         ))}
       </ListCard>

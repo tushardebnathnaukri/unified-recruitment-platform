@@ -6,7 +6,8 @@ import {
   UsersIcon,
 } from "lucide-react"
 
-import { LIVE_JOBS, type LiveJob } from "@/lib/jobs"
+import type { Brand } from "@workspace/ui/lib/brands"
+import { liveJobsFor, type LiveJob } from "@/lib/jobs"
 
 /**
  * Mock data for the recruiter dashboard.
@@ -18,17 +19,16 @@ import { LIVE_JOBS, type LiveJob } from "@/lib/jobs"
  * worth designing — but as a second state, not the only one.
  *
  * The numbers are internally consistent because the job ones are not written
- * down twice — the tiles and the active list are both computed from
- * `LIVE_JOBS`, which is the same roster the Jobs page renders. Hardcoding them
- * here is how "View all" ends up on a list that does not contain the row you
- * clicked from.
+ * down twice — the tiles and the active list are both computed from the live
+ * jobs, which is the same roster the Jobs page renders. Hardcoding them here is
+ * how "View all" ends up on a list that does not contain the row you clicked
+ * from.
+ *
+ * They are FUNCTIONS OF THE BRAND now, not constants. The two products have
+ * different postings, so they have different totals — a dashboard reading 6
+ * active jobs on both would be the clearest possible tell that switching
+ * product only changed the colour.
  */
-
-const APPLICANTS = LIVE_JOBS.reduce((total, job) => total + job.applicants, 0)
-const UNREAD = LIVE_JOBS.reduce((total, job) => total + job.unread, 0)
-const EXPIRING_THIS_WEEK = LIVE_JOBS.filter(
-  (job) => job.expiresInDays <= 7
-).length
 
 export type Stat = {
   label: string
@@ -38,32 +38,39 @@ export type Stat = {
   icon: LucideIcon
 }
 
-export const STATS: Stat[] = [
-  {
-    label: "Active jobs",
-    value: `${LIVE_JOBS.length}`,
-    detail: `${EXPIRING_THIS_WEEK} expiring this week`,
-    icon: BriefcaseIcon,
-  },
-  {
-    label: "Applicants",
-    value: `${APPLICANTS}`,
-    detail: `${UNREAD} you haven't opened`,
-    icon: UsersIcon,
-  },
-  {
-    label: "Interviews",
-    value: "5",
-    detail: "2 today",
-    icon: CalendarCheckIcon,
-  },
-  {
-    label: "Posting credits",
-    value: "9",
-    detail: "of 25 used this quarter",
-    icon: TicketIcon,
-  },
-]
+export function statsFor(brand: Brand): Stat[] {
+  const live = liveJobsFor(brand)
+  const applicants = live.reduce((total, job) => total + job.applicants, 0)
+  const unread = live.reduce((total, job) => total + job.unread, 0)
+  const expiring = live.filter((job) => job.expiresInDays <= 7).length
+
+  return [
+    {
+      label: "Active jobs",
+      value: `${live.length}`,
+      detail: `${expiring} expiring this week`,
+      icon: BriefcaseIcon,
+    },
+    {
+      label: "Applicants",
+      value: `${applicants}`,
+      detail: `${unread} you haven't opened`,
+      icon: UsersIcon,
+    },
+    {
+      label: "Interviews",
+      value: "5",
+      detail: "2 today",
+      icon: CalendarCheckIcon,
+    },
+    {
+      label: "Posting credits",
+      value: "9",
+      detail: "of 25 used this quarter",
+      icon: TicketIcon,
+    },
+  ]
+}
 
 /** The Jobs page owns the shape; the dashboard shows a slice of the same rows. */
 export type DashboardJob = LiveJob
@@ -75,9 +82,9 @@ export type DashboardJob = LiveJob
  * has nothing for this list to say, and it is the Jobs page's business anyway.
  * The full roster, including those, is one click away under "View all".
  */
-export const ACTIVE_JOBS: DashboardJob[] = LIVE_JOBS.filter(
-  (job) => job.applicants > 0
-)
+export function activeJobsFor(brand: Brand): DashboardJob[] {
+  return liveJobsFor(brand).filter((job) => job.applicants > 0)
+}
 
 /**
  * Starters for the dashboard's requirement box.
