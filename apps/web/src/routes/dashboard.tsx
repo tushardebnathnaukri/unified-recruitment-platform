@@ -30,6 +30,8 @@ import {
   type RecentProject,
   type RecentSearch,
 } from "@/lib/dashboard"
+import { DashboardSkeleton } from "@/components/skeletons"
+import { usePageLoading } from "@/lib/use-page-loading"
 
 /**
  * The recruiter dashboard.
@@ -63,6 +65,7 @@ import {
 export function DashboardPage() {
   // The tiles and the job list are the active product's, not a shared set.
   const { brand } = useBrand()
+  const loading = usePageLoading()
 
   return (
     // `-mt-4 md:-mt-6` cancels the shell's top padding so the band can run edge
@@ -91,41 +94,50 @@ export function DashboardPage() {
       <div className="relative mx-auto -mt-16 flex w-full max-w-7xl flex-col gap-6 px-4 lg:px-6">
         <RequirementBox />
 
-        {/* The grid rule (two across, four when there is room, never three)
-            lives in StatGrid. Its query is unnamed, so it resolves against the
-            nearest container — the shell's `@container/main`.
+        {loading ? (
+          /* The greeting and the requirement box above this stay put: they are
+             the same on both products, so blanking them would be inventing a
+             load that is not happening. Everything below is the product's. */
+          <DashboardSkeleton />
+        ) : (
+          <>
+            {/* The grid rule (two across, four when there is room, never three)
+              lives in StatGrid. Its query is unnamed, so it resolves against the
+              nearest container — the shell's `@container/main`.
 
-            NOTE(design): these four are parked. Three of them are standing
-            totals that can never prompt an action; the agreed replacement is
-            queues with an age on them. See the StatCard story. */}
-        <StatGrid>
-          {statsFor(brand).map((stat) => (
-            <StatCard
-              key={stat.label}
-              label={stat.label}
-              value={stat.value}
-              detail={stat.detail}
-              icon={<stat.icon />}
-            />
-          ))}
-        </StatGrid>
+              NOTE(design): these four are parked. Three of them are standing
+              totals that can never prompt an action; the agreed replacement is
+              queues with an age on them. See the StatCard story. */}
+            <StatGrid>
+              {statsFor(brand).map((stat) => (
+                <StatCard
+                  key={stat.label}
+                  label={stat.label}
+                  value={stat.value}
+                  detail={stat.detail}
+                  icon={<stat.icon />}
+                />
+              ))}
+            </StatGrid>
 
-        {/* Projects get the full width and sit above the other two, in the order
-            the work moves: a project states what you need, then the job collects
-            the people who come to you and the search finds the ones who do not.
-            A mandate spans both of those, so a row that spans both of their
-            columns is the honest shape for it.
+            {/* Projects get the full width and sit above the other two, in the order
+              the work moves: a project states what you need, then the job collects
+              the people who come to you and the search finds the ones who do not.
+              A mandate spans both of those, so a row that spans both of their
+              columns is the honest shape for it.
 
-            The pair below is matched: the row stretches, and each section is
-            itself a grid of `auto` heading over `1fr` card, so the card fills
-            whatever height the taller side sets. Projects keeps its content
-            height — it is alone on its row, so there is nothing to match it to. */}
-        <RecentProjects />
+              The pair below is matched: the row stretches, and each section is
+              itself a grid of `auto` heading over `1fr` card, so the card fills
+              whatever height the taller side sets. Projects keeps its content
+              height — it is alone on its row, so there is nothing to match it to. */}
+            <RecentProjects />
 
-        <div className="grid gap-6 @3xl/main:grid-cols-2">
-          <ActiveJobs />
-          <RecentSearches />
-        </div>
+            <div className="grid gap-6 @3xl/main:grid-cols-2">
+              <ActiveJobs />
+              <RecentSearches />
+            </div>
+          </>
+        )}
       </div>
     </div>
   )

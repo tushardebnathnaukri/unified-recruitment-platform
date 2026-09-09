@@ -102,6 +102,8 @@ import {
   type ResponseBucket,
 } from "@/lib/applicants"
 import { jobsFor, type Job } from "@/lib/jobs"
+import { ApplicantListSkeleton } from "@/components/skeletons"
+import { usePageLoading } from "@/lib/use-page-loading"
 
 /** How many cards a page of responses is. */
 const PAGE_SIZE = 20
@@ -273,6 +275,7 @@ function ResponseManager({ job }: { job: Job }) {
   }, [applicants])
 
   const requiredSkills = React.useMemo(() => requiredSkillsFor(job), [job])
+  const loading = usePageLoading(550)
 
   const decide = (id: string, status: ApplicantStatus) =>
     setDecisions((current) => ({ ...current, [id]: status }))
@@ -374,21 +377,25 @@ function ResponseManager({ job }: { job: Job }) {
             />
 
             <div className="flex min-w-0 flex-1 flex-col">
-              {BUCKETS.map((bucket) => (
-                <TabsContent key={bucket.value} value={bucket.value}>
-                  <ApplicantList
-                    applicants={
-                      bucket.value === "all"
-                        ? applicants
-                        : applicants.filter((a) => a.status === bucket.value)
-                    }
-                    bucket={bucket}
-                    view={view}
-                    requiredSkills={requiredSkills}
-                    onDecide={decide}
-                  />
-                </TabsContent>
-              ))}
+              {loading ? (
+                <ApplicantListSkeleton />
+              ) : (
+                BUCKETS.map((bucket) => (
+                  <TabsContent key={bucket.value} value={bucket.value}>
+                    <ApplicantList
+                      applicants={
+                        bucket.value === "all"
+                          ? applicants
+                          : applicants.filter((a) => a.status === bucket.value)
+                      }
+                      bucket={bucket}
+                      view={view}
+                      requiredSkills={requiredSkills}
+                      onDecide={decide}
+                    />
+                  </TabsContent>
+                ))
+              )}
             </div>
           </div>
         </Tabs>

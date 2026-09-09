@@ -48,6 +48,8 @@ import {
   type PendingJob,
   type RejectedJob,
 } from "@/lib/jobs"
+import { JobListSkeleton } from "@/components/skeletons"
+import { usePageLoading } from "@/lib/use-page-loading"
 
 /**
  * Every posting on the account, split by the state it is in.
@@ -79,6 +81,7 @@ export function JobsPage() {
   // The postings are the active product's; the four states are not.
   const { brand } = useBrand()
   const statuses = jobStatusesFor(brand)
+  const loading = usePageLoading()
 
   return (
     <div className="flex flex-col gap-4 px-4 lg:px-6">
@@ -129,7 +132,11 @@ export function JobsPage() {
 
         {statuses.map((status) => (
           <TabsContent key={status.value} value={status.value}>
-            {status.jobs.length > 0 ? (
+            {loading ? (
+              // Rows to match what is coming, not what is there: the other
+              // product has its own number of postings in this state.
+              <JobListSkeleton rows={Math.max(status.jobs.length, 3)} />
+            ) : status.jobs.length > 0 ? (
               // A card each, not one card of hairline-divided rows. `ListCard`
               // is the right shape for a dashboard panel where the list is the
               // content of one card; here the list IS the page, and a job is a

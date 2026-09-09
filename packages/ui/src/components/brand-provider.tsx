@@ -28,6 +28,22 @@ export function BrandProvider({
   storageKey = "brand",
 }: BrandProviderProps) {
   const [brand, setBrandState] = React.useState<Brand>(() => {
+    /**
+     * The URL outranks the stored preference. A link saying `?brand=hirist` is
+     * an instruction about what to show; `localStorage` is a leftover from
+     * whatever the person opening it last looked at.
+     *
+     * It is read HERE, in the initial state, rather than only in the app's
+     * `BrandUrlSync` — otherwise a linked brand arrives as a change one tick
+     * after mount, and anything watching for a brand change (the switch
+     * skeleton) fires on a plain page load. Reading `location.search` once,
+     * without writing, needs no router and cannot fight one.
+     */
+    const fromUrl = new URLSearchParams(window.location.search).get("brand")
+    if (isBrand(fromUrl)) {
+      return fromUrl
+    }
+
     const storedBrand = localStorage.getItem(storageKey)
     if (isBrand(storedBrand)) {
       return storedBrand
