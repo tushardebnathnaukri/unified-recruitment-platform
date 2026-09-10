@@ -10,6 +10,9 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# A zipped build, for handing a preview to someone. `dist` above does not
+# cover it — that entry matches a directory name, not an archive of one.
+dist.zip
 *.local
 
 # env files (can opt-in for committing if needed)
