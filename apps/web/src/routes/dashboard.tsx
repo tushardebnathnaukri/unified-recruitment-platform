@@ -1,7 +1,9 @@
 import * as React from "react"
 import { Link, useNavigate } from "react-router"
 import {
+  ArrowDownRightIcon,
   ArrowRightIcon,
+  ArrowUpRightIcon,
   ClockIcon,
   MapPinIcon,
   SearchIcon,
@@ -11,6 +13,12 @@ import {
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Card } from "@workspace/ui/components/card"
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@workspace/ui/components/chart"
 import { Chip } from "@workspace/ui/components/chip"
 import { Item, ItemActions, ItemContent } from "@workspace/ui/components/item"
 import { ListCard } from "@workspace/ui/components/list-card"
@@ -18,15 +26,21 @@ import { Meta, MetaItem } from "@workspace/ui/components/meta"
 import { SectionHeader } from "@workspace/ui/components/section-header"
 import { StatCard, StatGrid } from "@workspace/ui/components/stat-card"
 import { Textarea } from "@workspace/ui/components/textarea"
+import { cn } from "@workspace/ui/lib/utils"
+import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts"
+
 import { useBrand } from "@workspace/ui/components/brand-provider"
 import { AuroraBand } from "@/components/aurora-band"
 import {
   activeJobsFor,
+  performanceFor,
   recentProjectsFor,
   recentSearchesFor,
   statsFor,
   suggestedRequirementsFor,
+  worstDrop,
   type DashboardJob,
+  type FunnelStage,
   type RecentProject,
   type RecentSearch,
 } from "@/lib/dashboard"
@@ -136,6 +150,14 @@ export function DashboardPage() {
               <ActiveJobs />
               <RecentSearches />
             </div>
+
+            {/* PERFORMANCE IS LAST, AND THAT IS THE POINT. Everything above is
+                work waiting on you today; this is how the last quarter went.
+                It belongs on the dashboard — a recruiter has nowhere else to
+                ask "am I getting better at this" now that Insights means the
+                market — but it does not belong above the eleven people who
+                have not been looked at. */}
+            <Performance />
           </>
         )}
       </div>
@@ -160,6 +182,210 @@ export function DashboardPage() {
  * and the band went grey and lifeless. The scrim, not a duller shader, is what
  * holds the floor.
  */
+/**
+ * How the recruiter's own hiring is going — the half of "analytics" that is
+ * about them rather than the market.
+ *
+ * THREE NUMBERS, EACH WITH A COMPARISON. A figure on its own is not
+ * performance: 38 days to fill is good or bad only against the 45 it used to
+ * be, so nothing here is shown without what it moved from. The funnel is the
+ * exception and gets its own treatment below.
+ */
+function Performance() {
+  const { brand } = useBrand()
+  const performance = performanceFor(brand)
+  const drop = worstDrop(performance.funnel)
+  const hires = performance.sources.reduce((sum, s) => sum + s.hires, 0)
+  const sourced =
+    performance.sources.find((s) => s.source.startsWith("Sourced"))?.hires ?? 0
+
+  return (
+    <section className="flex flex-col gap-4">
+      <SectionHeader
+        title="How hiring is going"
+        description="Your postings over the last quarter"
+      />
+
+      <div className="grid gap-6 @3xl/main:grid-cols-[minmax(0,1fr)_20rem]">
+        <FunnelCard funnel={performance.funnel} drop={drop} />
+
+        <div className="flex flex-col gap-6">
+          <TrendCard
+            label="Time to fill"
+            value={`${performance.timeToFill} days`}
+            from={performance.timeToFillLastQuarter}
+            to={performance.timeToFill}
+            /* Fewer days is better, so the arrow's meaning is inverted here. */
+            lowerIsBetter
+            detail={`was ${performance.timeToFillLastQuarter} days`}
+          />
+
+          <TrendCard
+            label="Reply rate"
+            value={`${performance.replyRate}%`}
+            from={performance.replyRateLastQuarter}
+            to={performance.replyRate}
+            detail={`of everybody you contacted — was ${performance.replyRateLastQuarter}%`}
+          />
+
+          <SourceCard
+            sources={performance.sources}
+            hires={hires}
+            sourced={sourced}
+          />
+        </div>
+      </div>
+    </section>
+  )
+}
+
+const funnelConfig = {
+  count: { label: "Candidates", color: "var(--chart-1)" },
+} satisfies ChartConfig
+
+/**
+ * The pipeline, and the one step that loses the most.
+ *
+ * A funnel where every bar is shorter than the last says nothing — that is what
+ * a funnel is. The callout under it is the card's actual output: the step where
+ * doing something different would change the outcome.
+ */
+function FunnelCard({
+  funnel,
+  drop,
+}: {
+  funnel: FunnelStage[]
+  drop: ReturnType<typeof worstDrop>
+}) {
+  return (
+    <Card className="gap-4 p-4">
+      <ChartContainer config={funnelConfig} className="h-64 w-full">
+        <BarChart
+          accessibilityLayer
+          data={funnel}
+          layout="vertical"
+          margin={{ left: 8, right: 16 }}
+        >
+          <CartesianGrid horizontal={false} />
+          <YAxis
+            dataKey="stage"
+            type="category"
+            tickLine={false}
+            axisLine={false}
+            width={88}
+          />
+          <XAxis type="number" hide />
+          <ChartTooltip content={<ChartTooltipContent />} />
+          <Bar dataKey="count" fill="var(--color-count)" radius={4} />
+        </BarChart>
+      </ChartContainer>
+
+      <p className="text-sm leading-relaxed">
+        <span className="font-medium">
+          {drop.lostPct}% drop between {drop.from.stage} and {drop.to.stage}
+        </span>{" "}
+        <span className="text-muted-foreground">
+          — the steepest fall after the first read, and the step worth changing.
+        </span>
+      </p>
+    </Card>
+  )
+}
+
+/** A number that only means something next to the one it moved from. */
+function TrendCard({
+  label,
+  value,
+  from,
+  to,
+  detail,
+  lowerIsBetter,
+}: {
+  label: string
+  value: string
+  from: number
+  to: number
+  detail: string
+  lowerIsBetter?: boolean
+}) {
+  const change = Math.round(((to - from) / from) * 100)
+  const better = lowerIsBetter ? to < from : to > from
+  const Icon = to > from ? ArrowUpRightIcon : ArrowDownRightIcon
+
+  return (
+    <Card className="gap-2 p-4">
+      <span className="text-sm text-muted-foreground">{label}</span>
+
+      <div className="flex items-baseline gap-2">
+        <span className="text-2xl font-medium tabular-nums">{value}</span>
+        {change !== 0 && (
+          /* Coloured by whether it is GOOD, not by the sign. Time to fill
+             falling is the best news on this card, and a red down-arrow would
+             say the opposite. */
+          <span
+            className={cn(
+              "inline-flex items-center gap-0.5 text-xs tabular-nums",
+              better ? "text-success" : "text-warning"
+            )}
+          >
+            <Icon className="size-3.5" />
+            {Math.abs(change)}%
+          </span>
+        )}
+      </div>
+
+      <p className="text-xs leading-relaxed text-muted-foreground">{detail}</p>
+    </Card>
+  )
+}
+
+/**
+ * Which channel the accepted offers actually came from.
+ *
+ * This is the card that says whether the mandate's two channels are both
+ * earning their place — a quarter where nothing was hired from the database is
+ * a quarter where sourcing was theatre.
+ */
+function SourceCard({
+  sources,
+  hires,
+  sourced,
+}: {
+  sources: { source: string; hires: number }[]
+  hires: number
+  sourced: number
+}) {
+  return (
+    <Card className="gap-3 p-4">
+      <span className="text-sm text-muted-foreground">
+        Where {hires} hires came from
+      </span>
+
+      {sources.map((source) => (
+        <div key={source.source} className="flex flex-col gap-1.5">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="min-w-0 truncate text-sm">{source.source}</span>
+            <span className="text-xs text-muted-foreground tabular-nums">
+              {source.hires}
+            </span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+            <div
+              className="h-full rounded-full bg-primary"
+              style={{ width: `${(source.hires / hires) * 100}%` }}
+            />
+          </div>
+        </div>
+      ))}
+
+      <p className="text-xs leading-relaxed text-muted-foreground">
+        {Math.round((sourced / hires) * 100)}% came from people who never
+        applied.
+      </p>
+    </Card>
+  )
+}
+
 function Greeting() {
   return (
     <div className="flex flex-col gap-1 text-primary-foreground">

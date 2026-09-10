@@ -295,3 +295,101 @@ export function recentSearchesFor(brand: Brand): RecentSearch[] {
 export function recentProjectsFor(brand: Brand): RecentProject[] {
   return brand === "hirist" ? HIRIST_PROJECTS : IIMJOBS_PROJECTS
 }
+
+/**
+ * Performance — how the recruiter's own hiring is going.
+ *
+ * IT IS THE OTHER HALF OF INSIGHTS, AND THE HALF THAT IS ABOUT YOU. Insights
+ * describes a market and reads the same for everybody who searches it; this
+ * describes one recruiter's postings and is meaningless to anybody else. That
+ * split is why the nav item was renamed rather than this being folded in there.
+ *
+ * Per brand, like the rosters: two products, two sets of postings, and a
+ * `Record<Brand, …>` lookup rather than a component branching on brand.
+ */
+export type FunnelStage = {
+  stage: string
+  count: number
+  /** What this stage is for, in the recruiter's words. */
+  hint: string
+}
+
+export type Performance = {
+  /** Median days from a posting going live to an offer accepted. */
+  timeToFill: number
+  timeToFillLastQuarter: number
+  funnel: FunnelStage[]
+  /** Where accepted offers actually came from. Validates the mandate's channels. */
+  sources: { source: string; hires: number }[]
+  /** Of everybody contacted, how many replied at all. */
+  replyRate: number
+  replyRateLastQuarter: number
+}
+
+const PERFORMANCE: Record<Brand, Performance> = {
+  iimjobs: {
+    timeToFill: 38,
+    timeToFillLastQuarter: 45,
+    funnel: [
+      { stage: "Applied", count: 1284, hint: "Came to the posting" },
+      { stage: "Reviewed", count: 742, hint: "Somebody opened them" },
+      { stage: "Shortlisted", count: 186, hint: "Worth a conversation" },
+      { stage: "Contacted", count: 141, hint: "Reached out to" },
+      { stage: "Interviewed", count: 63, hint: "Sat with a panel" },
+      { stage: "Hired", count: 11, hint: "Offer accepted" },
+    ],
+    sources: [
+      { source: "Applied to a posting", hires: 7 },
+      { source: "Sourced from the database", hires: 3 },
+      { source: "Referred", hires: 1 },
+    ],
+    replyRate: 34,
+    replyRateLastQuarter: 29,
+  },
+  hirist: {
+    timeToFill: 44,
+    timeToFillLastQuarter: 41,
+    funnel: [
+      { stage: "Applied", count: 2170, hint: "Came to the posting" },
+      { stage: "Reviewed", count: 1106, hint: "Somebody opened them" },
+      { stage: "Shortlisted", count: 248, hint: "Worth a conversation" },
+      { stage: "Contacted", count: 197, hint: "Reached out to" },
+      { stage: "Interviewed", count: 88, hint: "Sat with a panel" },
+      { stage: "Hired", count: 14, hint: "Offer accepted" },
+    ],
+    sources: [
+      { source: "Applied to a posting", hires: 8 },
+      { source: "Sourced from the database", hires: 5 },
+      { source: "Referred", hires: 1 },
+    ],
+    replyRate: 27,
+    replyRateLastQuarter: 31,
+  },
+}
+
+export function performanceFor(brand: Brand): Performance {
+  return PERFORMANCE[brand]
+}
+
+/**
+ * The biggest drop in the funnel, as a share of the stage above it.
+ *
+ * A funnel where every bar is shorter than the last tells a recruiter nothing —
+ * that is what a funnel IS. The number worth surfacing is which step loses the
+ * most, because that is the one step where doing something different changes
+ * the outcome. Applied → Reviewed is excluded: everything is lost there by
+ * definition on a posting with 1,284 applicants, and "review more of them" is
+ * not a finding.
+ */
+export function worstDrop(funnel: FunnelStage[]) {
+  let worst = { from: funnel[1], to: funnel[2], lostPct: 0 }
+
+  for (let i = 2; i < funnel.length; i++) {
+    const from = funnel[i - 1]
+    const to = funnel[i]
+    const lostPct = Math.round(((from.count - to.count) / from.count) * 100)
+    if (lostPct > worst.lostPct) worst = { from, to, lostPct }
+  }
+
+  return worst
+}
