@@ -1,3 +1,4 @@
+import { Link } from "react-router"
 import {
   BadgeCheckIcon,
   BellIcon,
@@ -26,6 +27,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@workspace/ui/components/sidebar"
+import { SECONDARY_ITEMS } from "@/lib/nav"
 
 /** Mock recruiter. There is no auth in this prototype. */
 const USER = {
@@ -47,6 +49,18 @@ function initials(name: string) {
  * Account menu in the sidebar footer. `useSidebar` gives us `isMobile`, which
  * decides whether the menu opens to the side or above — on a collapsed or
  * mobile sidebar there is no room to the right.
+ *
+ * IT CARRIES THE UTILITY NAV NOW — Settings, Get Help, Search — which used to
+ * be three rows above it. They were competing with Dashboard, Jobs, Database
+ * and Analytics for the same kind of attention while being a different kind of
+ * thing: the four above are where the work is, these are what you do about the
+ * tool. Folding them into the account menu leaves the sidebar as the four
+ * places a recruiter goes, and gives the banner above the footer a clean edge
+ * to sit against.
+ *
+ * They keep their `to` from `SECONDARY_ITEMS`, so Settings still routes and Get
+ * Help still goes nowhere — the same honesty the sidebar had about which of
+ * them exist.
  */
 export function NavUser() {
   const { isMobile } = useSidebar()
@@ -117,6 +131,29 @@ export function NavUser() {
                 <BellIcon />
                 Notifications
               </DropdownMenuItem>
+            </DropdownMenuGroup>
+
+            <DropdownMenuSeparator />
+
+            <DropdownMenuGroup>
+              {SECONDARY_ITEMS.map((item) => {
+                const Icon = item.icon
+
+                return item.to ? (
+                  <DropdownMenuItem
+                    key={item.label}
+                    render={<Link to={item.to} />}
+                  >
+                    <Icon />
+                    {item.label}
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem key={item.label}>
+                    <Icon />
+                    {item.label}
+                  </DropdownMenuItem>
+                )
+              })}
             </DropdownMenuGroup>
 
             <DropdownMenuSeparator />

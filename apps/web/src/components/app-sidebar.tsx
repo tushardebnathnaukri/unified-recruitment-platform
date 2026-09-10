@@ -10,7 +10,7 @@ import {
 } from "@workspace/ui/components/sidebar"
 import { ProductSwitcher } from "@/components/product-switcher"
 import { NavMain } from "@/components/nav-main"
-import { NavSecondary } from "@/components/nav-secondary"
+import { CrossSellBanner } from "@/components/cross-sell-banner"
 import { NavUser } from "@/components/nav-user"
 import { NAV_ITEMS } from "@/lib/nav"
 
@@ -57,7 +57,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
 
       <SidebarContent>
         <NavMain items={NAV_ITEMS} />
-        <NavSecondary className="mt-auto" />
+
+        {/* `mt-auto` pins the banner to the bottom of the rail, against the
+            account menu in the footer. Settings, Get Help and Search used to
+            sit between the two; they are in that menu now. */}
+        <div className="mt-auto">
+          <CrossSellBanner />
+        </div>
       </SidebarContent>
 
       <SidebarFooter>
