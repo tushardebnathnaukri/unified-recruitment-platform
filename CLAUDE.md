@@ -53,6 +53,16 @@ curl -s http://localhost:6006/index.json | node -e "let s='';process.stdin.on('d
 
 Wait on a server's log rather than sleeping: `until grep -qiE "Local:|ERROR" /tmp/dev.log; do sleep 0.5; done`.
 
+**After installing a dependency, a running dev server reports a React that is not broken.** Vite
+re-optimizes its dep bundle and the page ends up holding two prebundles at once, which surfaces as
+`Invalid hook call` and `more than one copy of React` while everything still renders. Check
+`npm ls react` first — if it says `deduped`, it is the optimizer, not the tree. The fix is
+`rm -rf node_modules/.vite` and a server restart, not a lockfile change.
+
+**A browser console read returns accumulated history, not the current state.** Errors from before a
+fix keep coming back and read as "still broken". Log a marker, force a re-render, and look only at
+what lands after it.
+
 ## Architecture
 
 Turborepo + npm workspaces:
@@ -101,6 +111,10 @@ Palettes: **iimjobs is real** (Tailwind's emerald ramp verbatim — 600/50 light
 
 ## Styling
 
+Charts are `packages/ui/src/components/chart.tsx` (shadcn's wrapper over **recharts 3.8**) —
+`ChartContainer` + a `ChartConfig` whose colours point at `var(--chart-N)`, so a chart re-themes
+with the brand like everything else. Used on `/insights` and the Dashboard's performance section.
+
 Tailwind v4, configured entirely in CSS — there is no `tailwind.config`.
 `packages/ui/src/styles/globals.css` is the single source of truth: `@theme inline` token map,
 oklch `:root`/`.dark` palettes, brand layers, and `@source` globs pulling `apps/**` into the scan.
@@ -116,18 +130,39 @@ React Router v8 **declarative mode** — plain `<Routes>`/`<Route>`, no loaders,
 framework mode. Import from `react-router` (`react-router-dom` is a deprecated shim). Routes in
 `src/App.tsx`, pages in `src/routes/`.
 
-Designed so far: `/dashboard`, `/jobs` (four status tabs), and `/jobs/:jobId` — the response
-manager, which is the biggest surface in here. Everything else is still `PlaceholderPage`. The
-response manager keeps its tab, view, sort and filters in the query string, so any state worth
-showing someone is in the URL; `applicants.ts` generates its people from a seeded LCG so a row can
-be pointed at in a review, and their bucket sizes come from the job's own counts so the Jobs list
-and the detail page cannot disagree.
+Designed so far: `/dashboard`, `/jobs` (four status tabs), `/jobs/:jobId` — the response manager,
+the biggest surface in here — `/jobs/:jobId/applicants/:applicantId`, and `/insights`. Still
+`PlaceholderPage`: `/jobs/new`, `/database`, `/search`, `/projects/new`. `/reference/dashboard` is a
+hardcoded replica of the live iimjobs dashboard, kept for side-by-side comparison and deliberately
+outside the design system — see the note at the top of `legacy-dashboard.tsx`.
+
+The response manager keeps its tab, view, sort, filters, selected candidate, open profile panel and
+CV/profile tab in the query string, so any state worth showing someone is in the URL;
+`applicants.ts` generates its people from a seeded LCG so a row can be pointed at in a review, and
+their bucket sizes come from the job's own counts so the Jobs list and the detail page cannot
+disagree.
+
+**`/insights` is the market; the Dashboard is you.** Insights answers "what does this role pay,
+where are the people, is demand rising" and reads the same for whoever searches it — it is modelled
+on `calculus.hirist.tech`, which serves the same thing at `/insights/`. "How is my hiring going" —
+funnel, time to fill, reply rate, which channel the hires came from — lives on the Dashboard,
+because a recruiter reads "analytics" as the second question and there is nowhere else to ask it.
+The nav item was renamed rather than one page trying to be both.
 
 `AppShell` is the layout route: `SidebarProvider` → `AppSidebar variant="inset"` + `SidebarInset`
-→ `SiteHeader` + `<Outlet />`. Shell dimensions (`--sidebar-width`, `--header-height`) are set as
-inline CSS variables on `SidebarProvider` so the header and sidebar read the same numbers; the
-structure follows shadcn's `dashboard-01` block. Pages own their gutters (`px-4 lg:px-6`) — the
-shell only supplies vertical rhythm.
++ `AthenaPane` → `SiteHeader` + `<Outlet />`. Shell dimensions (`--sidebar-width`,
+`--header-height`, `--athena-width`) are set as inline CSS variables on `SidebarProvider` so the
+header, sidebar, copilot pane and message dock read the same numbers; the structure follows
+shadcn's `dashboard-01` block. Pages own their gutters (`px-4 lg:px-6`) — the shell only supplies
+vertical rhythm.
+
+**Athena is the third column.** `AthenaProvider` sits inside `SidebarProvider` because opening the
+copilot collapses the nav (and restores whatever it was doing on close), which means it needs
+`useSidebar`. The pane is a sibling of `SidebarInset`, not a child — it sits *beside* the page, not
+over it — and it is `sticky` + `h-svh` rather than a plain flex child, because the shell wrapper is
+`min-h-svh` and grows with the page, which otherwise puts the composer at the bottom of a long
+document instead of the bottom of the screen. Below `md` it covers the page and the message dock
+hides. The trigger is in `SiteHeader` and only opens; the pane carries its own close.
 
 Nav lives in `src/lib/nav.ts`, not in the sidebar component: `SiteHeader` needs it for the page
 title, and `react-refresh/only-export-components` is on in `apps/web`. `NAV_ITEMS` renders through
@@ -159,9 +194,22 @@ having taken a position.
 `cva` for variants + `cn()` for merging — `packages/ui/src/components/button.tsx` is the reference
 shape (`data-slot`, `variant`/`size` groups, Base UI primitive).
 
-These are **Base UI, not Radix**, which bites twice:
+These are **Base UI, not Radix**, which bites three times:
 - Composition is a **`render` prop**, not `asChild`: `<Button render={<Link to="/x" />}>`.
 - Roots often **don't self-provide** — `Tooltip` is a bare root, so its users need `TooltipProvider`.
+- **Group parts assert on their context and THROW.** `DropdownMenuLabel` is `Menu.GroupLabel`; put
+  it above a `DropdownMenuRadioGroup` instead of inside one and Base UI raises
+  `MenuGroupContext is missing` — which takes the whole page white rather than rendering an
+  unlabelled heading. Typecheck, lint and Vite all pass on it, so composition changes need the page
+  actually opened.
+
+Two layout traps worth knowing, both hit in this codebase:
+- **`ring-*` is a box-shadow drawn OUTSIDE the border box**, so a ringed card filling a scroll
+  container has its outline clipped on all four sides — `overflow-y-auto` clips both axes, not just
+  the one named. One pixel of padding on the scroller fixes it.
+- **A flex child of the shell wrapper is as tall as the DOCUMENT, not the viewport**, because the
+  wrapper is `min-h-svh` and grows. Anything that needs to stay on screen wants `sticky` + a `svh`
+  height (Athena's pane) or `fixed` + a spacer (the nav's own trick).
 
 `react-refresh/only-export-components` is **off for `packages/ui/src/components/**` and
 `src/**/*.stories.tsx`** (every shadcn component exports its `*Variants` alongside; stories export
@@ -185,9 +233,14 @@ this repo uses npm.)
 2. **`globals.css` wasn't clobbered** — the CLI rewrites it to inject tokens. `git diff` it and
    confirm the brand layers survived.
 3. **Whether it needs a root provider** in `main.tsx` (see Base UI note above).
-4. **`cn` is imported from `@workspace/ui/lib/utils`, not a bare `"cn"`.** shadcn 4.21 wrote
-   `import { cn } from "cn"` into `kbd`, `empty` and `item` and installed an npm package by that
-   name into `packages/ui`. Fix the import and `npm uninstall cn -w @workspace/ui`.
+4. **`cn` is imported from `@workspace/ui/lib/utils`, not a bare `"cn"`.** shadcn 4.21 writes
+   `import { cn } from "cn"` and installs an npm package by that name into `packages/ui`. It has
+   done this on **every** add so far — `kbd`, `empty`, `item`, then `drawer`, `popover`, `command`,
+   `chart` — so treat it as certain rather than possible. It also hits **registry dependencies you
+   did not ask for**: `command` pulled `dialog` and `input-group`, and all three arrived with it.
+   Grep the whole directory, not just the file you added:
+   `grep -rn 'from "cn"' packages/ui/src/components/*.tsx`, fix each, then
+   `npm uninstall cn -w @workspace/ui`.
 
 If the CLI stalls on an "already exists, overwrite?" prompt (a dependency like `separator`), it is
 waiting on stdin: `yes n | npx shadcn@latest add <name> -c apps/web` declines and continues.
