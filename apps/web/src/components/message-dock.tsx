@@ -26,6 +26,7 @@ import {
 import { useBrand } from "@workspace/ui/components/brand-provider"
 import { BRANDS } from "@workspace/ui/lib/brands"
 import { cn } from "@workspace/ui/lib/utils"
+import { useAthena } from "@/components/athena-provider"
 import {
   ASSISTANT_ID,
   ASSISTANT_OPENING,
@@ -59,6 +60,7 @@ import {
  * close because you clicked into the jobs table behind it.
  */
 export function MessageDock() {
+  const anchor = useDockAnchor()
   const [open, setOpen] = React.useState(false)
   // `null` is the list; an id is that thread. One piece of state rather than a
   // separate "view" flag, because the two can never disagree this way.
@@ -202,7 +204,10 @@ export function MessageDock() {
       // the shadow to do all of it — hence `border-foreground/15` rather than
       // the 1.27:1 `border-border`, and a deep offset shadow instead of the
       // system's usual overlay ring.
-      className="fixed right-4 bottom-4 z-50 flex h-[min(36rem,calc(100vh-2rem))] w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-foreground/15 bg-card text-card-foreground shadow-[0_16px_48px_-12px_rgb(0_0_0/0.4)] sm:w-[26rem] dark:border-foreground/20 dark:shadow-[0_16px_48px_-12px_rgb(0_0_0/0.8)]"
+      className={cn(
+        anchor,
+        "flex h-[min(36rem,calc(100vh-2rem))] w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-foreground/15 bg-card text-card-foreground shadow-[0_16px_48px_-12px_rgb(0_0_0/0.4)] sm:w-[26rem] dark:border-foreground/20 dark:shadow-[0_16px_48px_-12px_rgb(0_0_0/0.8)]"
+      )}
     >
       {activeId ? (
         <Thread
@@ -257,13 +262,38 @@ function lastOf(messages: Message[] | undefined) {
  * of every page and has to be hittable without being aimed at, and the badge
  * is the whole reason the dock is worth having shut.
  */
+/**
+ * WHERE THE CORNER IS. Both halves of the dock pin to the bottom-right of the
+ * viewport, which stopped being empty the moment Athena could take a column
+ * there — the launcher was landing on top of the copilot's composer.
+ *
+ * Shifted left by the pane's own width rather than by a number of its own:
+ * `--athena-width` is set on the shell beside `--sidebar-width`, so resizing
+ * the pane moves the dock with it. Below `md` the pane covers the page instead
+ * of taking a column, so there is nothing to move aside for — the dock hides,
+ * because a launcher floating over a full-screen copilot is two things
+ * claiming the same corner.
+ */
+function useDockAnchor() {
+  const { open } = useAthena()
+  return cn(
+    "fixed right-4 bottom-4 z-50",
+    open && "max-md:hidden md:right-[calc(var(--athena-width)+--spacing(6))]"
+  )
+}
+
 function Launcher({ unread, onOpen }: { unread: number; onOpen: () => void }) {
+  const anchor = useDockAnchor()
+
   return (
     <Button
       size="icon"
       onClick={onOpen}
       aria-label={unread > 0 ? `Messages, ${unread} unread` : "Messages"}
-      className="fixed right-4 bottom-4 z-50 size-14 rounded-full shadow-lg transition-transform hover:scale-105 active:scale-95"
+      className={cn(
+        anchor,
+        "size-14 rounded-full shadow-lg transition-transform hover:scale-105 active:scale-95"
+      )}
     >
       <MessageCircleIcon className="size-6" />
       {unread > 0 && (
