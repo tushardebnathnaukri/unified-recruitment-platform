@@ -1,4 +1,5 @@
 import * as React from "react"
+import type { LucideIcon } from "lucide-react"
 import { Link, useParams, useSearchParams } from "react-router"
 import {
   ArrowLeftIcon,
@@ -12,6 +13,7 @@ import {
   LayoutListIcon,
   MailIcon,
   MapPinIcon,
+  PanelsTopLeftIcon,
   PhoneIcon,
   SearchIcon,
   Trash2Icon,
@@ -47,6 +49,9 @@ import {
   ApplicantStatusBadge,
   DecisionGroup,
 } from "@/components/applicant-controls"
+import { CandidateCv } from "@/components/candidate-cv"
+import { CandidatePanel } from "@/components/candidate-panel"
+import { CandidateDetail } from "@/components/candidate-detail"
 import { useDecisions } from "@/components/decisions-provider"
 import { Meta, MetaItem } from "@workspace/ui/components/meta"
 import {
@@ -112,14 +117,21 @@ const PAGE_SIZE = 20
 /**
  * Cards or a table, over the same people in the same order.
  *
- * They are not two designs of one thing, they are two densities. A card gives
- * every applicant four lines and room for their skills — good for a shortlist
- * you are reading properly. A table gives them one line and aligns every number
- * into a column, which is the only way to answer "who here is on a short notice
- * period" across a hundred and forty-eight rows. Neither wins; which one you
- * want depends on whether you are reading or comparing.
+ * They are not three designs of one thing, they are three densities, and each
+ * answers a different question. Cards are for scanning: four lines a person,
+ * enough to triage and no more. The table is for comparing: one line a person
+ * with every number in a column, which is the only way to answer "who here is
+ * on a short notice period" across a hundred and forty-eight rows. Split is for
+ * reading: a thin list beside a whole profile, for when the list is down to the
+ * ten people worth an hour. None of them wins.
  */
-type View = "cards" | "table"
+type View = "cards" | "table" | "split"
+
+const VIEWS: { value: View; label: string; icon: LucideIcon }[] = [
+  { value: "cards", label: "Cards", icon: LayoutListIcon },
+  { value: "table", label: "Table", icon: Table2Icon },
+  { value: "split", label: "Split", icon: PanelsTopLeftIcon },
+]
 
 const BUCKETS: { value: ResponseBucket; label: string }[] = [
   { value: "all", label: "All" },
@@ -170,7 +182,12 @@ function ResponseManager({ job }: { job: Job }) {
   const active: ResponseBucket = BUCKETS.some((b) => b.value === bucketParam)
     ? (bucketParam as ResponseBucket)
     : "all"
-  const view: View = searchParams.get("view") === "table" ? "table" : "cards"
+  // Normalised against the real list rather than a two-way check — a third
+  // view arrived and the `=== "table" ? … : "cards"` version silently ate it.
+  const viewParam = searchParams.get("view")
+  const view: View = VIEWS.some((option) => option.value === viewParam)
+    ? (viewParam as View)
+    : "cards"
   const sort = searchParams.get("sort") ?? "recent"
 
   // The filter panel needs a column of its own; on anything short of a very
@@ -262,10 +279,93 @@ function ResponseManager({ job }: { job: Job }) {
   }, [applicants])
 
   const requiredSkills = React.useMemo(() => requiredSkillsFor(job), [job])
+  const selectedId = searchParams.get("candidate")
+  // Which of the pane's two documents is open. In the query string with
+  // everything else this screen holds, so "look at his CV" is a link — and
+  // deliberately NOT reset when the selection changes: picking CV once and
+  // arrowing down the list is how you compare CVs.
+  const doc = searchParams.get("doc") === "cv" ? "cv" : "profile"
+  // Who the profile panel is showing. In the query string like the rest of
+  // this screen, so a panel someone is looking at is a link they can send.
+  const profileId = searchParams.get("profile")
+  const profiled =
+    applicants.find((applicant) => applicant.id === profileId) ?? null
+
+  /**
+   * The panel's Back/Next walk THE LIST YOU ARE LOOKING AT, which is the active
+   * bucket after filtering — not every applicant. Stepping out of Unread into
+   * somebody already decided would be the panel disagreeing with the tab.
+   *
+   * Looked up by index rather than held in state so a decision taken inside the
+   * panel cannot desync it. `-1` is a real case: shortlisting somebody while
+   * the Unread tab is open drops them out of this list while they are still on
+   * screen, and both ends going quiet is the honest answer to "what is next"
+   * when the thing you were walking no longer contains you.
+   */
+  const walkable =
+    active === "all"
+      ? applicants
+      : applicants.filter((applicant) => applicant.status === active)
+  const at = profiled
+    ? walkable.findIndex((applicant) => applicant.id === profiled.id)
+    : -1
+  const step = (delta: number) => {
+    const next = walkable[at + delta]
+    if (next) setParams({ profile: next.id })
+  }
+  const split = view === "split"
+
+  /**
+   * Built once and handed to whichever layout is rendering, so the panel and
+   * the bar cannot drift into filtering differently — the only thing that
+   * differs between them is arrangement.
+   */
+  const filterProps = {
+    filters,
+    scoped: active === "all",
+    sort,
+    locations,
+    matched: applicants.length,
+    total: all.length,
+    onChange: (updates: Partial<Filters>) =>
+      setParams(
+        Object.fromEntries(
+          Object.entries(updates).map(([key, value]) => [
+            key,
+            value ? value : null,
+          ])
+        )
+      ),
+    onSort: (next: string) =>
+      setParams({ sort: next === "recent" ? null : next }),
+    onClear: () =>
+      setParams({
+        q: null,
+        showing: null,
+        exp: null,
+        notice: null,
+        location: null,
+      }),
+  }
   const loading = usePageLoading(550)
+
+  const openProfile = (id: string) => setParams({ profile: id })
 
   return (
     <div className="flex flex-col gap-5 px-4 lg:px-6">
+      {/* Mounted at the page rather than inside a view, because it is the same
+          panel whichever of the three is rendering and closing it must not
+          depend on which one opened it. */}
+      <CandidatePanel
+        applicant={profiled}
+        requiredSkills={requiredSkills}
+        onDecide={decide}
+        onClose={() => setParams({ profile: null })}
+        onPrev={at > 0 ? () => step(-1) : undefined}
+        onNext={at >= 0 && at < walkable.length - 1 ? () => step(1) : undefined}
+        position={at >= 0 ? { index: at + 1, total: walkable.length } : null}
+      />
+
       <JobHeader job={job} />
 
       {responseCounts(job).all === 0 ? (
@@ -327,38 +427,22 @@ function ResponseManager({ job }: { job: Job }) {
               The panel is OUTSIDE the panels, not repeated in each: five
               copies of one search box is five things a screen reader has to
               tell apart, and the input would lose what you typed every time
-              you changed tab. */}
-          <div className="flex flex-col gap-5 @4xl/main:flex-row @4xl/main:items-start">
-            <FilterPanel
-              filters={filters}
-              scoped={active === "all"}
-              sort={sort}
-              locations={locations}
-              matched={applicants.length}
-              total={all.length}
-              onChange={(updates) =>
-                setParams(
-                  Object.fromEntries(
-                    Object.entries(updates).map(([key, value]) => [
-                      key,
-                      value ? value : null,
-                    ])
-                  )
-                )
-              }
-              onSort={(next) =>
-                setParams({ sort: next === "recent" ? null : next })
-              }
-              onClear={() =>
-                setParams({
-                  q: null,
-                  showing: null,
-                  exp: null,
-                  notice: null,
-                  location: null,
-                })
-              }
-            />
+              you changed tab.
+
+              SPLIT VIEW SWAPS IT FOR A ROW ACROSS THE TOP. That view already
+              spends its width on a list and a profile; a third column would
+              squeeze both for controls nobody is reading. Same props, same
+              options, different shape — see `FilterBar`. */}
+          {split && <FilterBar {...filterProps} />}
+
+          <div
+            className={
+              split
+                ? "flex flex-col"
+                : "flex flex-col gap-5 @4xl/main:flex-row @4xl/main:items-start"
+            }
+          >
+            {!split && <FilterPanel {...filterProps} />}
 
             <div className="flex min-w-0 flex-1 flex-col">
               {loading ? (
@@ -374,8 +458,14 @@ function ResponseManager({ job }: { job: Job }) {
                       }
                       bucket={bucket}
                       view={view}
-                      jobId={job.id}
                       requiredSkills={requiredSkills}
+                      selectedId={selectedId}
+                      onSelect={(id) => setParams({ candidate: id })}
+                      doc={doc}
+                      onDocChange={(next) =>
+                        setParams({ doc: next === "profile" ? null : next })
+                      }
+                      onOpenProfile={openProfile}
                       onDecide={decide}
                     />
                   </TabsContent>
@@ -511,15 +601,23 @@ function ApplicantList({
   applicants,
   bucket,
   view,
-  jobId,
   requiredSkills,
+  selectedId,
+  onSelect,
+  doc,
+  onDocChange,
+  onOpenProfile,
   onDecide,
 }: {
   applicants: Applicant[]
   bucket: { value: ResponseBucket; label: string }
   view: View
-  jobId: string
   requiredSkills: string[]
+  selectedId: string | null
+  onSelect: (id: string) => void
+  doc: "profile" | "cv"
+  onDocChange: (next: "profile" | "cv") => void
+  onOpenProfile: (id: string) => void
   onDecide: (id: string, status: ApplicantStatus) => void
 }) {
   const [visible, setVisible] = React.useState(PAGE_SIZE)
@@ -530,7 +628,20 @@ function ApplicantList({
 
   return (
     <div className="flex flex-col gap-3">
-      {view === "table" ? (
+      {view === "split" ? (
+        // The whole bucket, not a page of it: the list column scrolls on its
+        // own, so there is nothing for "Load more" to be at the bottom of.
+        <SplitView
+          applicants={applicants}
+          requiredSkills={requiredSkills}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          doc={doc}
+          onDocChange={onDocChange}
+          onOpenProfile={onOpenProfile}
+          onDecide={onDecide}
+        />
+      ) : view === "table" ? (
         <ApplicantTable applicants={shown} onDecide={onDecide} />
       ) : (
         <div role="list" className="flex flex-col gap-3">
@@ -538,15 +649,20 @@ function ApplicantList({
             <ApplicantCard
               key={applicant.id}
               applicant={applicant}
-              jobId={jobId}
               requiredSkills={requiredSkills}
               onDecide={onDecide}
+              onOpenProfile={onOpenProfile}
             />
           ))}
         </div>
       )}
 
-      <div className="flex flex-col items-center gap-3 py-2">
+      <div
+        className={cn(
+          "flex flex-col items-center gap-3 py-2",
+          view === "split" && "hidden"
+        )}
+      >
         <p className="text-xs text-muted-foreground tabular-nums">
           Showing {shown.length} of {applicants.length}
         </p>
@@ -615,14 +731,14 @@ function EmptyBucket({
  */
 function ApplicantCard({
   applicant,
-  jobId,
   requiredSkills,
   onDecide,
+  onOpenProfile,
 }: {
   applicant: Applicant
-  jobId: string
   requiredSkills: string[]
   onDecide: (id: string, status: ApplicantStatus) => void
+  onOpenProfile: (id: string) => void
 }) {
   const { variant } = useCardVariant()
   const [showAllRoles, setShowAllRoles] = React.useState(false)
@@ -688,7 +804,11 @@ function ApplicantCard({
         />
       )}
 
-      <CardActions applicant={applicant} jobId={jobId} onDecide={onDecide} />
+      <CardActions
+        applicant={applicant}
+        onDecide={onDecide}
+        onOpenProfile={onOpenProfile}
+      />
     </Item>
   )
 }
@@ -986,12 +1106,15 @@ function ViewSwitcher({
         if (next) onChange(next)
       }}
     >
-      <ToggleGroupItem value="cards" aria-label="Cards">
-        <LayoutListIcon />
-      </ToggleGroupItem>
-      <ToggleGroupItem value="table" aria-label="Table">
-        <Table2Icon />
-      </ToggleGroupItem>
+      {VIEWS.map((option) => (
+        <ToggleGroupItem
+          key={option.value}
+          value={option.value}
+          aria-label={option.label}
+        >
+          <option.icon />
+        </ToggleGroupItem>
+      ))}
     </ToggleGroup>
   )
 }
@@ -1466,11 +1589,14 @@ function FilterSelect({
   value,
   options,
   onChange,
+  className = "w-full",
 }: {
   label: string
   value: string
   options: { value: string; label: string }[]
   onChange: (value: string) => void
+  /** The panel wants a full-width column; the bar wants a pill. */
+  className?: string
 }) {
   const items = [
     { value: "any", label: `Any ${label.toLowerCase()}` },
@@ -1485,7 +1611,7 @@ function FilterSelect({
         onChange(String(next) === "any" ? "" : String(next))
       }
     >
-      <SelectTrigger className="w-full" aria-label={label}>
+      <SelectTrigger className={className} aria-label={label}>
         <SelectValue placeholder={label} />
       </SelectTrigger>
       <SelectContent>
@@ -1526,13 +1652,13 @@ function FilterSelect({
  */
 function CardActions({
   applicant,
-  jobId,
   onDecide,
+  onOpenProfile,
 }: {
   applicant: Applicant
-  /** Needed for the profile link: the candidate belongs to this posting. */
-  jobId: string
   onDecide: (id: string, status: ApplicantStatus) => void
+  /** Opens the panel. The card used to link to the profile page instead. */
+  onOpenProfile: (id: string) => void
 }) {
   const [revealed, setRevealed] = React.useState(false)
 
@@ -1631,8 +1757,7 @@ function CardActions({
         <Button
           variant="outline"
           size="sm"
-          nativeButton={false}
-          render={<Link to={`/jobs/${jobId}/applicants/${applicant.id}`} />}
+          onClick={() => onOpenProfile(applicant.id)}
         >
           <UserRoundIcon data-icon="inline-start" />
           View profile
@@ -1668,6 +1793,349 @@ function IconAction({
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
+  )
+}
+
+/**
+ * The Outlook shape: a compact list on the left, the selected candidate filling
+ * the right.
+ *
+ * IT IS THE READING VIEW, where cards are the scanning one and the table is the
+ * comparing one. A card gives you enough to triage and no more; this gives you
+ * a whole profile without leaving the list, which is what you want once the
+ * list is down to the ten people worth actually reading.
+ *
+ * THE ROWS ARE DELIBERATELY THIN. Name, current role, and the one number that
+ * decides whether to open somebody — everything else is three inches to the
+ * right the moment you click. A list column that repeats what the pane already
+ * shows is a card list with a pane bolted on, which is the failure mode of
+ * every master-detail screen that grew from a list.
+ *
+ * THE SELECTION IS IN THE URL. `?candidate=` makes a specific person in a
+ * specific list a link somebody can send — the same reason the tab, the view,
+ * the sort and the filters are all in there. It also means the pane survives a
+ * reload, which a `useState` selection would not.
+ */
+function SplitView({
+  applicants,
+  requiredSkills,
+  selectedId,
+  onSelect,
+  doc,
+  onDocChange,
+  onOpenProfile,
+  onDecide,
+}: {
+  applicants: Applicant[]
+  requiredSkills: string[]
+  selectedId: string | null
+  onSelect: (id: string) => void
+  doc: "profile" | "cv"
+  onDocChange: (next: "profile" | "cv") => void
+  onOpenProfile: (id: string) => void
+  onDecide: (id: string, status: ApplicantStatus) => void
+}) {
+  // The first row rather than nothing: an empty pane beside a full list is a
+  // screen asking you to do something before it will show you anything.
+  const selected =
+    applicants.find((applicant) => applicant.id === selectedId) ?? applicants[0]
+
+  return (
+    <div className="flex flex-col gap-4 @3xl/main:h-[calc(100svh-var(--header-height)---spacing(24))] @3xl/main:flex-row">
+      {/* Each column scrolls on its own, which is the whole point of the
+          layout — reading a career should not move the list you are working
+          through. Below the breakpoint they stack and the page scrolls
+          normally, because two scroll areas on a phone is a trap. */}
+      <div
+        role="list"
+        className="flex shrink-0 flex-col gap-1 overflow-y-auto rounded-2xl bg-card p-1.5 ring-1 ring-foreground/10 @3xl/main:w-80"
+      >
+        {applicants.map((applicant) => (
+          <SplitRow
+            key={applicant.id}
+            applicant={applicant}
+            selected={applicant.id === selected?.id}
+            onSelect={() => onSelect(applicant.id)}
+          />
+        ))}
+      </div>
+
+      {/* `p-px` is load-bearing. The card below is ringed, and a ring is a
+          box-shadow drawn OUTSIDE the border box — so with the card filling
+          this pane edge to edge, its outline lands in the overflow and
+          `overflow-y-auto` (which clips both axes, not just the one named)
+          cuts all four sides off. One pixel gives the ring somewhere to sit. */}
+      <div className="min-w-0 flex-1 overflow-y-auto p-px">
+        {selected ? (
+          <div className="flex flex-col gap-5 rounded-2xl bg-card p-5 ring-1 ring-foreground/10">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex min-w-0 items-start gap-3">
+                <Avatar className="size-10 shrink-0">
+                  <AvatarFallback className="text-xs">
+                    {initials(selected.name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-heading text-base font-medium">
+                      {selected.name}
+                    </span>
+                    <ApplicantStatusBadge status={selected.status} />
+                  </div>
+                  <span className="text-sm text-muted-foreground">
+                    {selected.title} at {selected.company}
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <DecisionGroup applicant={selected} onDecide={onDecide} />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onOpenProfile(selected.id)}
+                >
+                  <UserRoundIcon data-icon="inline-start" />
+                  Open profile
+                </Button>
+              </div>
+            </div>
+
+            {/* The tabs sit under the header, not above it: the name, the
+                decision buttons and Open profile act on the person whichever
+                document is showing, so they belong outside the thing that
+                swaps. */}
+            <Tabs
+              className="gap-4"
+              value={doc}
+              onValueChange={(value) =>
+                onDocChange(String(value) === "cv" ? "cv" : "profile")
+              }
+            >
+              <TabsList>
+                <TabsTrigger value="profile">Profile</TabsTrigger>
+                <TabsTrigger value="cv">CV</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="profile">
+                <CandidateDetail
+                  applicant={selected}
+                  required={requiredSkills}
+                  layout="pane"
+                />
+              </TabsContent>
+
+              <TabsContent value="cv">
+                <CandidateCv applicant={selected} />
+              </TabsContent>
+            </Tabs>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * One line of the list. `aria-current` rather than a pressed button: this
+ * selects what the pane shows, it does not act on anybody.
+ */
+function SplitRow({
+  applicant,
+  selected,
+  onSelect,
+}: {
+  applicant: Applicant
+  selected: boolean
+  onSelect: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-current={selected ? "true" : undefined}
+      className={cn(
+        "flex w-full flex-col gap-1 rounded-xl px-3 py-2.5 text-left transition-colors",
+        "focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
+        selected ? "bg-muted" : "hover:bg-muted/60"
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <span className="min-w-0 flex-1 truncate text-sm font-medium">
+          {applicant.name}
+        </span>
+        <ApplicantStatusBadge status={applicant.status} />
+      </div>
+      <span className="truncate text-xs text-muted-foreground">
+        {applicant.title} at {applicant.company}
+      </span>
+      <Meta className="text-[0.6875rem]">
+        <MetaItem>{applicant.experienceYears} yrs</MetaItem>
+        <MetaItem>
+          {applicant.noticeDays === 0
+            ? "Available now"
+            : `${applicant.noticeDays}d notice`}
+        </MetaItem>
+      </Meta>
+    </button>
+  )
+}
+
+/**
+ * The same controls as `FilterPanel`, laid out as a row of pills.
+ *
+ * SPLIT VIEW ONLY, because that is the one view that cannot afford a column.
+ * Cards and the table have room for the panel on the left and keep it; split
+ * already spends its width on a list and a profile, and a third column would
+ * squeeze both to make room for controls that are not being read.
+ *
+ * NOTE(design): this is the one place in the app where the same controls live
+ * in two places depending on the view, which is a smell — a recruiter changing
+ * view has to find them again. It is deliberate for now: the alternative was
+ * moving every view's filters up here, which is a bigger call than the split
+ * view should get to make on its own. Worth settling when one of the three
+ * views wins.
+ *
+ * SHOWING AND SORT BECOME SELECTS. As radios they are four rows and three
+ * rows, which is a column's shape; a row has no vertical space to give them.
+ * The options and their order are untouched — only the control changes, which
+ * is the most that should differ between two layouts of one thing.
+ */
+function FilterBar({
+  filters,
+  scoped,
+  sort,
+  locations,
+  matched,
+  total,
+  onChange,
+  onSort,
+  onClear,
+}: {
+  filters: Filters
+  scoped: boolean
+  sort: string
+  locations: string[]
+  matched: number
+  total: number
+  onChange: (updates: Partial<Filters>) => void
+  onSort: (sort: string) => void
+  onClear: () => void
+}) {
+  const active =
+    Boolean(filters.q) ||
+    Boolean(filters.showing) ||
+    Boolean(filters.exp) ||
+    Boolean(filters.notice) ||
+    Boolean(filters.location)
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <div className="relative w-full max-w-64 min-w-48 flex-1 @2xl/main:w-64 @2xl/main:flex-none">
+        <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={filters.q}
+          onChange={(event) => onChange({ q: event.target.value })}
+          placeholder="Search name, role or skill"
+          aria-label="Search responses"
+          className="pl-9"
+        />
+      </div>
+
+      {scoped && (
+        <BarSelect
+          label="Showing"
+          value={filters.showing || "all"}
+          options={SHOWING.map((option) => ({
+            value: option.value || "all",
+            label: option.label,
+          }))}
+          onChange={(value) =>
+            onChange({ showing: value === "all" ? "" : value })
+          }
+        />
+      )}
+
+      <BarSelect
+        label="Sort by"
+        value={sort}
+        options={SORTS}
+        onChange={onSort}
+      />
+
+      <FilterSelect
+        label="Experience"
+        value={filters.exp}
+        options={EXPERIENCE_BANDS}
+        onChange={(exp) => onChange({ exp })}
+        className="w-auto min-w-36"
+      />
+      <FilterSelect
+        label="Notice period"
+        value={filters.notice}
+        options={NOTICE_BANDS}
+        onChange={(notice) => onChange({ notice })}
+        className="w-auto min-w-36"
+      />
+      <FilterSelect
+        label="Location"
+        value={filters.location}
+        options={locations.map((location) => ({
+          value: location,
+          label: location,
+        }))}
+        onChange={(location) => onChange({ location })}
+        className="w-auto min-w-36"
+      />
+
+      {active && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <span className="tabular-nums">
+            {matched} of {total} match
+          </span>
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto px-0 text-xs"
+            onClick={onClear}
+          >
+            Clear
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** A select with a real default, unlike `FilterSelect`'s "Any …" reset. */
+function BarSelect({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: string
+  options: { value: string; label: string }[]
+  onChange: (value: string) => void
+}) {
+  return (
+    <Select
+      items={options}
+      value={value}
+      onValueChange={(next) => onChange(String(next))}
+    >
+      <SelectTrigger className="w-auto min-w-36" aria-label={label}>
+        <SelectValue placeholder={label} />
+      </SelectTrigger>
+      <SelectContent>
+        {options.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 
