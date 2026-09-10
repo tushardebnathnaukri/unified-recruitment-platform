@@ -16,9 +16,9 @@ import {
   PanelsTopLeftIcon,
   PhoneIcon,
   SearchIcon,
+  Table2Icon,
   Trash2Icon,
   TrophyIcon,
-  Table2Icon,
   UserRoundIcon,
 } from "lucide-react"
 
@@ -30,6 +30,9 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu"
@@ -75,6 +78,26 @@ import {
   TableHeader,
   TableRow,
 } from "@workspace/ui/components/table"
+import {
+  Command,
+  CommandEmpty,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@workspace/ui/components/command"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@workspace/ui/components/popover"
+import { useIsMobile } from "@workspace/ui/hooks/use-mobile"
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from "@workspace/ui/components/drawer"
 import {
   Tabs,
   TabsContent,
@@ -313,7 +336,6 @@ function ResponseManager({ job }: { job: Job }) {
     const next = walkable[at + delta]
     if (next) setParams({ profile: next.id })
   }
-  const split = view === "split"
 
   /**
    * Built once and handed to whichever layout is rendering, so the panel and
@@ -416,34 +438,20 @@ function ResponseManager({ job }: { job: Job }) {
               because the thing that has to fit both is the content column, and
               it changes width when the nav sidebar collapses.
 
-              THE PANEL IS ON THE LEFT, beside the nav rather than opposite it,
-              so the page reads left to right in the order you use it: where am
-              I, what am I looking at, and then the things themselves.
+              ONE ROW OF PILLS, IN EVERY VIEW. This used to be a column beside
+              the cards and a row above the split view, which meant a recruiter
+              changing view had to find the filters again — a smell the old
+              comment here admitted to and left standing. The pills settle it:
+              they cost a row instead of a column, so the view that could not
+              afford 16rem of controls is no longer the odd one out, and the
+              panel they used to be lives on inside the drawer.
 
-              No `order` needed: written first, it stacks above the list on a
-              narrow column too, which is where the controls belong when the
-              alternative is scrolling past a hundred cards to find them.
+              It is OUTSIDE the tab panels, not repeated in each: five copies of
+              one search box is five things a screen reader has to tell apart,
+              and the query would reset every time you changed tab. */}
+          <FilterBar {...filterProps} />
 
-              The panel is OUTSIDE the panels, not repeated in each: five
-              copies of one search box is five things a screen reader has to
-              tell apart, and the input would lose what you typed every time
-              you changed tab.
-
-              SPLIT VIEW SWAPS IT FOR A ROW ACROSS THE TOP. That view already
-              spends its width on a list and a profile; a third column would
-              squeeze both for controls nobody is reading. Same props, same
-              options, different shape — see `FilterBar`. */}
-          {split && <FilterBar {...filterProps} />}
-
-          <div
-            className={
-              split
-                ? "flex flex-col"
-                : "flex flex-col gap-5 @4xl/main:flex-row @4xl/main:items-start"
-            }
-          >
-            {!split && <FilterPanel {...filterProps} />}
-
+          <div className="flex flex-col">
             <div className="flex min-w-0 flex-1 flex-col">
               {loading ? (
                 <ApplicantListSkeleton />
@@ -1389,6 +1397,7 @@ function FilterPanel({
   onChange,
   onSort,
   onClear,
+  layout = "column",
 }: {
   filters: Filters
   /** Whether the scope radios belong here — see below. */
@@ -1401,6 +1410,14 @@ function FilterPanel({
   onChange: (updates: Partial<Filters>) => void
   onSort: (sort: string) => void
   onClear: () => void
+  /**
+   * `column` is the panel beside the list. `drawer` is the same controls with
+   * the card chrome and the sticky column taken off, because inside a drawer
+   * they would be a card in a card and a sticky element in something that does
+   * not scroll. One implementation, the way `CandidateDetail` handles the same
+   * problem — two copies would agree until somebody edited one.
+   */
+  layout?: "column" | "drawer"
 }) {
   const active =
     Boolean(filters.q) ||
@@ -1412,7 +1429,11 @@ function FilterPanel({
   return (
     <aside
       aria-label="Sort and filter"
-      className="flex shrink-0 flex-col gap-4 rounded-2xl bg-card p-4 ring-1 ring-foreground/10 @4xl/main:sticky @4xl/main:top-4 @4xl/main:max-h-[calc(100svh-var(--header-height)---spacing(8))] @4xl/main:w-64 @4xl/main:overflow-y-auto"
+      className={cn(
+        "flex flex-col gap-4",
+        layout === "column" &&
+          "shrink-0 rounded-2xl bg-card p-4 ring-1 ring-foreground/10 @4xl/main:sticky @4xl/main:top-4 @4xl/main:max-h-[calc(100svh-var(--header-height)---spacing(8))] @4xl/main:w-64 @4xl/main:overflow-y-auto"
+      )}
     >
       <div className="relative">
         <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -1982,46 +2003,41 @@ function SplitRow({
 }
 
 /**
- * The same controls as `FilterPanel`, laid out as a row of pills.
+ * How every view narrows its list: a search icon, a pill per control, and one
+ * drawer behind all of them.
  *
- * SPLIT VIEW ONLY, because that is the one view that cannot afford a column.
- * Cards and the table have room for the panel on the left and keep it; split
- * already spends its width on a list and a profile, and a third column would
- * squeeze both to make room for controls that are not being read.
+ * IT SETTLED A SMELL THIS FILE USED TO ADMIT TO. The controls were a column
+ * beside the cards and a row above the split view, because split spends its
+ * width on a list and a profile and could not afford a third column. That left
+ * the same controls in two places depending on the view, so changing view
+ * meant finding them again. A row of pills costs no column at all, which
+ * removes the reason the two layouts existed — and `FilterPanel` is not gone,
+ * it is what the drawer opens onto, so there is still exactly one
+ * implementation of what a filter is.
  *
- * NOTE(design): this is the one place in the app where the same controls live
- * in two places depending on the view, which is a smell — a recruiter changing
- * view has to find them again. It is deliberate for now: the alternative was
- * moving every view's filters up here, which is a bigger call than the split
- * view should get to make on its own. Worth settling when one of the three
- * views wins.
- *
- * SHOWING AND SORT BECOME SELECTS. As radios they are four rows and three
- * rows, which is a column's shape; a row has no vertical space to give them.
- * The options and their order are untouched — only the control changes, which
- * is the most that should differ between two layouts of one thing.
+ * WHAT A PILL SHOWS IS ITS VALUE, NOT ITS NAME. "Any experience" rather than
+ * "Experience", so the row reads as a sentence about the list underneath it
+ * instead of five labels that say nothing until each is opened.
  */
-function FilterBar({
-  filters,
-  scoped,
-  sort,
-  locations,
-  matched,
-  total,
-  onChange,
-  onSort,
-  onClear,
-}: {
-  filters: Filters
-  scoped: boolean
-  sort: string
-  locations: string[]
-  matched: number
-  total: number
-  onChange: (updates: Partial<Filters>) => void
-  onSort: (sort: string) => void
-  onClear: () => void
-}) {
+function FilterBar(
+  // The bar takes exactly what the panel takes, because it hands the whole lot
+  // straight to it — `layout` is the one thing it decides for itself.
+  props: Omit<React.ComponentProps<typeof FilterPanel>, "layout">
+) {
+  const {
+    filters,
+    scoped,
+    sort,
+    locations,
+    matched,
+    total,
+    onChange,
+    onSort,
+    onClear,
+  } = props
+  const isMobile = useIsMobile()
+  const [drawerOpen, setDrawerOpen] = React.useState(false)
+
   const active =
     Boolean(filters.q) ||
     Boolean(filters.showing) ||
@@ -2029,113 +2045,319 @@ function FilterBar({
     Boolean(filters.notice) ||
     Boolean(filters.location)
 
+  /**
+   * Each pill carries its own options, so the same array drives the label it
+   * shows and the list it opens — a pill cannot say "Any location" while its
+   * menu thinks otherwise.
+   *
+   * The reset is an OPTION, not a separate control. "Any experience" sitting at
+   * the top of the list is how you undo the filter, which means the menu holds
+   * every state the filter has rather than most of them plus a clear button
+   * somewhere else.
+   */
+  const pills: FilterPill[] = [
+    ...(scoped
+      ? [
+          {
+            key: "showing",
+            title: "Showing",
+            value: filters.showing,
+            options: SHOWING.map(({ value, label }) => ({ value, label })),
+            onSelect: (showing: string) => onChange({ showing }),
+            narrows: true,
+          },
+        ]
+      : []),
+    {
+      key: "sort",
+      title: "Sort by",
+      value: sort,
+      options: SORTS.map(({ value, label }) => ({ value, label })),
+      onSelect: onSort,
+      narrows: false,
+    },
+    {
+      key: "exp",
+      title: "Experience",
+      value: filters.exp,
+      options: [
+        { value: "", label: "Any experience" },
+        ...EXPERIENCE_BANDS.map(({ value, label }) => ({ value, label })),
+      ],
+      onSelect: (exp: string) => onChange({ exp }),
+      narrows: true,
+    },
+    {
+      key: "notice",
+      title: "Notice period",
+      value: filters.notice,
+      options: [
+        { value: "", label: "Any notice period" },
+        ...NOTICE_BANDS.map(({ value, label }) => ({ value, label })),
+      ],
+      onSelect: (notice: string) => onChange({ notice }),
+      narrows: true,
+    },
+    {
+      key: "location",
+      title: "Location",
+      value: filters.location,
+      options: [
+        { value: "", label: "Any location" },
+        ...locations.map((location) => ({ value: location, label: location })),
+      ],
+      onSelect: (location: string) => onChange({ location }),
+      narrows: true,
+    },
+  ]
+
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      <div className="relative w-full max-w-64 min-w-48 flex-1 @2xl/main:w-64 @2xl/main:flex-none">
-        <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={filters.q}
-          onChange={(event) => onChange({ q: event.target.value })}
-          placeholder="Search name, role or skill"
-          aria-label="Search responses"
-          className="pl-9"
-        />
+    <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
+      <div className="flex flex-wrap items-center gap-2">
+        {/* SEARCH IS AN ICON. Shrinking it to a glyph is only safe because the
+            field it stands for is one click away in both modes — a popover on
+            a pointer, the drawer on a phone. The dot says a query is running
+            while the box is not on screen to say so itself. */}
+        {isMobile ? (
+          <PillTrigger
+            icon
+            label="Search and filter responses"
+            marked={Boolean(filters.q)}
+            onClick={() => setDrawerOpen(true)}
+          />
+        ) : (
+          <Popover>
+            <PopoverTrigger
+              render={
+                <PillTrigger
+                  icon
+                  label="Search responses"
+                  marked={Boolean(filters.q)}
+                />
+              }
+            />
+            <PopoverContent align="start" className="w-72 p-2">
+              <Input
+                autoFocus
+                value={filters.q}
+                onChange={(event) => onChange({ q: event.target.value })}
+                placeholder="Search name, role or skill"
+                aria-label="Search responses"
+              />
+            </PopoverContent>
+          </Popover>
+        )}
+
+        {/* ON A POINTER EACH PILL OPENS ITS OWN OPTIONS. Changing one filter is
+            the common case and a popover answers it in one click, right under
+            the control that asked. On a phone there is no room to anchor five
+            of those, so every pill opens the one drawer instead — the same
+            controls, in the shape each input can actually use. */}
+        {pills.map((pill) => {
+          const current =
+            pill.options.find((option) => option.value === pill.value) ??
+            pill.options[0]
+          const marked = pill.narrows && Boolean(pill.value)
+
+          if (isMobile) {
+            return (
+              <PillTrigger
+                key={pill.key}
+                label={current.label}
+                marked={marked}
+                onClick={() => setDrawerOpen(true)}
+              />
+            )
+          }
+
+          // LOCATION IS THE ONE THAT CAN GROW. Every other pill picks from a
+          // fixed set of bands written in `applicants.ts`; this one is built
+          // from the cities the applicants actually live in, so its length is
+          // data rather than a decision. That is what a search box is for, and
+          // why exactly one of the five has one.
+          if (pill.key === "location") {
+            return (
+              <LocationFilter
+                key={pill.key}
+                pill={pill}
+                current={current}
+                marked={marked}
+              />
+            )
+          }
+
+          return (
+            <DropdownMenu key={pill.key}>
+              <DropdownMenuTrigger
+                render={<PillTrigger label={current.label} marked={marked} />}
+              />
+              {/* A RADIO GROUP, NOT A LIST OF BUTTONS. These were hand-rolled
+                  buttons in a `role="dialog"` popover, which looked right and
+                  behaved wrong: no arrow keys, no `aria-checked`, and a menu
+                  announced as a dialog. Picking one of a set is exactly what a
+                  menu radio group is, and the component was already here — the
+                  check mark, the roving focus and the selected state all come
+                  with it instead of being drawn. */}
+              <DropdownMenuContent align="start" className="min-w-56">
+                <DropdownMenuRadioGroup
+                  value={pill.value}
+                  onValueChange={(value) => pill.onSelect(String(value))}
+                >
+                  {/* INSIDE the radio group, not above it. `DropdownMenuLabel`
+                      is Base UI's `Menu.GroupLabel`, which reads the group
+                      context to label it — outside one it throws rather than
+                      rendering unlabelled, which is how this took the page
+                      white rather than just losing a heading. */}
+                  <DropdownMenuLabel>{pill.title}</DropdownMenuLabel>
+                  {pill.options.map((option) => (
+                    <DropdownMenuRadioItem
+                      key={option.value || "any"}
+                      value={option.value}
+                    >
+                      {option.label}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )
+        })}
+
+        {active && (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="tabular-nums">
+              {matched} of {total} match
+            </span>
+            <Button
+              variant="link"
+              size="sm"
+              className="h-auto px-0 text-xs"
+              onClick={onClear}
+            >
+              Clear
+            </Button>
+          </div>
+        )}
       </div>
 
-      {scoped && (
-        <BarSelect
-          label="Showing"
-          value={filters.showing || "all"}
-          options={SHOWING.map((option) => ({
-            value: option.value || "all",
-            label: option.label,
-          }))}
-          onChange={(value) =>
-            onChange({ showing: value === "all" ? "" : value })
-          }
-        />
-      )}
-
-      <BarSelect
-        label="Sort by"
-        value={sort}
-        options={SORTS}
-        onChange={onSort}
-      />
-
-      <FilterSelect
-        label="Experience"
-        value={filters.exp}
-        options={EXPERIENCE_BANDS}
-        onChange={(exp) => onChange({ exp })}
-        className="w-auto min-w-36"
-      />
-      <FilterSelect
-        label="Notice period"
-        value={filters.notice}
-        options={NOTICE_BANDS}
-        onChange={(notice) => onChange({ notice })}
-        className="w-auto min-w-36"
-      />
-      <FilterSelect
-        label="Location"
-        value={filters.location}
-        options={locations.map((location) => ({
-          value: location,
-          label: location,
-        }))}
-        onChange={(location) => onChange({ location })}
-        className="w-auto min-w-36"
-      />
-
-      {active && (
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <span className="tabular-nums">
+      <DrawerContent>
+        <DrawerHeader>
+          <DrawerTitle>Filter responses</DrawerTitle>
+          <DrawerDescription>
             {matched} of {total} match
-          </span>
-          <Button
-            variant="link"
-            size="sm"
-            className="h-auto px-0 text-xs"
-            onClick={onClear}
-          >
-            Clear
-          </Button>
+          </DrawerDescription>
+        </DrawerHeader>
+
+        <div className="overflow-y-auto px-4 pb-4">
+          <FilterPanel {...props} layout="drawer" />
         </div>
-      )}
-    </div>
+      </DrawerContent>
+    </Drawer>
   )
 }
 
-/** A select with a real default, unlike `FilterSelect`'s "Any …" reset. */
-function BarSelect({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string
+type FilterPill = {
+  key: string
+  title: string
   value: string
   options: { value: string; label: string }[]
-  onChange: (value: string) => void
+  onSelect: (value: string) => void
+  /** Sort always has a value, so it never counts as narrowing anything. */
+  narrows: boolean
+}
+
+/**
+ * Location, as a searchable list.
+ *
+ * Its own open state, because picking has to close it — a menu closes itself,
+ * a popover does not, and a filter that stays open after you have chosen is a
+ * panel you then have to dismiss.
+ *
+ * `value` on the item is the LABEL, since that is what cmdk matches typing
+ * against; the id the filter actually stores goes through `onSelect`'s closure
+ * instead. For locations the two are the same string, but writing it this way
+ * means the next filter that gets a search box does not have to have matching
+ * ids and labels to work.
+ */
+function LocationFilter({
+  pill,
+  current,
+  marked,
+}: {
+  pill: FilterPill
+  current: { value: string; label: string }
+  marked: boolean
+}) {
+  const [open, setOpen] = React.useState(false)
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={<PillTrigger label={current.label} marked={marked} />}
+      />
+      <PopoverContent align="start" className="w-56 gap-0 p-0">
+        <Command>
+          <CommandInput placeholder="Search locations" />
+          <CommandList>
+            <CommandEmpty>No matching location.</CommandEmpty>
+            {pill.options.map((option) => (
+              <CommandItem
+                key={option.value || "any"}
+                value={option.label}
+                data-checked={option.value === pill.value}
+                onSelect={() => {
+                  pill.onSelect(option.value)
+                  setOpen(false)
+                }}
+              >
+                {option.label}
+              </CommandItem>
+            ))}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+/**
+ * The pill itself, and the search glyph, which is the same control with its
+ * label read out instead of drawn.
+ *
+ * `render`-friendly: Base UI hands a trigger its props, so this spreads
+ * whatever it is given rather than owning its own click.
+ */
+function PillTrigger({
+  label,
+  marked,
+  icon,
+  className,
+  ...props
+}: React.ComponentProps<"button"> & {
+  label: string
+  /** The filter is doing something — accent border, or a dot on the glyph. */
+  marked: boolean
+  icon?: boolean
 }) {
   return (
-    <Select
-      items={options}
-      value={value}
-      onValueChange={(next) => onChange(String(next))}
+    <button
+      type="button"
+      aria-label={icon ? label : undefined}
+      className={cn(
+        "relative h-8 rounded-4xl border text-sm whitespace-nowrap transition-colors",
+        icon ? "grid w-8 place-items-center" : "px-3",
+        marked && !icon
+          ? "border-primary bg-primary/10 font-medium text-foreground"
+          : "border-border text-muted-foreground hover:bg-muted hover:text-foreground",
+        className
+      )}
+      {...props}
     >
-      <SelectTrigger className="w-auto min-w-36" aria-label={label}>
-        <SelectValue placeholder={label} />
-      </SelectTrigger>
-      <SelectContent>
-        {options.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            {option.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+      {icon ? <SearchIcon className="size-4" /> : label}
+      {icon && marked && (
+        <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-primary ring-2 ring-background" />
+      )}
+    </button>
   )
 }
 
