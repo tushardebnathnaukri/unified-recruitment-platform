@@ -41,7 +41,11 @@ export const NAV_ITEMS: NavItem[] = [
   // Sits next to Jobs because it is the other way into a candidate: Jobs is
   // who came to you, Database is who you go and find.
   { to: "/database", label: "Database", icon: DatabaseIcon, end: false },
-  { to: "/analytics", label: "Analytics", icon: ChartColumnIcon, end: false },
+  // INSIGHTS, NOT ANALYTICS. What lives here is the market — what a role pays,
+  // where the people are, whether demand is rising — and a recruiter reads
+  // "analytics" as "how is my hiring going". That question is answered on the
+  // Dashboard, by numbers about their own postings.
+  { to: "/insights", label: "Insights", icon: ChartColumnIcon, end: false },
 ]
 
 /**

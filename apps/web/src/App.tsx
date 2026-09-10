@@ -7,6 +7,7 @@ import { JobDetailPage } from "@/routes/job"
 import { CandidatePage } from "@/routes/candidate"
 import { JobsPage } from "@/routes/jobs"
 import { LegacyDashboardPage } from "@/routes/legacy-dashboard"
+import { InsightsPage } from "@/routes/insights"
 import { PlaceholderPage } from "@/routes/placeholder"
 import { PlaygroundPage } from "@/routes/playground"
 import { SettingsPage } from "@/routes/settings"
@@ -62,10 +63,7 @@ export function App() {
             path="database"
             element={<PlaceholderPage title="Database" />}
           />
-          <Route
-            path="analytics"
-            element={<PlaceholderPage title="Analytics" />}
-          />
+          <Route path="insights" element={<InsightsPage />} />
           <Route path="search" element={<PlaceholderPage title="Search" />} />
 
           {/* The primary create action. Named, routed and going nowhere yet. */}
