@@ -4,6 +4,7 @@ import { AppShell } from "@/components/app-shell"
 import { BrandUrlSync } from "@/components/brand-url-sync"
 import { DashboardPage } from "@/routes/dashboard"
 import { JobDetailPage } from "@/routes/job"
+import { CandidatePage } from "@/routes/candidate"
 import { JobsPage } from "@/routes/jobs"
 import { LegacyDashboardPage } from "@/routes/legacy-dashboard"
 import { PlaceholderPage } from "@/routes/placeholder"
@@ -51,6 +52,12 @@ export function App() {
             element={<PlaceholderPage title="Post a job" />}
           />
           <Route path="jobs/:jobId" element={<JobDetailPage />} />
+          {/* Nested under the job because a candidate here is not a person in
+            the abstract — they are a person who applied to THIS posting. */}
+          <Route
+            path="jobs/:jobId/applicants/:applicantId"
+            element={<CandidatePage />}
+          />
           <Route
             path="database"
             element={<PlaceholderPage title="Database" />}

@@ -129,3 +129,62 @@ export function DashboardSkeleton() {
     </div>
   )
 }
+
+/**
+ * The candidate profile: header, then the career column beside the facts
+ * column, in the same two-column shape the real page uses.
+ */
+export function CandidateSkeleton() {
+  return (
+    <div className="flex flex-col gap-5 px-4 lg:px-6" aria-hidden="true">
+      <Skeleton className="h-4 w-56" />
+
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <Skeleton className="size-12 shrink-0 rounded-full" />
+          <div className="flex flex-col gap-2">
+            <Skeleton className="h-6 w-48" />
+            <Skeleton className="h-4 w-64" />
+            <Skeleton className="h-3.5 w-40" />
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <Skeleton className="h-8 w-28 rounded-4xl" />
+          <Skeleton className="h-8 w-32 rounded-4xl" />
+          <Skeleton className="h-8 w-28 rounded-4xl" />
+        </div>
+      </div>
+
+      <div className="flex flex-col gap-5 @4xl/main:flex-row @4xl/main:items-start">
+        <div className="flex shrink-0 flex-col gap-3 rounded-2xl bg-card p-4 ring-1 ring-foreground/10 @4xl/main:order-last @4xl/main:w-72">
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className="flex justify-between gap-3">
+              <Skeleton className="h-3.5 w-20" />
+              <Skeleton className="h-3.5 w-16" />
+            </div>
+          ))}
+          <Skeleton className="mt-1 h-8 w-full rounded-4xl" />
+        </div>
+
+        <div className="flex min-w-0 flex-1 flex-col gap-6">
+          {[4, 1, 3].map((rows, section) => (
+            <div key={section} className="flex flex-col gap-3">
+              <Skeleton className="h-4 w-28" />
+              <div className="rounded-2xl bg-card ring-1 ring-foreground/10">
+                {Array.from({ length: rows }, (_, index) => (
+                  <div
+                    key={index}
+                    className="flex flex-col gap-1.5 px-4 py-3.5"
+                  >
+                    <Skeleton className="h-4 w-56" />
+                    <Skeleton className="h-3.5 w-40" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}

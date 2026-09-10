@@ -1,13 +1,10 @@
 import * as React from "react"
 import { Link, useParams, useSearchParams } from "react-router"
-import type { LucideIcon } from "lucide-react"
 import {
   ArrowLeftIcon,
   BriefcaseIcon,
   CalendarPlusIcon,
-  CheckIcon,
   ChevronDownIcon,
-  CircleHelpIcon,
   ClockIcon,
   DownloadIcon,
   EllipsisIcon,
@@ -21,7 +18,6 @@ import {
   TrophyIcon,
   Table2Icon,
   UserRoundIcon,
-  XIcon,
 } from "lucide-react"
 
 import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar"
@@ -47,6 +43,11 @@ import { Item } from "@workspace/ui/components/item"
 import { Label } from "@workspace/ui/components/label"
 import { useBrand } from "@workspace/ui/components/brand-provider"
 import { useCardVariant } from "@/components/card-variant-provider"
+import {
+  ApplicantStatusBadge,
+  DecisionGroup,
+} from "@/components/applicant-controls"
+import { useDecisions } from "@/components/decisions-provider"
 import { Meta, MetaItem } from "@workspace/ui/components/meta"
 import {
   RadioGroup,
@@ -194,24 +195,10 @@ function ResponseManager({ job }: { job: Job }) {
 
   const generated = React.useMemo(() => applicantsFor(job), [job])
 
-  /**
-   * Decisions taken in this session, laid over the generated data. An overlay
-   * rather than a mutated copy of the list: the list is derived from the job,
-   * and only what a recruiter actually changed needs storing.
-   */
-  const [decisions, setDecisions] = React.useState<
-    Record<string, ApplicantStatus>
-  >({})
-
-  const all = React.useMemo(
-    () =>
-      generated.map((applicant) =>
-        decisions[applicant.id]
-          ? { ...applicant, status: decisions[applicant.id] }
-          : applicant
-      ),
-    [generated, decisions]
-  )
+  // Session decisions live in a provider, so the profile page and this list
+  // agree about who has been shortlisted — see `decisions-provider.tsx`.
+  const { decided, decide } = useDecisions()
+  const all = React.useMemo(() => generated.map(decided), [generated, decided])
 
   const filters: Filters = {
     q: searchParams.get("q") ?? "",
@@ -276,9 +263,6 @@ function ResponseManager({ job }: { job: Job }) {
 
   const requiredSkills = React.useMemo(() => requiredSkillsFor(job), [job])
   const loading = usePageLoading(550)
-
-  const decide = (id: string, status: ApplicantStatus) =>
-    setDecisions((current) => ({ ...current, [id]: status }))
 
   return (
     <div className="flex flex-col gap-5 px-4 lg:px-6">
@@ -390,6 +374,7 @@ function ResponseManager({ job }: { job: Job }) {
                       }
                       bucket={bucket}
                       view={view}
+                      jobId={job.id}
                       requiredSkills={requiredSkills}
                       onDecide={decide}
                     />
@@ -526,12 +511,14 @@ function ApplicantList({
   applicants,
   bucket,
   view,
+  jobId,
   requiredSkills,
   onDecide,
 }: {
   applicants: Applicant[]
   bucket: { value: ResponseBucket; label: string }
   view: View
+  jobId: string
   requiredSkills: string[]
   onDecide: (id: string, status: ApplicantStatus) => void
 }) {
@@ -551,6 +538,7 @@ function ApplicantList({
             <ApplicantCard
               key={applicant.id}
               applicant={applicant}
+              jobId={jobId}
               requiredSkills={requiredSkills}
               onDecide={onDecide}
             />
@@ -627,10 +615,12 @@ function EmptyBucket({
  */
 function ApplicantCard({
   applicant,
+  jobId,
   requiredSkills,
   onDecide,
 }: {
   applicant: Applicant
+  jobId: string
   requiredSkills: string[]
   onDecide: (id: string, status: ApplicantStatus) => void
 }) {
@@ -698,7 +688,7 @@ function ApplicantCard({
         />
       )}
 
-      <CardActions applicant={applicant} onDecide={onDecide} />
+      <CardActions applicant={applicant} jobId={jobId} onDecide={onDecide} />
     </Item>
   )
 }
@@ -969,23 +959,6 @@ function initials(name: string) {
   return ((parts[0]?.[0] ?? "") + (parts.at(-1)?.[0] ?? "")).toUpperCase()
 }
 
-function ApplicantStatusBadge({ status }: { status: ApplicantStatus }) {
-  switch (status) {
-    case "unread":
-      return <Badge>Unread</Badge>
-    case "reviewing":
-      return <Badge variant="warning">Reviewing</Badge>
-    case "shortlisted":
-      return <Badge variant="success">Shortlisted</Badge>
-    case "contacted":
-      return <Badge variant="secondary">Contacted</Badge>
-    case "rejected":
-      return <Badge variant="outline">Not a fit</Badge>
-    case "seen":
-      return null
-  }
-}
-
 /**
  * Cards or table, as a two-item toggle rather than a menu or a tab.
  *
@@ -1113,58 +1086,6 @@ function ApplicantTable({
   )
 }
 
-/**
- * The three decisions, as one segmented control, and the overflow menu beside
- * it.
- *
- * THEY ARE A GROUP BECAUSE THEY ARE ONE QUESTION. Three floating ghost circles
- * said "here are three unrelated buttons"; joined into a segmented control they
- * say "pick one of these", which is what a triage decision is. It is the same
- * `ToggleGroup` the cards/table switcher uses — `variant="outline"` with
- * `spacing={0}` — so the two controls on this screen that mean "choose one"
- * look the same.
- *
- * THE MAYBE IN THE MIDDLE IS THE POINT. Yes and no are the easy half; the
- * reason a recruiter stalls on a list of 148 is the pile they cannot decide
- * about, and with only two buttons that pile has nowhere to go but back on the
- * list to be read again. The order is deliberate too: yes, maybe, no reads as a
- * scale rather than three options in an arbitrary row.
- *
- * DESELECTING IS UNDOING. Base UI lets you click the active item to clear the
- * group, which lands the candidate back on `reviewed` — seen, no decision.
- * That is the right escape from a misclick on a screen built for fast
- * decisions, and it is why this is a toggle group rather than a radio group.
- */
-const DECISIONS: {
-  value: Extract<ApplicantStatus, "shortlisted" | "reviewing" | "rejected">
-  label: string
-  icon: LucideIcon
-  /** Tint when this one is the active decision. */
-  active: string
-}[] = [
-  {
-    value: "shortlisted",
-    label: "Shortlist",
-    icon: CheckIcon,
-    active:
-      "bg-success/10 text-success hover:bg-success/20 hover:text-success data-[pressed]:bg-success/10 data-[pressed]:text-success",
-  },
-  {
-    value: "reviewing",
-    label: "Reviewing",
-    icon: CircleHelpIcon,
-    active:
-      "bg-warning/10 text-warning hover:bg-warning/20 hover:text-warning data-[pressed]:bg-warning/10 data-[pressed]:text-warning",
-  },
-  {
-    value: "rejected",
-    label: "Not a fit",
-    icon: XIcon,
-    active:
-      "bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive data-[pressed]:bg-destructive/10 data-[pressed]:text-destructive",
-  },
-]
-
 function RowActions({
   applicant,
   onDecide,
@@ -1174,43 +1095,9 @@ function RowActions({
   onDecide: (id: string, status: ApplicantStatus) => void
   className?: string
 }) {
-  const decided = DECISIONS.some(
-    (decision) => decision.value === applicant.status
-  )
-
   return (
     <div className={cn("relative flex shrink-0 items-center gap-2", className)}>
-      <ToggleGroup
-        variant="outline"
-        spacing={0}
-        aria-label={`Decision for ${applicant.name}`}
-        value={decided ? [applicant.status] : []}
-        onValueChange={(value) => {
-          const next = value[0] as ApplicantStatus | undefined
-          onDecide(applicant.id, next ?? "seen")
-        }}
-      >
-        {DECISIONS.map((decision) => (
-          <Tooltip key={decision.value}>
-            <TooltipTrigger
-              render={
-                <ToggleGroupItem
-                  value={decision.value}
-                  aria-label={decision.label}
-                  className={
-                    applicant.status === decision.value
-                      ? decision.active
-                      : "text-muted-foreground"
-                  }
-                />
-              }
-            >
-              <decision.icon />
-            </TooltipTrigger>
-            <TooltipContent>{decision.label}</TooltipContent>
-          </Tooltip>
-        ))}
-      </ToggleGroup>
+      <DecisionGroup applicant={applicant} onDecide={onDecide} />
 
       <ApplicantActions applicant={applicant} onDecide={onDecide} />
     </div>
@@ -1253,6 +1140,23 @@ function ApplicantActions({
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="end" className="min-w-52">
+        {/* The card's two icon buttons, spelled out, for the widths where the
+            footer has no room for them. `md:hidden` is the exact inverse of
+            what hides them there, so they are in one place or the other and
+            never both. */}
+        <DropdownMenuGroup className="md:hidden">
+          <DropdownMenuItem onClick={() => onDecide(applicant.id, "contacted")}>
+            <MailIcon />
+            Message
+          </DropdownMenuItem>
+          <DropdownMenuItem>
+            <CalendarPlusIcon />
+            Set up interview
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+
+        <DropdownMenuSeparator className="md:hidden" />
+
         <DropdownMenuGroup>
           <DropdownMenuItem>
             <DownloadIcon />
@@ -1622,36 +1526,33 @@ function FilterSelect({
  */
 function CardActions({
   applicant,
+  jobId,
   onDecide,
 }: {
   applicant: Applicant
+  /** Needed for the profile link: the candidate belongs to this posting. */
+  jobId: string
   onDecide: (id: string, status: ApplicantStatus) => void
 }) {
   const [revealed, setRevealed] = React.useState(false)
 
   return (
-    <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-      <Button variant="outline" size="sm">
-        <UserRoundIcon data-icon="inline-start" />
-        View profile
-      </Button>
-
-      {/* Reaching out is what Contacted means, so the button that does it is
-          the button that moves the row. */}
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => onDecide(applicant.id, "contacted")}
-      >
-        <MailIcon data-icon="inline-start" />
-        Message
-      </Button>
-
-      <Button variant="outline" size="sm">
-        <CalendarPlusIcon data-icon="inline-start" />
-        Set up interview
-      </Button>
-
+    /**
+     * RIGHT-ALIGNED, under the decision group it shares an edge with. The card
+     * now has one column of controls down its right side — decide at the top,
+     * act at the bottom — instead of controls in one corner and a row starting
+     * from the opposite one. On a list this long the right edge is the only
+     * part of a card whose position is predictable, which is what makes a
+     * column of buttons scannable at all.
+     *
+     * Contact details are the exception, pinned left by `mr-auto`. It is not a
+     * peer of the other three: they act on a candidate, it discloses a fact
+     * about them, and once pressed it is replaced by that fact. Keeping the
+     * button on the left means the reveal happens exactly where the button was
+     * rather than jumping across the card — and the details, being content,
+     * read from the left like every other line on it.
+     */
+    <div className="flex flex-wrap items-center justify-end gap-2 border-t border-border pt-3">
       {/* GATED, AND IT REVEALS RATHER THAN NAVIGATES. Contact details are what
           a posting is actually being paid for, so a prototype that prints an
           email beside every name has quietly designed the business model away.
@@ -1659,7 +1560,7 @@ function CardActions({
           the honest shape for whatever this costs in the real product, whether
           that is a credit, a plan, or nothing. */}
       {revealed ? (
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 self-center text-sm">
+        <div className="mr-auto flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-sm">
           <span className="inline-flex items-center gap-1.5">
             <MailIcon className="size-3.5 text-muted-foreground" />
             {applicant.email}
@@ -1670,12 +1571,103 @@ function CardActions({
           </span>
         </div>
       ) : (
-        <Button variant="outline" size="sm" onClick={() => setRevealed(true)}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mr-auto"
+          onClick={() => setRevealed(true)}
+        >
           <EyeIcon data-icon="inline-start" />
           View contact details
         </Button>
       )}
+
+      {/* ICONS, NOT LABELS, for these two. They are the two actions on the card
+          with a conventional icon each — an envelope and a calendar — and
+          spelling them out gave four labelled buttons of near-equal weight,
+          which is a row you read rather than scan. The two that keep their
+          words are the two whose icons would be guesses — an eye does not say
+          "contact details" and a person does not say "profile".
+          Reaching out is what Contacted means, so Message moves the row. */}
+      {/* ONE UNIT, `shrink-0`, SO IT CANNOT COME APART. Revealed contact
+          details are wide enough to squeeze this row, and with three loose
+          children the wrap put the two icons on one line and View profile
+          alone on the next — a button group that has lost its own shape reads
+          as a layout fault, which it was. Grouped, either everything fits on
+          the details' line or the whole group drops to the next one, still
+          right-aligned and still intact. `min-w-0` on the details is the other
+          half: without it they refuse to wrap and force the break every
+          time. */}
+      <div className="flex shrink-0 items-center gap-2">
+        {/* GONE UNDER 768px, WHERE THEY REAPPEAR IN THE OVERFLOW MENU. On a
+            phone the footer is the width of the card, and four controls plus a
+            revealed email on that width is a row that wraps into a shape
+            nobody designed. These two are the ones to move because they are
+            already icons — a menu item spells them out, which is what they
+            lost to fit here in the first place.
+
+            The breakpoint is the VIEWPORT, not the card. The menu renders in a
+            portal, outside the card's container, so `@…/card` cannot reach it
+            and the two halves of one decision would answer to different
+            widths. 768px is the width the sidebar already becomes a Sheet at,
+            so the card agrees with the shell about what a phone is. */}
+        <div className="hidden items-center gap-2 md:flex">
+          <IconAction
+            label="Message"
+            onClick={() => onDecide(applicant.id, "contacted")}
+          >
+            <MailIcon />
+          </IconAction>
+
+          <IconAction label="Set up interview">
+            <CalendarPlusIcon />
+          </IconAction>
+        </div>
+
+        {/* LAST, WHICH IS THE PROMINENT END OF A RIGHT-ALIGNED ROW. Opening
+            the profile is what a recruiter does after reading the card and
+            deciding they want more than it holds — the one action here that
+            continues the task rather than finishing it. */}
+        <Button
+          variant="outline"
+          size="sm"
+          nativeButton={false}
+          render={<Link to={`/jobs/${jobId}/applicants/${applicant.id}`} />}
+        >
+          <UserRoundIcon data-icon="inline-start" />
+          View profile
+        </Button>
+      </div>
     </div>
+  )
+}
+
+/** An outline icon button that says what it is on hover and to a screen reader. */
+function IconAction({
+  label,
+  onClick,
+  children,
+}: {
+  label: string
+  onClick?: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="outline"
+            size="icon-sm"
+            aria-label={label}
+            onClick={onClick}
+          />
+        }
+      >
+        {children}
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   )
 }
 
