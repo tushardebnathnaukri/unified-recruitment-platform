@@ -16,13 +16,19 @@ and CSS variables.
 | Badge | `useRender` | Dashboard: plan tier, search filters, "6 new" | Read-only pill. `success` / `warning` are shared status tokens, not brand. |
 | Button | Base UI `Button` | Everywhere | Reference shape for authoring: `cva` + `cn`, `data-slot`, `data-icon` for icon padding. |
 | Card | plain `div` | Dashboard, Settings | Pads vertically only; sub-parts pad horizontally. `size="sm"` for tiles. |
-| Checkbox | Base UI `Checkbox` | — | Checked state takes `--primary`. |
+| Chart | recharts 3.8 | Insights, Dashboard performance | `ChartConfig` maps series to `var(--chart-N)`. **The ramp is brand- and theme-neutral and fails contrast at both ends — see the story.** |
+| Checkbox | Base UI `Checkbox` | Insights facet rail | Checked state takes `--primary`. |
+| Command | `cmdk` | Response manager's location filter | A filter, not a palette. Lives inside a Popover; the popover must close on pick. |
+| Dialog | Base UI `Dialog` | — (backs `CommandDialog`) | Arrived as a registry dependency of Command. |
+| Drawer | Base UI `Drawer` | Response manager filters below `md` | Every filter pill opens the one drawer on a phone. |
 | Dropdown menu | Base UI `Menu` | Sidebar account menu | `Label` must sit in a `Group`. |
 | Empty | plain `div` | — (the live site's four empty states) | First-class state; copy pattern kept from the live product. |
-| Input | Base UI `Input` | — | Pill-shaped; `aria-invalid` drives the error look. |
+| Input | Base UI `Input` | Insights query bar | Pill-shaped; `aria-invalid` drives the error look. |
+| Input group | plain `div` | — (backs `CommandInput`) | One border and one focus ring around a field and its addons. A `block-end` addon makes it a composer. |
 | Item | `useRender` | Dashboard rows (via List card) | The generic row. `render={<Link />}` makes it a link and turns on hover. |
 | Kbd | plain `kbd` | Settings, Playground (the `d` shortcut) | Restyles itself inside a tooltip. |
 | Label | plain `label` | — | Dims after a disabled `peer`. |
+| Popover | Base UI `Popover` | Response manager filter pills | A surface holding controls. Unlike a menu it does not close itself. |
 | Radio group | Base UI `RadioGroup` | — | For a short exclusive list with a label per option. |
 | Select | Base UI `Select` | — | Pass `items` for label display. Aligns selected item over the trigger by default. |
 | Separator | Base UI `Separator` | Site header, Settings | Vertical stretches unless told otherwise. |
@@ -56,11 +62,19 @@ Also in the package, undocumented because they have no visual: `BrandProvider`
 Live in `apps/web/src/components` because they depend on the router, the
 theme provider or the app's data, and so have no story here:
 
-`AppShell`, `AppSidebar`, `NavMain`, `NavSecondary`, `NavUser`, `SiteHeader`
-(the shell — see Components → Sidebar for the same tree without the router);
-`BrandSwitcher`, `ThemeToggle` (Settings controls); `BrandWordmark` (the
-iimjobs mark, vendored SVG; hirist has none yet); `AuroraBand` (the WebGL
-hero, reads `--primary` so it re-tunes with the brand).
+`AppShell`, `AppSidebar`, `NavMain`, `NavUser`, `SiteHeader`, `ProductSwitcher`,
+`CrossSellBanner` (the shell — see Components → Sidebar for the same tree
+without the router); `AthenaProvider` / `AthenaPane` (the copilot column) and
+`MessageDock`; `ApplicantControls`, `CandidateDetail`, `CandidateCv`,
+`CandidatePanel`, `DecisionsProvider`, `CardVariantProvider` (the response
+manager and the profile — see Compositions → Response manager and → Candidate
+profile); `BrandSwitcher`, `ThemeToggle` (Settings controls); `BrandUrlSync`;
+`Skeletons`; `BrandWordmark` (the iimjobs mark, vendored SVG; hirist has none
+yet); `AuroraBand` (the WebGL hero, reads `--primary` so it re-tunes with the
+brand).
 
 `BrandSwitcher` depends only on `packages/ui` and could move here; it is
 left in the app until a second surface needs it.
+
+`NavSecondary` is **dead code** — Settings, Get Help and Search moved into the
+account menu in `nav-user.tsx` and nothing imports it any more.

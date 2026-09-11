@@ -158,6 +158,41 @@
       "nodeId": "61:39",
       "figmaName": "Sidebar",
       "storyId": "components-sidebar--docs"
+    },
+    "chart": {
+      "nodeId": "115:26",
+      "figmaName": "ChartContainer (grouped bars)",
+      "storyId": "components-chart--docs"
+    },
+    "command": {
+      "nodeId": "109:20",
+      "figmaName": "Command",
+      "storyId": "components-command--docs"
+    },
+    "dialog": {
+      "nodeId": "111:17",
+      "figmaName": "DialogContent",
+      "storyId": "components-dialog--docs"
+    },
+    "drawer": {
+      "nodeId": "113:24",
+      "figmaName": "DrawerContent (swipeDirection=down)",
+      "storyId": "components-drawer--docs"
+    },
+    "input-group": {
+      "nodeId": "114:8",
+      "figmaName": "InputGroup (inline addons)",
+      "storyId": "components-input-group--docs"
+    },
+    "input-group-composer": {
+      "nodeId": "114:15",
+      "figmaName": "InputGroup (composer)",
+      "storyId": "components-input-group--docs"
+    },
+    "popover": {
+      "nodeId": "108:22",
+      "figmaName": "PopoverContent",
+      "storyId": "components-popover--docs"
     }
   },
   "compositions": {
@@ -175,6 +210,26 @@
       "nodeId": "69:2",
       "figmaName": "Settings row — board",
       "storyId": "compositions-settings-row--docs"
+    },
+    "candidate-profile": {
+      "nodeId": "118:3",
+      "figmaName": "Candidate — full page",
+      "storyId": "compositions-candidate-profile--docs"
+    },
+    "insights": {
+      "nodeId": "119:3",
+      "figmaName": "Insights — full page",
+      "storyId": "compositions-insights--docs"
+    },
+    "jobs-list": {
+      "nodeId": "116:3",
+      "figmaName": "Jobs — full page",
+      "storyId": "compositions-jobs-list--docs"
+    },
+    "response-manager": {
+      "nodeId": "117:3",
+      "figmaName": "Response manager — full page",
+      "storyId": "compositions-response-manager--docs"
     }
   },
   "pages": {

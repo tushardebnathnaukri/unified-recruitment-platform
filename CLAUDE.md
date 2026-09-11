@@ -112,8 +112,17 @@ Palettes: **iimjobs is real** (Tailwind's emerald ramp verbatim — 600/50 light
 ## Styling
 
 Charts are `packages/ui/src/components/chart.tsx` (shadcn's wrapper over **recharts 3.8**) —
-`ChartContainer` + a `ChartConfig` whose colours point at `var(--chart-N)`, so a chart re-themes
-with the brand like everything else. Used on `/insights` and the Dashboard's performance section.
+`ChartContainer` + a `ChartConfig` whose colours point at `var(--chart-N)`. Used on `/insights` and
+the Dashboard's performance section.
+
+**A chart does NOT re-theme with the brand, and does not invert with the theme.** `--chart-1` …
+`--chart-5` are a monotonic neutral zinc ramp declared once with the same five values in `:root`
+and `.dark`, and the `[data-brand]` blocks cover the five accent tokens only. Because the ramp runs
+one way, each token is legible in exactly one theme: `--chart-1` measures **1.48:1** on a light
+card and `--chart-5` **1.19:1** on a dark one, against the 3:1 WCAG 1.4.11 asks of a graphical
+object. `--chart-1` is the only series on the Dashboard's funnel *and* on the Insights demand line,
+so both are effectively invisible in light mode. See the `TODO(design)` in `chart.stories.tsx` and
+the ramp panel on the Figma **Chart** page — fixing it is a design call, not a mechanical one.
 
 Tailwind v4, configured entirely in CSS — there is no `tailwind.config`.
 `packages/ui/src/styles/globals.css` is the single source of truth: `@theme inline` token map,
@@ -268,8 +277,8 @@ The sidebar is five layers, in `storySort` order:
   from the app. A composition repeated a third time becomes a Pattern.
 
 The assembled app shell — sidebar, header and content column — is **not** in Compositions. It lives
-in `sidebar.stories.tsx` as `Components/Sidebar → App shell` and `→ Collapsed`, because it is what
-the Sidebar component looks like in situ. Check there before adding a screen that shows the nav.
+in `sidebar.stories.tsx` as `Components/Sidebar → App shell`, `→ Collapsed to the icon rail` and
+`→ App shell with Athena open`, because it is what the Sidebar component looks like in situ. Check there before adding a screen that shows the nav.
 
 The dashboard route in `apps/web` and "Compositions → Dashboard" are the same tree; a change to a
 row's *shape* belongs in the pattern, a change to its *content* in the app.
@@ -289,9 +298,11 @@ through `figma-map.json` — never a hardcoded URL, because a rebuild in Figma c
 ## Figma — AthenaDS
 
 The design system is mirrored into [AthenaDS](https://www.figma.com/design/dtzCyVUdopiY2n46tpvF8R/AthenaDS):
-Primitives + Semantic + Radius variable collections, foundations documentation, and **31 components
-across 135 variants** — every Component and every Pattern. Storybook's sidebar is mirrored as Figma
-pages, one per component, alphabetical within each section so the two read the same top to bottom.
+Primitives + Semantic + Radius variable collections, foundations documentation, and **38 components**
+— every Component and every Pattern. Storybook's sidebar is mirrored as Figma pages, one per
+component, **in Storybook's own order, not alphabetical order**, so the two read the same top to
+bottom. Those differ: Storybook sorts `Input group` before `Input` and `Toggle group` before
+`Toggle`. Take the order from `/index.json` rather than sorting the names yourself.
 
 The file is **published as a library**, so its components can be instanced from other Figma files
 rather than only used inside AthenaDS.
@@ -301,8 +312,8 @@ A closed dropdown is not designable, and Figma has no hover or focus, so where a
 exists on `:focus` — a highlighted menu row, a select item — it is shown on one row so the treatment
 is visible at all.
 
-The **Compositions** layer is mirrored too — Dashboard, Post a job form and Settings row — assembled
-from instances rather than redrawn, so a change to Input or Chip lands in the screens. Icons in the
+The **Compositions** layer is mirrored too — Candidate profile, Dashboard, Insights, Post a job
+form, Jobs list, Response manager and Settings row — assembled from instances rather than redrawn, so a change to Input or Chip lands in the screens. Icons in the
 compositions are placeholders; swap in real instances rather than adding an icon variant. A frame
 cannot hold a description or `documentationLinks`, so each composition carries its Storybook URL as
 an on-canvas caption instead.
@@ -340,7 +351,7 @@ Five things about the mirror that are easy to trip over:
   default in `sidebar.tsx`); the app shell is 288px, because `AppShell` overrides `--sidebar-width`
   to `calc(var(--spacing) * 72)`. Do not "fix" one to match the other.
 - **Figma fixtures track the app's mock data.** Nav labels come from `apps/web/src/lib/nav.ts`
-  (Dashboard / Jobs / Database / Analytics — Database sits next to Jobs deliberately: Jobs is who
+  (Dashboard / Jobs / Database / Insights — Database sits next to Jobs deliberately: Jobs is who
   came to you, Database is who you go and find), and the recruiter in the sidebar footer is
   `nav-user.tsx`'s Priya Raman. When the app's fixtures change the Figma ones should follow, or a
   side-by-side comparison starts quietly lying.
