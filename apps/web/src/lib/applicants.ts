@@ -15,23 +15,28 @@ import type { Job } from "@/lib/jobs"
  * is a small LCG seeded from the job's id, so a job's applicants are the same
  * every time and two jobs get different ones.
  *
- * The bucket sizes come from the job itself — a job says it has 32 unread and
- * 12 shortlisted, so exactly 32 people here are `new` and 12 are `shortlisted`.
- * The Jobs list and this page cannot disagree, because one is generated from
- * the other's numbers.
+ * The bucket sizes come from the job itself — a job says 32 people applied
+ * since your last visit and 12 are shortlisted, so exactly 32 people here are
+ * new and 12 are `shortlisted`. The Jobs list and this page cannot disagree,
+ * because one is generated from the other's numbers.
  */
 
+/**
+ * Where a candidate stands, which is a DECISION — not whether anybody has
+ * looked at them.
+ *
+ * THERE IS NO "UNREAD" ANY MORE, and no "seen". A recruiter's day is "who still
+ * needs a decision from me", and whether a card was opened, or scrolled past,
+ * or read off the card without opening anything, is not something the screen
+ * can know or the recruiter cares about. Somebody skipped is simply still
+ * undecided; somebody consciously parked is `maybe`. When they arrived is a
+ * separate fact — see `newSinceVisit`.
+ */
 export type ApplicantStatus =
-  /** Nobody has opened them. Named for the fact, not for how recent they are. */
-  | "unread"
-  /**
-   * Opened, no decision taken. Called `seen` rather than `reviewed` because
-   * `reviewing` is a real decision one line below it, and two statuses a
-   * letter apart is a bug waiting for whoever edits this next.
-   */
-  | "seen"
-  /** Worth another look, but not a yes. The state triage actually lives in. */
-  | "reviewing"
+  /** No decision yet, looked at or not. The To review queue. */
+  | "undecided"
+  /** "Not now, but do not lose them" — a decision to come back, not a gap. */
+  | "maybe"
   | "shortlisted"
   | "contacted"
   | "rejected"
@@ -58,6 +63,18 @@ export type Applicant = {
   /** Days since they applied. `appliedAgo` is this, said in words. */
   appliedDaysAgo: number
   appliedAgo: string
+  /**
+   * Applied after the recruiter's last visit (`LAST_VISIT`). This is what the
+   * dot means and what heads the To review queue — arrival, not reading.
+   */
+  newSinceVisit: boolean
+  /**
+   * How well they fit the posting, 0–100, for the Best match sort. Mostly how
+   * many of the job's required skills they have, so the top of a Best match
+   * list visibly carries the most highlighted skills. A real score is a model
+   * the search team owns; this is its shape.
+   */
+  match: number
   skills: string[]
   status: ApplicantStatus
   /** Newest first; the first one is the current role. */
@@ -73,8 +90,18 @@ export type Applicant = {
   phone: string
 }
 
-/** The five tabs. `all` is everything, not a sixth bucket. */
-export type ResponseBucket = Exclude<ApplicantStatus, "seen"> | "all"
+/** The tabs: one per status, plus `all`, which is everything. */
+export type ResponseBucket = ApplicantStatus | "all"
+
+/**
+ * When the recruiter was last here. One user and no accounts, so it is a
+ * constant — "since your last visit" has to be per person, and there is one.
+ *
+ * It is fixed for the whole visit on purpose, the way Slack's "new messages"
+ * line is: the divider between New and Earlier must not move while you are
+ * working through the list, or refreshing the page would quietly empty New.
+ */
+export const LAST_VISIT = "yesterday, 4:10 pm"
 
 /**
  * How many responses a job has, by bucket.
@@ -83,25 +110,27 @@ export type ResponseBucket = Exclude<ApplicantStatus, "seen"> | "all"
  * been published cannot have been applied to, and the page says that rather
  * than showing five empty tabs.
  *
- * `reviewed` is the remainder — opened, no decision taken. It has no tab of its
- * own on purpose: it is not a decision, it is the absence of one, and a tab for
- * it would be a queue nobody could ever clear. Those people appear under All.
+ * TO REVIEW IS THE REMAINDER — everybody without a decision, whether they were
+ * skipped or never reached. It is a queue that CAN be cleared, because leaving
+ * it takes a decision and every card carries the buttons for one. The newest of
+ * them, `newSinceVisit`, head it.
  */
 export function responseCounts(job: Job) {
   const counts = {
     all: 0,
-    unread: 0,
-    // Nobody starts in Reviewing: it is a decision, so it only exists once
+    undecided: 0,
+    // Nobody starts in Maybe: it is a decision, so it only exists once
     // somebody makes it. The tab fills up as you work through the list.
-    reviewing: 0,
+    maybe: 0,
     shortlisted: 0,
     contacted: 0,
     rejected: 0,
+    newSinceVisit: 0,
   }
 
   if (job.status === "live") {
     counts.all = job.applicants
-    counts.unread = job.unread
+    counts.newSinceVisit = job.newSinceVisit
     counts.shortlisted = job.shortlisted
     counts.contacted = job.followUp
     counts.rejected = job.notAFit
@@ -112,7 +141,23 @@ export function responseCounts(job: Job) {
     counts.rejected = job.notAFit
   }
 
+  counts.undecided = Math.max(
+    counts.all -
+      counts.maybe -
+      counts.shortlisted -
+      counts.contacted -
+      counts.rejected,
+    0
+  )
+  // Nobody can be new and decided before the visit that would decide them.
+  counts.newSinceVisit = Math.min(counts.newSinceVisit, counts.undecided)
+
   return counts
+}
+
+/** New since the last visit AND still waiting — what the dot marks. */
+export function isNew(applicant: Applicant) {
+  return applicant.newSinceVisit && applicant.status === "undecided"
 }
 
 const FIRST_NAMES = [
@@ -398,12 +443,25 @@ function contactEmail(name: string) {
   return `${name.toLowerCase().replace(/\s+/g, ".")}@example.com`
 }
 
-/** How many days back this application sits. Newest first, over ~5 weeks. */
-function appliedDaysAgo(index: number, total: number) {
-  return Math.floor((index / Math.max(total, 1)) * 34)
+/**
+ * When this application arrived. The new ones came in since the last visit —
+ * within the last day, so they are counted in hours. Everybody else is spread
+ * newest first over the ~5 weeks before that.
+ */
+function appliedAt(index: number, total: number, fresh: number) {
+  if (index < fresh) {
+    const hours = 1 + Math.floor((index / Math.max(fresh, 1)) * 18)
+    return {
+      daysAgo: 0,
+      label: hours === 1 ? "1 hour ago" : `${hours} hours ago`,
+    }
+  }
+  const daysAgo =
+    1 + Math.floor(((index - fresh) / Math.max(total - fresh, 1)) * 33)
+  return { daysAgo, label: appliedAgo(daysAgo) }
 }
 
-/** The same number, said the way a row says it. */
+/** A number of days, said the way a row says it. */
 function appliedAgo(daysAgo: number) {
   if (daysAgo === 0) return "Today"
   if (daysAgo === 1) return "Yesterday"
@@ -415,10 +473,11 @@ function appliedAgo(daysAgo: number) {
 /**
  * Everyone who applied to this job, newest first.
  *
- * The unread ones are at the top because they are the most recent — that is
- * what makes "New" the default reading order rather than a filter you have to
- * reach for. The decided ones are shuffled through the rest, so the list does
- * not read as four solid blocks of status.
+ * The ones who arrived since the last visit are at the top, undecided, because
+ * nobody has been here since they came. Everybody older is shuffled — decided
+ * or still waiting — so the list does not read as solid blocks of status, and
+ * so the Earlier part of To review is made of people who were skipped between
+ * people who were not, which is what a real backlog looks like.
  */
 export function applicantsFor(job: Job): Applicant[] {
   const counts = responseCounts(job)
@@ -426,35 +485,28 @@ export function applicantsFor(job: Job): Applicant[] {
 
   const pools = poolsFor(job)
   const { titleBands, skillPool } = pools
+  const required = requiredSkillsFor(job)
 
   const random = seededRandom(seedFrom(job.id))
 
-  const decided: ApplicantStatus[] = [
+  const older: ApplicantStatus[] = [
     ...Array<ApplicantStatus>(counts.shortlisted).fill("shortlisted"),
     ...Array<ApplicantStatus>(counts.contacted).fill("contacted"),
     ...Array<ApplicantStatus>(counts.rejected).fill("rejected"),
-    ...Array<ApplicantStatus>(
-      Math.max(
-        counts.all -
-          counts.unread -
-          counts.reviewing -
-          counts.shortlisted -
-          counts.contacted -
-          counts.rejected,
-        0
-      )
-    ).fill("seen"),
+    ...Array<ApplicantStatus>(counts.undecided - counts.newSinceVisit).fill(
+      "undecided"
+    ),
   ]
 
-  // Fisher-Yates on the decided tail only; the unread stay at the front.
-  for (let i = decided.length - 1; i > 0; i--) {
+  // Fisher-Yates on the older tail only; the new stay at the front.
+  for (let i = older.length - 1; i > 0; i--) {
     const j = Math.floor(random() * (i + 1))
-    ;[decided[i], decided[j]] = [decided[j], decided[i]]
+    ;[older[i], older[j]] = [older[j], older[i]]
   }
 
   const statuses: ApplicantStatus[] = [
-    ...Array<ApplicantStatus>(counts.unread).fill("unread"),
-    ...decided,
+    ...Array<ApplicantStatus>(counts.newSinceVisit).fill("undecided"),
+    ...older,
   ]
 
   return statuses.map((status, index) => {
@@ -466,7 +518,7 @@ export function applicantsFor(job: Job): Applicant[] {
     const band =
       titleBands.find(([max]) => experienceYears < max) ?? titleBands.at(-1)!
 
-    const daysAgo = appliedDaysAgo(index, counts.all)
+    const applied = appliedAt(index, counts.all, counts.newSinceVisit)
     const title = pick(band[1])
     const company = pick(pools.companies)
     const careerStart = CURRENT_YEAR - experienceYears
@@ -509,6 +561,11 @@ export function applicantsFor(job: Job): Applicant[] {
 
     const name = `${pick(FIRST_NAMES)} ${pick(LAST_NAMES)}`
 
+    // Its own seeded stream, not `random`: a draw from the shared one here
+    // would shift every value after it and re-deal every person on the page.
+    const jitter = seededRandom(seedFrom(`${job.id}-a${index + 1}-match`))()
+    const fits = [...skills].filter((skill) => required.includes(skill)).length
+
     return {
       id: `${job.id}-a${index + 1}`,
       name,
@@ -520,8 +577,10 @@ export function applicantsFor(job: Job): Applicant[] {
       // two people with the same experience are not on the same number.
       currentCtcLakh: Math.round(experienceYears * 5 + 6 + random() * 22),
       noticeDays: pick(NOTICE_DAYS),
-      appliedDaysAgo: daysAgo,
-      appliedAgo: appliedAgo(daysAgo),
+      appliedDaysAgo: applied.daysAgo,
+      appliedAgo: applied.label,
+      newSinceVisit: index < counts.newSinceVisit,
+      match: Math.round(fits * 25 + jitter * 25),
       skills: [...skills],
       status,
       positions,
@@ -559,53 +618,16 @@ export function applicantsFor(job: Job): Applicant[] {
  */
 export type Filters = {
   q: string
-  /** Which slice of the list to show at all — see `SHOWING`. */
-  showing: string
   exp: string
   notice: string
   location: string
 }
 
-/**
- * The scope of the list, before any of the other filters narrow it.
- *
- * NEW AND UNREAD ARE NOT THE SAME THING, which is the only reason both are
- * here. New is about when somebody applied; Unread is about whether anybody has
- * looked at them. A candidate who applied this morning and has already been
- * shortlisted is new and not unread; one from three weeks ago that nobody
- * opened is unread and not new. Collapsing them into one control would lose
- * whichever question you were not asking.
- *
- * OPENED, NOT "REVIEWED". There is a Reviewing tab three inches away that means
- * something else entirely — a decision somebody made about a candidate, rather
- * than the fact that anybody looked. Two labels off by one letter, meaning
- * different things, on the same screen, is a trap for whoever reads it fastest.
- *
- * THERE IS NO "UNREAD" HERE, deliberately. It used to be, and it selected
- * exactly what the Unread TAB selects — two controls with the same name and
- * the same result, one of them only visible on the All tab. The tab won: it is
- * always on screen and it carries a count.
+/*
+ * There used to be a SHOWING filter here — All / New / Opened — scoping the All
+ * tab. The To review queue replaced it: "new" is the head of that queue, and
+ * "opened" is not something the screen tracks any more (see `ApplicantStatus`).
  */
-export const SHOWING: {
-  value: string
-  label: string
-  hint: string
-  test: (applicant: Applicant) => boolean
-}[] = [
-  { value: "", label: "All", hint: "Everyone who applied", test: () => true },
-  {
-    value: "new",
-    label: "New",
-    hint: "Applied in the last week",
-    test: (applicant) => applicant.appliedDaysAgo <= 7,
-  },
-  {
-    value: "opened",
-    label: "Opened",
-    hint: "Somebody has looked at them, decided or not",
-    test: (applicant) => applicant.status !== "unread",
-  },
-]
 
 export const EXPERIENCE_BANDS: {
   value: string
@@ -647,9 +669,6 @@ export function matchesFilters(applicant: Applicant, filters: Filters) {
     if (!haystack.includes(q)) return false
   }
 
-  const showing = SHOWING.find((option) => option.value === filters.showing)
-  if (showing && !showing.test(applicant)) return false
-
   const band = EXPERIENCE_BANDS.find((b) => b.value === filters.exp)
   if (band && !band.test(applicant.experienceYears)) return false
 
@@ -664,10 +683,15 @@ export function matchesFilters(applicant: Applicant, filters: Filters) {
 /**
  * How the list is ordered.
  *
- * Newest first is the default because the list is a queue: the people you have
- * not seen are the ones who just arrived, and any other default buries them.
- * The rest are the questions a recruiter asks when the queue is not the point
- * any more — "who is the most senior here", "who could start soonest".
+ * MOST RECENT OR BEST MATCH are the two a recruiter switches between: the queue
+ * in the order it arrived, or the same queue with the strongest fits first —
+ * which is what you want after a week away, when New holds far more than you
+ * will read today. Most recent is the default because the list is a queue.
+ * The other two are the questions asked once the queue is not the point any
+ * more — "who is the most senior here", "who could start soonest".
+ *
+ * In To review the sort applies INSIDE New and Earlier, never across them: a
+ * better match from three weeks ago does not jump ahead of today's arrivals.
  *
  * THERE IS NO SORT BY PAY, for the same reason there is no filter on it:
  * ordering a shortlist by what people are currently paid ranks them by their
@@ -678,7 +702,12 @@ export const SORTS: {
   label: string
   compare: (a: Applicant, b: Applicant) => number
 }[] = [
-  { value: "recent", label: "Newest first", compare: () => 0 },
+  { value: "recent", label: "Most recent", compare: () => 0 },
+  {
+    value: "match",
+    label: "Best match",
+    compare: (a, b) => b.match - a.match,
+  },
   {
     value: "experience",
     label: "Most experience",

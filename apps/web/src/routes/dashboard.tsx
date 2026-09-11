@@ -31,6 +31,7 @@ import { useBrand } from "@workspace/ui/components/brand-provider"
 import { AuroraBand } from "@/components/aurora-band"
 import {
   activeJobsFor,
+  newSinceVisitFor,
   performanceFor,
   recentProjectsFor,
   recentSearchesFor,
@@ -384,13 +385,18 @@ function SourceCard({
 }
 
 function Greeting() {
+  const { brand } = useBrand()
+
   return (
     <div className="flex flex-col gap-1 text-primary-foreground">
       {/* The page title is in SiteHeader, so this is a greeting rather than a
           second heading competing with it. */}
       <p className="text-xl font-semibold">Good afternoon, Priya</p>
+      {/* New since yesterday, not "haven't opened": the response manager
+          sorts people by decision and arrival, and does not track reading. */}
       <p className="text-sm">
-        Two interviews today, and 48 applicants you haven&rsquo;t opened.
+        Two interviews today, and {newSinceVisitFor(brand)} new applicants since
+        yesterday.
       </p>
     </div>
   )
@@ -541,10 +547,10 @@ function JobRow({ job }: { job: DashboardJob }) {
       {/* Unread is the number that decides whether this row needs you, so it
           gets the emphasis and the total is the quiet one beside it. */}
       <ItemActions className="items-baseline">
-        {job.unread > 0 ? (
+        {job.newSinceVisit > 0 ? (
           <>
             <span className="text-lg font-medium tabular-nums">
-              {job.unread}
+              {job.newSinceVisit}
             </span>
             <span className="text-xs text-muted-foreground">
               new of {job.applicants}

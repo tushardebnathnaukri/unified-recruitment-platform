@@ -50,8 +50,11 @@ type JobBase = {
 export type LiveJob = JobBase & {
   status: "live"
   applicants: number
-  /** Applicants nobody has opened yet. */
-  unread: number
+  /**
+   * Applied since the recruiter's last visit — the head of the To review
+   * queue, and the "new" count on the Jobs list and the dashboard.
+   */
+  newSinceVisit: number
   /** Database profiles matched to this job — people you did not have to wait for. */
   recommendations: number
   /** Of those, the ones nobody has looked at yet. */
@@ -116,7 +119,7 @@ const HIRIST_LIVE: LiveJob[] = [
     title: "Principal Engineer, Platform Infrastructure",
     location: "Bengaluru",
     applicants: 148,
-    unread: 32,
+    newSinceVisit: 32,
     recommendations: 42,
     recommendationsNew: 12,
     followUp: 9,
@@ -133,7 +136,7 @@ const HIRIST_LIVE: LiveJob[] = [
     title: "Engineering Manager — Payments",
     location: "Multiple locations",
     applicants: 61,
-    unread: 0,
+    newSinceVisit: 0,
     recommendations: 28,
     recommendationsNew: 0,
     followUp: 4,
@@ -150,7 +153,7 @@ const HIRIST_LIVE: LiveJob[] = [
     title: "Product Designer II",
     location: "Pune",
     applicants: 7,
-    unread: 7,
+    newSinceVisit: 7,
     recommendations: 31,
     recommendationsNew: 9,
     followUp: 0,
@@ -167,7 +170,7 @@ const HIRIST_LIVE: LiveJob[] = [
     title: "Head of Talent Acquisition",
     location: "Gurugram",
     applicants: 55,
-    unread: 9,
+    newSinceVisit: 9,
     recommendations: 12,
     recommendationsNew: 0,
     followUp: 3,
@@ -184,7 +187,7 @@ const HIRIST_LIVE: LiveJob[] = [
     title: "Senior Data Engineer",
     location: "Hyderabad",
     applicants: 0,
-    unread: 0,
+    newSinceVisit: 0,
     recommendations: 46,
     recommendationsNew: 46,
     followUp: 0,
@@ -201,7 +204,7 @@ const HIRIST_LIVE: LiveJob[] = [
     title: "Director of Engineering, Marketplace",
     location: "Bengaluru",
     applicants: 0,
-    unread: 0,
+    newSinceVisit: 0,
     recommendations: 0,
     recommendationsNew: 0,
     followUp: 0,
@@ -332,7 +335,7 @@ const IIMJOBS_LIVE: LiveJob[] = [
     title: "Vice President, Enterprise Sales",
     location: "Mumbai",
     applicants: 64,
-    unread: 11,
+    newSinceVisit: 11,
     recommendations: 18,
     recommendationsNew: 5,
     followUp: 6,
@@ -349,7 +352,7 @@ const IIMJOBS_LIVE: LiveJob[] = [
     title: "Head of Brand Marketing",
     location: "Gurugram",
     applicants: 41,
-    unread: 0,
+    newSinceVisit: 0,
     recommendations: 14,
     recommendationsNew: 0,
     followUp: 3,
@@ -366,7 +369,7 @@ const IIMJOBS_LIVE: LiveJob[] = [
     title: "Financial Controller",
     location: "Bengaluru",
     applicants: 22,
-    unread: 22,
+    newSinceVisit: 22,
     recommendations: 9,
     recommendationsNew: 9,
     followUp: 0,
@@ -383,7 +386,7 @@ const IIMJOBS_LIVE: LiveJob[] = [
     title: "Director, Supply Chain",
     location: "Pune",
     applicants: 35,
-    unread: 5,
+    newSinceVisit: 5,
     recommendations: 6,
     recommendationsNew: 2,
     followUp: 2,
@@ -400,7 +403,7 @@ const IIMJOBS_LIVE: LiveJob[] = [
     title: "General Manager, Retail Operations",
     location: "Chennai",
     applicants: 0,
-    unread: 0,
+    newSinceVisit: 0,
     recommendations: 21,
     recommendationsNew: 21,
     followUp: 0,

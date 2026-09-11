@@ -38,10 +38,19 @@ export type Stat = {
   icon: LucideIcon
 }
 
+/**
+ * Applicants across every live job who arrived since the last visit. One
+ * function because the greeting and the Applicants tile both say it, and two
+ * sums is how they would end up saying different numbers.
+ */
+export function newSinceVisitFor(brand: Brand): number {
+  return liveJobsFor(brand).reduce((total, job) => total + job.newSinceVisit, 0)
+}
+
 export function statsFor(brand: Brand): Stat[] {
   const live = liveJobsFor(brand)
   const applicants = live.reduce((total, job) => total + job.applicants, 0)
-  const unread = live.reduce((total, job) => total + job.unread, 0)
+  const fresh = newSinceVisitFor(brand)
   const expiring = live.filter((job) => job.expiresInDays <= 7).length
 
   return [
@@ -54,7 +63,7 @@ export function statsFor(brand: Brand): Stat[] {
     {
       label: "Applicants",
       value: `${applicants}`,
-      detail: `${unread} you haven't opened`,
+      detail: `${fresh} new since your last visit`,
       icon: UsersIcon,
     },
     {

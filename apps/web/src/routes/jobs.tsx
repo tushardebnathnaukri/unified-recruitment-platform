@@ -377,7 +377,9 @@ function LiveRow({ job }: { job: LiveJob }) {
             ) : (
               <Count value={job.applicants} label="applications" />
             )}
-            {job.unread > 0 && <Count value={job.unread} label="new" />}
+            {job.newSinceVisit > 0 && (
+              <Count value={job.newSinceVisit} label="new" />
+            )}
             {job.followUp === 0 ? (
               <MetaItem>Nobody to follow up</MetaItem>
             ) : (

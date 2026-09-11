@@ -22,7 +22,6 @@ import {
   UserRoundIcon,
 } from "lucide-react"
 
-import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -49,6 +48,7 @@ import { Label } from "@workspace/ui/components/label"
 import { useBrand } from "@workspace/ui/components/brand-provider"
 import { useCardVariant } from "@/components/card-variant-provider"
 import {
+  ApplicantAvatar,
   ApplicantStatusBadge,
   DecisionGroup,
 } from "@/components/applicant-controls"
@@ -117,9 +117,10 @@ import { cn } from "@workspace/ui/lib/utils"
 import {
   applicantsFor,
   EXPERIENCE_BANDS,
+  isNew,
+  LAST_VISIT,
   matchesFilters,
   NOTICE_BANDS,
-  SHOWING,
   requiredSkillsFor,
   sortApplicants,
   SORTS,
@@ -156,14 +157,35 @@ const VIEWS: { value: View; label: string; icon: LucideIcon }[] = [
   { value: "split", label: "Split", icon: PanelsTopLeftIcon },
 ]
 
+/**
+ * TO REVIEW FIRST, AND IT IS WHERE THE PAGE OPENS. A recruiter comes here each
+ * day to get through who is waiting on a decision, so that queue is the page;
+ * the rest are where decisions land. Not a fit and All go last — you rarely go
+ * back to a rejection, and All is for finding one particular person.
+ */
 const BUCKETS: { value: ResponseBucket; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "unread", label: "Unread" },
-  { value: "reviewing", label: "Reviewing" },
+  { value: "undecided", label: "To review" },
+  { value: "maybe", label: "Maybe" },
   { value: "shortlisted", label: "Shortlisted" },
   { value: "contacted", label: "Contacted" },
   { value: "rejected", label: "Not a fit" },
+  { value: "all", label: "All" },
 ]
+
+const DEFAULT_BUCKET: ResponseBucket = "undecided"
+
+/**
+ * The To review queue's order: everybody new since the last visit, then
+ * everybody older. The sort applies inside each half, never across them — a
+ * better match from three weeks ago does not jump ahead of today's arrivals.
+ * `filter` is stable, so each half keeps the order the sort already gave it.
+ */
+function queueOrder(applicants: Applicant[]) {
+  return [
+    ...applicants.filter((applicant) => applicant.newSinceVisit),
+    ...applicants.filter((applicant) => !applicant.newSinceVisit),
+  ]
+}
 
 /**
  * The response manager: one job, and everybody who applied to it.
@@ -176,7 +198,7 @@ const BUCKETS: { value: ResponseBucket; label: string }[] = [
  * CV is a screen we have not designed; it is the obvious next one.
  *
  * THE DECISIONS ACTUALLY STICK, in component state. Shortlisting somebody moves
- * them out of New and into Shortlisted and the tab counts follow, because a
+ * them out of To review and into Shortlisted and the tab counts follow, because a
  * review of a triage screen where nothing can be triaged tells you nothing
  * about whether the triage works. It resets on reload — there is no backend and
  * this is not pretending otherwise.
@@ -204,7 +226,7 @@ function ResponseManager({ job }: { job: Job }) {
   const bucketParam = searchParams.get("bucket")
   const active: ResponseBucket = BUCKETS.some((b) => b.value === bucketParam)
     ? (bucketParam as ResponseBucket)
-    : "all"
+    : DEFAULT_BUCKET
   // Normalised against the real list rather than a two-way check — a third
   // view arrived and the `=== "table" ? … : "cards"` version silently ate it.
   const viewParam = searchParams.get("view")
@@ -242,15 +264,6 @@ function ResponseManager({ job }: { job: Job }) {
 
   const filters: Filters = {
     q: searchParams.get("q") ?? "",
-    // Normalised, like `bucket` and `view` above: a value no longer in SHOWING
-    // — a link from before an option was removed — has to fall back to All,
-    // or it sets no filter while still counting as one, and the panel offers
-    // to clear something that was never applied.
-    showing: SHOWING.some(
-      (option) => option.value === searchParams.get("showing")
-    )
-      ? (searchParams.get("showing") ?? "")
-      : "",
     exp: searchParams.get("exp") ?? "",
     notice: searchParams.get("notice") ?? "",
     location: searchParams.get("location") ?? "",
@@ -259,7 +272,7 @@ function ResponseManager({ job }: { job: Job }) {
   /**
    * THE FILTER RUNS BEFORE THE BUCKETS ARE COUNTED, so a tab's number is always
    * the number of rows behind it. The alternative — true bucket totals over a
-   * filtered list — puts "New 32" above four rows, and a count that does not
+   * filtered list — puts "To review 32" above four rows, and a count that does not
    * describe what it sits on top of is worse than no count.
    */
   const applicants = React.useMemo(
@@ -269,15 +282,7 @@ function ResponseManager({ job }: { job: Job }) {
         sort
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [
-      all,
-      sort,
-      filters.q,
-      filters.showing,
-      filters.exp,
-      filters.notice,
-      filters.location,
-    ]
+    [all, sort, filters.q, filters.exp, filters.notice, filters.location]
   )
 
   /** Only the places somebody actually applied from. */
@@ -289,17 +294,63 @@ function ResponseManager({ job }: { job: Job }) {
   const counts = React.useMemo(() => {
     const tally: Record<ResponseBucket, number> = {
       all: applicants.length,
-      unread: 0,
-      reviewing: 0,
+      undecided: 0,
+      maybe: 0,
       shortlisted: 0,
       contacted: 0,
       rejected: 0,
     }
-    for (const applicant of applicants) {
-      if (applicant.status !== "seen") tally[applicant.status] += 1
-    }
+    for (const applicant of applicants) tally[applicant.status] += 1
     return tally
   }, [applicants])
+
+  /**
+   * How far through today's arrivals the recruiter is. Over everybody, not the
+   * filtered list: it is the day's job, and narrowing the list to Pune does
+   * not make any of today's applicants less new.
+   */
+  const progress = React.useMemo(() => {
+    const arrived = all.filter((applicant) => applicant.newSinceVisit)
+    return {
+      total: arrived.length,
+      done: arrived.filter((applicant) => applicant.status !== "undecided")
+        .length,
+    }
+  }, [all])
+
+  /**
+   * The last decision, for the undo bar. A decision takes the card out of the
+   * list you are looking at the instant you make it — that is what makes the
+   * queue shrink — so a misclick has to be recoverable from where you are,
+   * not by finding the person again in another tab.
+   */
+  const [undo, setUndo] = React.useState<{
+    id: string
+    name: string
+    from: ApplicantStatus
+    to: ApplicantStatus
+    at: number
+  } | null>(null)
+
+  const decideWithUndo = (id: string, status: ApplicantStatus) => {
+    const applicant = all.find((candidate) => candidate.id === id)
+    if (applicant && applicant.status !== status) {
+      setUndo({
+        id,
+        name: applicant.name,
+        from: applicant.status,
+        to: status,
+        at: Date.now(),
+      })
+    }
+    decide(id, status)
+  }
+
+  React.useEffect(() => {
+    if (!undo) return
+    const timer = window.setTimeout(() => setUndo(null), 6000)
+    return () => window.clearTimeout(timer)
+  }, [undo])
 
   const requiredSkills = React.useMemo(() => requiredSkillsFor(job), [job])
   const selectedId = searchParams.get("candidate")
@@ -316,19 +367,23 @@ function ResponseManager({ job }: { job: Job }) {
 
   /**
    * The panel's Back/Next walk THE LIST YOU ARE LOOKING AT, which is the active
-   * bucket after filtering — not every applicant. Stepping out of Unread into
-   * somebody already decided would be the panel disagreeing with the tab.
+   * bucket after filtering, in the order it is drawn — not every applicant.
+   * Stepping out of To review into somebody already decided would be the panel
+   * disagreeing with the tab.
    *
    * Looked up by index rather than held in state so a decision taken inside the
    * panel cannot desync it. `-1` is a real case: shortlisting somebody while
-   * the Unread tab is open drops them out of this list while they are still on
+   * To review is open drops them out of this list while they are still on
    * screen, and both ends going quiet is the honest answer to "what is next"
    * when the thing you were walking no longer contains you.
    */
-  const walkable =
-    active === "all"
+  const listFor = (bucket: ResponseBucket) =>
+    bucket === "all"
       ? applicants
-      : applicants.filter((applicant) => applicant.status === active)
+      : bucket === "undecided"
+        ? queueOrder(applicants.filter((a) => a.status === "undecided"))
+        : applicants.filter((a) => a.status === bucket)
+  const walkable = listFor(active)
   const at = profiled
     ? walkable.findIndex((applicant) => applicant.id === profiled.id)
     : -1
@@ -344,7 +399,6 @@ function ResponseManager({ job }: { job: Job }) {
    */
   const filterProps = {
     filters,
-    scoped: active === "all",
     sort,
     locations,
     matched: applicants.length,
@@ -363,7 +417,6 @@ function ResponseManager({ job }: { job: Job }) {
     onClear: () =>
       setParams({
         q: null,
-        showing: null,
         exp: null,
         notice: null,
         location: null,
@@ -381,7 +434,7 @@ function ResponseManager({ job }: { job: Job }) {
       <CandidatePanel
         applicant={profiled}
         requiredSkills={requiredSkills}
-        onDecide={decide}
+        onDecide={decideWithUndo}
         onClose={() => setParams({ profile: null })}
         onPrev={at > 0 ? () => step(-1) : undefined}
         onNext={at >= 0 && at < walkable.length - 1 ? () => step(1) : undefined}
@@ -398,13 +451,7 @@ function ResponseManager({ job }: { job: Job }) {
           value={active}
           onValueChange={(value) => {
             const next = String(value)
-            // The scope goes with the tab that owns it. Leaving `showing` set
-            // while its control is hidden is a filter narrowing the list from
-            // somewhere the recruiter cannot see, which is the worst kind.
-            setParams({
-              bucket: next === "all" ? null : next,
-              showing: next === "all" ? filters.showing || null : null,
-            })
+            setParams({ bucket: next === DEFAULT_BUCKET ? null : next })
           }}
         >
           {/* THE TAB ROW SPANS BOTH COLUMNS. The buckets are not a property of
@@ -459,12 +506,9 @@ function ResponseManager({ job }: { job: Job }) {
                 BUCKETS.map((bucket) => (
                   <TabsContent key={bucket.value} value={bucket.value}>
                     <ApplicantList
-                      applicants={
-                        bucket.value === "all"
-                          ? applicants
-                          : applicants.filter((a) => a.status === bucket.value)
-                      }
+                      applicants={listFor(bucket.value)}
                       bucket={bucket}
+                      progress={bucket.value === "undecided" ? progress : null}
                       view={view}
                       requiredSkills={requiredSkills}
                       selectedId={selectedId}
@@ -474,7 +518,7 @@ function ResponseManager({ job }: { job: Job }) {
                         setParams({ doc: next === "profile" ? null : next })
                       }
                       onOpenProfile={openProfile}
-                      onDecide={decide}
+                      onDecide={decideWithUndo}
                     />
                   </TabsContent>
                 ))
@@ -483,6 +527,31 @@ function ResponseManager({ job }: { job: Job }) {
           </div>
         </Tabs>
       )}
+
+      {/* The live region is always mounted and only its contents change, so
+          a screen reader announces the decision rather than missing an
+          element that arrived already filled. */}
+      <div role="status" aria-live="polite">
+        {undo && (
+          <div className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full bg-foreground py-1.5 pr-1.5 pl-4 text-sm whitespace-nowrap text-background shadow-lg">
+            <span>
+              {undo.name} {undo.to === "undecided" ? "back in" : "moved to"}{" "}
+              {BUCKETS.find((bucket) => bucket.value === undo.to)?.label}
+            </span>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="rounded-full text-background hover:bg-background/15 hover:text-background dark:hover:bg-background/15"
+              onClick={() => {
+                decide(undo.id, undo.from)
+                setUndo(null)
+              }}
+            >
+              Undo
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -592,6 +661,13 @@ function NoResponsesYet({ job }: { job: Job }) {
   )
 }
 
+/** One run of the list under its own heading — see `ApplicantList`. */
+type Section = {
+  key: string
+  heading: React.ReactNode
+  rows: Applicant[]
+}
+
 /**
  * A page of responses, with more on demand.
  *
@@ -602,12 +678,18 @@ function NoResponsesYet({ job }: { job: Job }) {
  * says what is on screen out of what exists, which is the number people
  * actually want when they are a third of the way down.
  *
+ * TO REVIEW IS TWO RUNS UNDER HEADINGS: New since the last visit, then Earlier.
+ * The day's work in the order you do it — clear today's arrivals, then the
+ * backlog — and the same split in all three views, so switching view does not
+ * lose the line between them. Every other tab is one run with no heading.
+ *
  * `visible` resets when the bucket changes because each tab renders its own
  * copy of this component.
  */
 function ApplicantList({
   applicants,
   bucket,
+  progress,
   view,
   requiredSkills,
   selectedId,
@@ -619,6 +701,8 @@ function ApplicantList({
 }: {
   applicants: Applicant[]
   bucket: { value: ResponseBucket; label: string }
+  /** Today's arrivals, done out of total. Only To review has one. */
+  progress: { total: number; done: number } | null
   view: View
   requiredSkills: string[]
   selectedId: string | null
@@ -634,6 +718,61 @@ function ApplicantList({
 
   const shown = applicants.slice(0, visible)
 
+  /**
+   * The headings count the whole run, not the page of it on screen — "Earlier
+   * · 71" over the first eight of them is the number you want to know.
+   */
+  const sectionsOf = (rows: Applicant[], compact = false): Section[] => {
+    if (!progress) return [{ key: "all", heading: null, rows }]
+
+    const fresh = applicants.filter((applicant) => applicant.newSinceVisit)
+    const earlier = applicants.length - fresh.length
+    const sections: Section[] = []
+
+    // New keeps its heading after its last card has gone, so clearing it
+    // reads as finishing something rather than as the section vanishing.
+    if (progress.total > 0) {
+      sections.push({
+        key: "new",
+        heading: (
+          <QueueHeading
+            title={`New since ${LAST_VISIT}`}
+            count={fresh.length}
+            aside={`${progress.done} of ${progress.total} done`}
+            note={
+              fresh.length > 0
+                ? undefined
+                : progress.done === progress.total
+                  ? `You are through all ${progress.total} of them.`
+                  : "None of them match these filters."
+            }
+            compact={compact}
+          />
+        ),
+        rows: rows.filter((applicant) => applicant.newSinceVisit),
+      })
+    }
+
+    // Only once the page reaches them: a heading with no rows under it,
+    // straight above "Load more", reads as an empty section.
+    if (earlier > 0 && rows.some((applicant) => !applicant.newSinceVisit)) {
+      sections.push({
+        key: "earlier",
+        heading: (
+          <QueueHeading
+            title="Earlier"
+            count={earlier}
+            aside="Skipped, or not reached yet"
+            compact={compact}
+          />
+        ),
+        rows: rows.filter((applicant) => !applicant.newSinceVisit),
+      })
+    }
+
+    return sections
+  }
+
   return (
     <div className="flex flex-col gap-3">
       {view === "split" ? (
@@ -641,6 +780,7 @@ function ApplicantList({
         // own, so there is nothing for "Load more" to be at the bottom of.
         <SplitView
           applicants={applicants}
+          sections={sectionsOf(applicants, true)}
           requiredSkills={requiredSkills}
           selectedId={selectedId}
           onSelect={onSelect}
@@ -650,19 +790,26 @@ function ApplicantList({
           onDecide={onDecide}
         />
       ) : view === "table" ? (
-        <ApplicantTable applicants={shown} onDecide={onDecide} />
+        <ApplicantTable sections={sectionsOf(shown)} onDecide={onDecide} />
       ) : (
-        <div role="list" className="flex flex-col gap-3">
-          {shown.map((applicant) => (
-            <ApplicantCard
-              key={applicant.id}
-              applicant={applicant}
-              requiredSkills={requiredSkills}
-              onDecide={onDecide}
-              onOpenProfile={onOpenProfile}
-            />
-          ))}
-        </div>
+        sectionsOf(shown).map((section) => (
+          <React.Fragment key={section.key}>
+            {section.heading}
+            {section.rows.length > 0 && (
+              <div role="list" className="flex flex-col gap-3">
+                {section.rows.map((applicant) => (
+                  <ApplicantCard
+                    key={applicant.id}
+                    applicant={applicant}
+                    requiredSkills={requiredSkills}
+                    onDecide={onDecide}
+                    onOpenProfile={onOpenProfile}
+                  />
+                ))}
+              </div>
+            )}
+          </React.Fragment>
+        ))
       )}
 
       <div
@@ -688,22 +835,80 @@ function ApplicantList({
   )
 }
 
+/**
+ * The heading over one run of To review. The count is the run's own; the aside
+ * is what the run is — for New, how far through it you are.
+ *
+ * `compact` is the split view's list, which is narrow and sits inside a card,
+ * so the heading takes the rows' own inset rather than the page's.
+ */
+function QueueHeading({
+  title,
+  count,
+  aside,
+  note,
+  compact,
+}: {
+  title: string
+  count: number
+  aside: string
+  /** Said under the heading when the run has nothing left to show. */
+  note?: string
+  compact?: boolean
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-1",
+        compact ? "px-3 pt-2.5 pb-1" : "pt-2 first:pt-0"
+      )}
+    >
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+        <h3 className="text-sm font-medium">
+          {title}{" "}
+          <span className="font-normal text-muted-foreground tabular-nums">
+            · {count}
+          </span>
+        </h3>
+        <span className="text-xs text-muted-foreground tabular-nums">
+          {aside}
+        </span>
+      </div>
+      {note && <p className="text-sm text-muted-foreground">{note}</p>}
+    </div>
+  )
+}
+
 function EmptyBucket({
   bucket,
 }: {
   bucket: { value: ResponseBucket; label: string }
 }) {
-  const copy: Record<ResponseBucket, string> = {
-    all: "Nobody has applied to this posting yet.",
-    unread:
-      "Everybody who has applied has been looked at. Nothing is waiting on a first read.",
-    reviewing:
-      "Nobody is under consideration. The middle button on a card puts somebody here — the pile you want to come back to rather than decide on now.",
-    shortlisted:
-      "Nobody is shortlisted. Shortlisting somebody from any tab moves them here.",
-    contacted:
-      "You have not reached out to anybody yet. Contacted candidates are the ones waiting on a reply from you.",
-    rejected: "You have not turned anybody down on this posting.",
+  const copy: Record<ResponseBucket, { title: string; body: string }> = {
+    undecided: {
+      title: "You are all caught up",
+      body: "Everybody who has applied has a decision. New applicants will land here the next time you come in.",
+    },
+    maybe: {
+      title: "Nothing in Maybe",
+      body: "The middle button on a card puts somebody here — the pile you want to come back to rather than decide on now.",
+    },
+    shortlisted: {
+      title: "Nothing in Shortlisted",
+      body: "Nobody is shortlisted. Shortlisting somebody from any tab moves them here.",
+    },
+    contacted: {
+      title: "Nothing in Contacted",
+      body: "You have not reached out to anybody yet. Contacted candidates are the ones waiting on a reply from you.",
+    },
+    rejected: {
+      title: "Nothing in Not a fit",
+      body: "You have not turned anybody down on this posting.",
+    },
+    all: {
+      title: "Nothing in All",
+      body: "Nobody has applied to this posting yet.",
+    },
   }
 
   return (
@@ -712,8 +917,8 @@ function EmptyBucket({
         <EmptyMedia variant="icon">
           <UserRoundIcon />
         </EmptyMedia>
-        <EmptyTitle>Nothing in {bucket.label}</EmptyTitle>
-        <EmptyDescription>{copy[bucket.value]}</EmptyDescription>
+        <EmptyTitle>{copy[bucket.value].title}</EmptyTitle>
+        <EmptyDescription>{copy[bucket.value].body}</EmptyDescription>
       </EmptyHeader>
     </Empty>
   )
@@ -761,21 +966,22 @@ function ApplicantCard({
     <Item className="@container/card flex-col items-stretch gap-3 bg-card px-5 py-4 ring-1 ring-foreground/10">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
-          {/* Initials, not a photograph. A recruiter screening on a face is
-              the failure mode this whole screen should not encourage, and the
-              avatar is here to anchor the row, not to show anybody. */}
-          <Avatar className="size-10 shrink-0">
-            <AvatarFallback className="text-xs">
-              {initials(applicant.name)}
-            </AvatarFallback>
-          </Avatar>
+          <ApplicantAvatar
+            name={applicant.name}
+            fresh={isNew(applicant)}
+            className="size-12"
+          />
 
           <div className="flex min-w-0 flex-col gap-0.5">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-heading text-base font-medium">
                 {applicant.name}
               </span>
-              <ApplicantStatusBadge status={applicant.status} />
+              {isNew(applicant) ? (
+                <span className="sr-only">New</span>
+              ) : (
+                <ApplicantStatusBadge status={applicant.status} />
+              )}
             </div>
             <span className="text-sm text-muted-foreground">
               {applicant.title} at {applicant.company}
@@ -1081,12 +1287,6 @@ function AvailabilityBucket({ applicant }: { applicant: Applicant }) {
   )
 }
 
-/** Two letters, so a name that is one word or four still yields two. */
-function initials(name: string) {
-  const parts = name.split(" ").filter(Boolean)
-  return ((parts[0]?.[0] ?? "") + (parts.at(-1)?.[0] ?? "")).toUpperCase()
-}
-
 /**
  * Cards or table, as a two-item toggle rather than a menu or a tab.
  *
@@ -1131,7 +1331,9 @@ function ViewSwitcher({
  * The same applicants, one to a line.
  *
  * THE COLUMNS ARE THE CARD'S FACTS, IN THE CARD'S ORDER, so switching view
- * moves the information around rather than changing what there is to know. The
+ * moves the information around rather than changing what there is to know.
+ * Name and current role share the first cell, stacked as they are on the card,
+ * rather than taking a column each. The
  * skills are the one thing that does not come across: three badges per row is
  * the widest column on the table and the least comparable thing on it, and a
  * table earns its keep by being scannable down a column.
@@ -1143,10 +1345,10 @@ function ViewSwitcher({
  * brings its own `overflow-x-auto` container.
  */
 function ApplicantTable({
-  applicants,
+  sections,
   onDecide,
 }: {
-  applicants: Applicant[]
+  sections: Section[]
   onDecide: (id: string, status: ApplicantStatus) => void
 }) {
   return (
@@ -1155,7 +1357,6 @@ function ApplicantTable({
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead>Candidate</TableHead>
-            <TableHead>Current role</TableHead>
             <TableHead>Location</TableHead>
             <TableHead className="text-right">Exp</TableHead>
             <TableHead className="text-right">Current</TableHead>
@@ -1172,44 +1373,83 @@ function ApplicantTable({
         </TableHeader>
 
         <TableBody>
-          {applicants.map((applicant) => (
-            <TableRow key={applicant.id} className="group/row">
-              <TableCell>
-                <div className="flex items-center gap-2">
-                  <span className="font-medium">{applicant.name}</span>
-                  <ApplicantStatusBadge status={applicant.status} />
-                </div>
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {applicant.title} at {applicant.company}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {applicant.location}
-              </TableCell>
-              <TableCell className="text-right font-medium tabular-nums">
-                {applicant.experienceYears}
-              </TableCell>
-              <TableCell className="text-right font-medium tabular-nums">
-                ₹{applicant.currentCtcLakh}L
-              </TableCell>
-              <TableCell className="text-right tabular-nums">
-                {applicant.noticeDays === 0 ? (
-                  <span className="text-muted-foreground">Now</span>
-                ) : (
-                  `${applicant.noticeDays}d`
-                )}
-              </TableCell>
-              <TableCell className="text-muted-foreground">
-                {applicant.appliedAgo}
-              </TableCell>
-              <TableCell className="sticky right-0 border-l border-border bg-card py-1 group-hover/row:bg-muted/50">
-                <RowActions
-                  applicant={applicant}
-                  onDecide={onDecide}
-                  className="justify-end"
-                />
-              </TableCell>
-            </TableRow>
+          {sections.map((section) => (
+            <React.Fragment key={section.key}>
+              {/* A run's heading is a row of its own spanning the table, so
+                  New and Earlier stay one table with one set of columns
+                  rather than two tables that line up by coincidence. */}
+              {section.heading && (
+                <TableRow className="bg-muted/40 hover:bg-muted/40">
+                  <TableCell colSpan={7} className="py-2 whitespace-normal">
+                    {section.heading}
+                  </TableCell>
+                </TableRow>
+              )}
+              {section.rows.map((applicant) => (
+                <TableRow key={applicant.id} className="group/row">
+                  {/* Who they are and where they are now, as one cell: the role is
+                  how a recruiter tells two names apart, and as its own column it
+                  was the widest thing on the table.
+
+                  New is a dot, not a badge — the inbox convention, and on a
+                  table where the first rows are all new a column of filled
+                  pills was the loudest thing on it. Every row reserves the
+                  dot's slot so the names line up whether it is there or not;
+                  the other statuses keep their badges, because those are
+                  decisions and a dot cannot say which one. */}
+                  <TableCell>
+                    <div className="flex items-start gap-2">
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "mt-1.5 size-2 shrink-0 rounded-full",
+                          isNew(applicant) ? "bg-primary" : "invisible"
+                        )}
+                      />
+                      <div className="flex flex-col gap-0.5">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{applicant.name}</span>
+                          {isNew(applicant) ? (
+                            <span className="sr-only">New</span>
+                          ) : (
+                            <ApplicantStatusBadge status={applicant.status} />
+                          )}
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {applicant.title} at {applicant.company}
+                        </span>
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {applicant.location}
+                  </TableCell>
+                  <TableCell className="text-right font-medium tabular-nums">
+                    {applicant.experienceYears}
+                  </TableCell>
+                  <TableCell className="text-right font-medium tabular-nums">
+                    ₹{applicant.currentCtcLakh}L
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {applicant.noticeDays === 0 ? (
+                      <span className="text-muted-foreground">Now</span>
+                    ) : (
+                      `${applicant.noticeDays}d`
+                    )}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">
+                    {applicant.appliedAgo}
+                  </TableCell>
+                  <TableCell className="sticky right-0 border-l border-border bg-card py-1 group-hover/row:bg-muted/50">
+                    <RowActions
+                      applicant={applicant}
+                      onDecide={onDecide}
+                      className="justify-end"
+                    />
+                  </TableCell>
+                </TableRow>
+              ))}
+            </React.Fragment>
           ))}
         </TableBody>
       </Table>
@@ -1389,7 +1629,6 @@ function useCollapseNavBelow(minWidth: number) {
  */
 function FilterPanel({
   filters,
-  scoped,
   sort,
   locations,
   matched,
@@ -1400,8 +1639,6 @@ function FilterPanel({
   layout = "column",
 }: {
   filters: Filters
-  /** Whether the scope radios belong here — see below. */
-  scoped: boolean
   sort: string
   /** Drawn from the people actually here, so no option can return nothing. */
   locations: string[]
@@ -1421,7 +1658,6 @@ function FilterPanel({
 }) {
   const active =
     Boolean(filters.q) ||
-    Boolean(filters.showing) ||
     Boolean(filters.exp) ||
     Boolean(filters.notice) ||
     Boolean(filters.location)
@@ -1445,26 +1681,6 @@ function FilterPanel({
           className="pl-9"
         />
       </div>
-
-      {/* ONLY ON THE ALL TAB. Every other tab IS a scope — New, Shortlisted,
-          Not a fit — so a second scope control sitting above it would be two
-          answers to one question, and most of the pairs are contradictions:
-          "Showing: Reviewed" on the New tab is a guaranteed empty list. All is
-          the one tab that has not already narrowed anything, so it is the one
-          place these four have something to do. */}
-      {scoped && (
-        <>
-          <PanelRadios
-            name="showing"
-            label="Showing"
-            value={filters.showing}
-            options={SHOWING}
-            onChange={(showing) => onChange({ showing })}
-          />
-
-          <Separator />
-        </>
-      )}
 
       <PanelRadios
         name="sort"
@@ -1839,6 +2055,7 @@ function IconAction({
  */
 function SplitView({
   applicants,
+  sections,
   requiredSkills,
   selectedId,
   onSelect,
@@ -1848,6 +2065,8 @@ function SplitView({
   onDecide,
 }: {
   applicants: Applicant[]
+  /** The same people, under their run headings — see `ApplicantList`. */
+  sections: Section[]
   requiredSkills: string[]
   selectedId: string | null
   onSelect: (id: string) => void
@@ -1871,13 +2090,18 @@ function SplitView({
         role="list"
         className="flex shrink-0 flex-col gap-1 overflow-y-auto rounded-2xl bg-card p-1.5 ring-1 ring-foreground/10 @3xl/main:w-80"
       >
-        {applicants.map((applicant) => (
-          <SplitRow
-            key={applicant.id}
-            applicant={applicant}
-            selected={applicant.id === selected?.id}
-            onSelect={() => onSelect(applicant.id)}
-          />
+        {sections.map((section) => (
+          <React.Fragment key={section.key}>
+            {section.heading}
+            {section.rows.map((applicant) => (
+              <SplitRow
+                key={applicant.id}
+                applicant={applicant}
+                selected={applicant.id === selected?.id}
+                onSelect={() => onSelect(applicant.id)}
+              />
+            ))}
+          </React.Fragment>
         ))}
       </div>
 
@@ -1891,17 +2115,22 @@ function SplitView({
           <div className="flex flex-col gap-5 rounded-2xl bg-card p-5 ring-1 ring-foreground/10">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex min-w-0 items-start gap-3">
-                <Avatar className="size-10 shrink-0">
-                  <AvatarFallback className="text-xs">
-                    {initials(selected.name)}
-                  </AvatarFallback>
-                </Avatar>
+                {/* The card's header, so the same size as the card's avatar. */}
+                <ApplicantAvatar
+                  name={selected.name}
+                  fresh={isNew(selected)}
+                  className="size-12"
+                />
                 <div className="flex min-w-0 flex-col gap-0.5">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-heading text-base font-medium">
                       {selected.name}
                     </span>
-                    <ApplicantStatusBadge status={selected.status} />
+                    {isNew(selected) ? (
+                      <span className="sr-only">New</span>
+                    ) : (
+                      <ApplicantStatusBadge status={selected.status} />
+                    )}
                   </div>
                   <span className="text-sm text-muted-foreground">
                     {selected.title} at {selected.company}
@@ -1976,28 +2205,45 @@ function SplitRow({
       onClick={onSelect}
       aria-current={selected ? "true" : undefined}
       className={cn(
-        "flex w-full flex-col gap-1 rounded-xl px-3 py-2.5 text-left transition-colors",
+        "group/split flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors",
         "focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
         selected ? "bg-muted" : "hover:bg-muted/60"
       )}
     >
-      <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-sm font-medium">
-          {applicant.name}
+      {/* The dot's cut-out follows the row's own background, which is muted
+          when selected or hovered rather than the card's. */}
+      <ApplicantAvatar
+        name={applicant.name}
+        fresh={isNew(applicant)}
+        className="size-10"
+        badgeClassName={
+          selected ? "ring-muted" : "group-hover/split:ring-muted"
+        }
+      />
+
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">
+            {applicant.name}
+          </span>
+          {isNew(applicant) ? (
+            <span className="sr-only">New</span>
+          ) : (
+            <ApplicantStatusBadge status={applicant.status} />
+          )}
+        </div>
+        <span className="truncate text-xs text-muted-foreground">
+          {applicant.title} at {applicant.company}
         </span>
-        <ApplicantStatusBadge status={applicant.status} />
+        <Meta className="text-[0.6875rem]">
+          <MetaItem>{applicant.experienceYears} yrs</MetaItem>
+          <MetaItem>
+            {applicant.noticeDays === 0
+              ? "Available now"
+              : `${applicant.noticeDays}d notice`}
+          </MetaItem>
+        </Meta>
       </div>
-      <span className="truncate text-xs text-muted-foreground">
-        {applicant.title} at {applicant.company}
-      </span>
-      <Meta className="text-[0.6875rem]">
-        <MetaItem>{applicant.experienceYears} yrs</MetaItem>
-        <MetaItem>
-          {applicant.noticeDays === 0
-            ? "Available now"
-            : `${applicant.noticeDays}d notice`}
-        </MetaItem>
-      </Meta>
     </button>
   )
 }
@@ -2026,7 +2272,6 @@ function FilterBar(
 ) {
   const {
     filters,
-    scoped,
     sort,
     locations,
     matched,
@@ -2040,7 +2285,6 @@ function FilterBar(
 
   const active =
     Boolean(filters.q) ||
-    Boolean(filters.showing) ||
     Boolean(filters.exp) ||
     Boolean(filters.notice) ||
     Boolean(filters.location)
@@ -2056,18 +2300,6 @@ function FilterBar(
    * somewhere else.
    */
   const pills: FilterPill[] = [
-    ...(scoped
-      ? [
-          {
-            key: "showing",
-            title: "Showing",
-            value: filters.showing,
-            options: SHOWING.map(({ value, label }) => ({ value, label })),
-            onSelect: (showing: string) => onChange({ showing }),
-            narrows: true,
-          },
-        ]
-      : []),
     {
       key: "sort",
       title: "Sort by",

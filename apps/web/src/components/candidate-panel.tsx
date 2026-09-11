@@ -8,7 +8,6 @@ import {
   PhoneIcon,
 } from "lucide-react"
 
-import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar"
 import { Button } from "@workspace/ui/components/button"
 import { Meta, MetaItem } from "@workspace/ui/components/meta"
 import {
@@ -31,11 +30,12 @@ import {
 } from "@workspace/ui/components/tabs"
 import { CandidateCv } from "@/components/candidate-cv"
 import {
+  ApplicantAvatar,
   ApplicantStatusBadge,
   DecisionGroup,
 } from "@/components/applicant-controls"
 import { CandidateDetail } from "@/components/candidate-detail"
-import type { Applicant, ApplicantStatus } from "@/lib/applicants"
+import { isNew, type Applicant, type ApplicantStatus } from "@/lib/applicants"
 
 /**
  * A candidate read in a panel, without leaving the list.
@@ -118,17 +118,25 @@ export function CandidatePanel({
             <SheetHeader className="p-5 pb-4">
               <div className="flex min-w-0 items-start gap-3">
                 {/* Initials, not a photograph — the same call the card and the
-                    page both make, for the same reason. */}
-                <Avatar className="size-11 shrink-0">
-                  <AvatarFallback>{initials(applicant.name)}</AvatarFallback>
-                </Avatar>
+                    page both make, for the same reason. The sheet is
+                    `popover`, so the dot's cut-out is too. */}
+                <ApplicantAvatar
+                  name={applicant.name}
+                  fresh={isNew(applicant)}
+                  className="size-11"
+                  badgeClassName="ring-popover"
+                />
 
                 <div className="flex min-w-0 flex-col gap-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <SheetTitle className="font-heading text-lg font-medium">
                       {applicant.name}
                     </SheetTitle>
-                    <ApplicantStatusBadge status={applicant.status} />
+                    {isNew(applicant) ? (
+                      <span className="sr-only">New</span>
+                    ) : (
+                      <ApplicantStatusBadge status={applicant.status} />
+                    )}
                   </div>
                   <p className="text-sm text-muted-foreground">
                     {applicant.title} at {applicant.company}
@@ -243,15 +251,6 @@ export function CandidatePanel({
       </SheetContent>
     </Sheet>
   )
-}
-
-function initials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .slice(0, 2)
-    .join("")
-    .toUpperCase()
 }
 
 /**
