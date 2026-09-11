@@ -130,7 +130,9 @@ function Header() {
               <h2 className="font-heading text-xl font-medium">
                 {APPLICANT.name}
               </h2>
-              <Badge>Unread</Badge>
+              {/* No badge: this candidate has no decision yet, and the app
+                  shows a status only once there is one — Maybe, Shortlisted,
+                  Contacted, Not a fit. "Unread" is not a status any more. */}
             </div>
             <p className="text-sm text-muted-foreground">
               {APPLICANT.title} at {APPLICANT.company}

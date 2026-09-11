@@ -70,7 +70,7 @@ const LIVE = [
     plan: "Pro",
     expiresInDays: 6,
     applicants: 148,
-    unread: 32,
+    newSinceVisit: 32,
     followUp: 11,
   },
   {
@@ -80,7 +80,7 @@ const LIVE = [
     plan: "Pro",
     expiresInDays: 3,
     applicants: 61,
-    unread: 0,
+    newSinceVisit: 0,
     followUp: 4,
   },
   {
@@ -90,7 +90,7 @@ const LIVE = [
     plan: "Classified",
     expiresInDays: 21,
     applicants: 0,
-    unread: 0,
+    newSinceVisit: 0,
     followUp: 0,
   },
 ]
@@ -294,7 +294,11 @@ function LiveList() {
                 ) : (
                   <Count value={job.applicants} label="applications" />
                 )}
-                {job.unread > 0 && <Count value={job.unread} label="new" />}
+                {/* New since the last visit — the same number the response
+                    manager heads its To review queue with. */}
+                {job.newSinceVisit > 0 && (
+                  <Count value={job.newSinceVisit} label="new" />
+                )}
                 {job.followUp === 0 ? (
                   <MetaItem>Nobody to follow up</MetaItem>
                 ) : (

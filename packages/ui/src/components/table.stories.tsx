@@ -19,7 +19,7 @@ const JOBS = [
     title: "Principal Engineer, Platform",
     location: "Bengaluru",
     applicants: 148,
-    unread: 32,
+    newSinceVisit: 32,
     plan: "Pro",
     status: "Live",
   },
@@ -27,7 +27,7 @@ const JOBS = [
     title: "Engineering Manager — Payments",
     location: "Multiple",
     applicants: 61,
-    unread: 0,
+    newSinceVisit: 0,
     plan: "Pro",
     status: "Expiring",
   },
@@ -35,7 +35,7 @@ const JOBS = [
     title: "Product Designer II",
     location: "Pune",
     applicants: 7,
-    unread: 7,
+    newSinceVisit: 7,
     plan: "Basic",
     status: "Live",
   },
@@ -43,7 +43,7 @@ const JOBS = [
     title: "Head of Talent Acquisition",
     location: "Gurugram",
     applicants: 55,
-    unread: 9,
+    newSinceVisit: 9,
     plan: "Basic",
     status: "Live",
   },
@@ -86,7 +86,7 @@ export const Default: Story = {
           <TableHead>Location</TableHead>
           <TableHead>Plan</TableHead>
           <TableHead className="text-right">Applicants</TableHead>
-          <TableHead className="text-right">Unread</TableHead>
+          <TableHead className="text-right">New</TableHead>
           <TableHead>Status</TableHead>
         </TableRow>
       </TableHeader>
@@ -104,7 +104,7 @@ export const Default: Story = {
               {job.applicants}
             </TableCell>
             <TableCell className="text-right tabular-nums">
-              {job.unread}
+              {job.newSinceVisit}
             </TableCell>
             <TableCell>
               <Badge
@@ -139,7 +139,6 @@ export const Selectable: Story = {
             <Checkbox aria-label="Select all" />
           </TableHead>
           <TableHead>Candidate</TableHead>
-          <TableHead>Current role</TableHead>
           <TableHead className="text-right">Experience</TableHead>
         </TableRow>
       </TableHeader>
@@ -159,8 +158,15 @@ export const Selectable: Story = {
                 aria-label={`Select ${name}`}
               />
             </TableCell>
-            <TableCell className="font-medium">{name}</TableCell>
-            <TableCell>{role}</TableCell>
+            {/* Name and current role in one cell, stacked, as the response
+                manager's table does: the role is how two names are told
+                apart, and as its own column it was the widest thing here. */}
+            <TableCell>
+              <div className="flex flex-col gap-0.5">
+                <span className="font-medium">{name}</span>
+                <span className="text-xs text-muted-foreground">{role}</span>
+              </div>
+            </TableCell>
             <TableCell className="text-right tabular-nums">{exp}</TableCell>
           </TableRow>
         ))}

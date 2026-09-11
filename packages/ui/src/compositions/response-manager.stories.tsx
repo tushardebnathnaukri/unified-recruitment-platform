@@ -7,6 +7,7 @@ import type {
 import {
   ArrowLeftIcon,
   CheckIcon,
+  CircleHelpIcon,
   LayoutListIcon,
   MailIcon,
   PanelsTopLeftIcon,
@@ -15,7 +16,11 @@ import {
   XIcon,
 } from "lucide-react"
 
-import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar"
+import {
+  Avatar,
+  AvatarBadge,
+  AvatarFallback,
+} from "@workspace/ui/components/avatar"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Chip } from "@workspace/ui/components/chip"
@@ -46,24 +51,37 @@ import { designComposition } from "@workspace/ui/lib/figma"
  * The response manager — one job, and everybody who applied to it. The biggest
  * surface in the prototype.
  *
- * Mirrors `apps/web/src/routes/job.tsx`; the people are a copy of what
- * `apps/web/src/lib/applicants.ts` generates from a seeded LCG.
+ * Mirrors `apps/web/src/routes/job.tsx`; the people are a hand-picked few in
+ * the shape `apps/web/src/lib/applicants.ts` generates, and the counts are the
+ * Principal Engineer job's, a couple of decisions into the day.
  *
  * IT IS A TRIAGE SCREEN, NOT A PROFILE READER. The question it answers is
  * "which of these 148 people are worth an hour", so a card carries only what
  * you judge on at a glance — the role they are in now, how long they have been
- * working, what they cost, how soon they could start — and the decision is two
- * buttons on the card rather than a round trip through a profile.
+ * working, what they cost, how soon they could start — and the decision is on
+ * the card rather than a round trip through a profile.
+ *
+ * IT IS ORGANISED BY DECISION, NOT BY READING. The page opens on To review —
+ * everybody without a decision — with the people new since the last visit
+ * first. Whether a card was opened is not something the screen tracks.
  */
 
-const BUCKETS = [
+type Status = "undecided" | "maybe" | "shortlisted" | "contacted" | "rejected"
+
+/** When the recruiter was last here. One user, so a constant — as in the app. */
+const LAST_VISIT = "yesterday, 4:10 pm"
+
+const BUCKETS: { value: Status | "all"; label: string; count: number }[] = [
+  { value: "undecided", label: "To review", count: 101 },
+  { value: "maybe", label: "Maybe", count: 2 },
+  { value: "shortlisted", label: "Shortlisted", count: 12 },
+  { value: "contacted", label: "Contacted", count: 9 },
+  { value: "rejected", label: "Not a fit", count: 24 },
   { value: "all", label: "All", count: 148 },
-  { value: "unread", label: "Unread", count: 32 },
-  { value: "reviewing", label: "Reviewing", count: 21 },
-  { value: "shortlisted", label: "Shortlisted", count: 11 },
-  { value: "contacted", label: "Contacted", count: 6 },
-  { value: "rejected", label: "Not a fit", count: 78 },
 ]
+
+/** The heading counts for To review, from the same job. 30 + 71 = 101. */
+const QUEUE = { fresh: 30, earlier: 71, done: 2, arrived: 32 }
 
 const VIEWS = [
   { value: "cards", label: "Cards", icon: LayoutListIcon },
@@ -73,15 +91,34 @@ const VIEWS = [
 
 const REQUIRED_SKILLS = ["Kubernetes", "Go", "Kafka"]
 
-const APPLICANTS = [
+type Applicant = {
+  id: string
+  name: string
+  title: string
+  company: string
+  location: string
+  appliedAgo: string
+  /** Applied since the last visit. */
+  fresh: boolean
+  status: Status
+  experience: string
+  positions: { role: string; span: string }[]
+  education: string
+  skills: string[]
+  salary: string
+  notice: string
+}
+
+const APPLICANTS: Applicant[] = [
   {
     id: "c1",
     name: "Ananya Krishnan",
     title: "Staff Engineer",
     company: "Razorpay",
     location: "Bengaluru",
-    appliedAgo: "2 days ago",
-    status: "unread",
+    appliedAgo: "2 hours ago",
+    fresh: true,
+    status: "undecided",
     experience: "11 yrs 4 mos",
     positions: [
       { role: "Staff Engineer, Razorpay", span: "2021 — present" },
@@ -98,8 +135,9 @@ const APPLICANTS = [
     title: "Engineering Manager",
     company: "Swiggy",
     location: "Bengaluru",
-    appliedAgo: "3 days ago",
-    status: "reviewing",
+    appliedAgo: "5 hours ago",
+    fresh: true,
+    status: "undecided",
     experience: "13 yrs 1 mo",
     positions: [
       { role: "Engineering Manager, Swiggy", span: "2020 — present" },
@@ -112,11 +150,31 @@ const APPLICANTS = [
   },
   {
     id: "c3",
+    name: "Meera Kulkarni",
+    title: "Senior Engineer",
+    company: "CRED",
+    location: "Pune",
+    appliedAgo: "6 days ago",
+    fresh: false,
+    status: "undecided",
+    experience: "9 yrs 2 mos",
+    positions: [
+      { role: "Senior Engineer, CRED", span: "2022 — present" },
+      { role: "Engineer, Zomato", span: "2018 — 2022" },
+    ],
+    education: "B.Tech, COEP",
+    skills: ["Kafka", "Java", "Redis"],
+    salary: "₹48L",
+    notice: "30 days",
+  },
+  {
+    id: "c4",
     name: "Priyanka Nair",
     title: "Principal Engineer",
     company: "Postman",
     location: "Remote",
     appliedAgo: "5 days ago",
+    fresh: false,
     status: "shortlisted",
     experience: "14 yrs 8 mos",
     positions: [
@@ -128,32 +186,75 @@ const APPLICANTS = [
     salary: "₹92L",
     notice: "Immediate",
   },
+  {
+    id: "c5",
+    name: "Varun Reddy",
+    title: "Senior Staff Engineer",
+    company: "PhonePe",
+    location: "Hyderabad",
+    appliedAgo: "2 weeks ago",
+    fresh: false,
+    status: "maybe",
+    experience: "15 yrs 3 mos",
+    positions: [
+      { role: "Senior Staff Engineer, PhonePe", span: "2020 — present" },
+      { role: "Staff Engineer, Amazon", span: "2015 — 2020" },
+    ],
+    education: "B.Tech, IIIT Hyderabad",
+    skills: ["Go", "Kubernetes", "Envoy"],
+    salary: "₹98L",
+    notice: "90 days",
+  },
 ]
 
+/** New since the last visit AND still waiting — what the dot marks. */
+const isNew = (applicant: Applicant) =>
+  applicant.fresh && applicant.status === "undecided"
+
+/** Two letters, so a name that is one word or four still yields two. */
 function initials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase()
+  const parts = name.split(" ").filter(Boolean)
+  return ((parts[0]?.[0] ?? "") + (parts.at(-1)?.[0] ?? "")).toUpperCase()
 }
 
-function StatusBadge({ status }: { status: string }) {
+/**
+ * A badge per decision, and none for the absence of one. Whether somebody is
+ * NEW is the avatar's dot, not a badge — "Unread" is not a status any more.
+ */
+function StatusBadge({ status }: { status: Status }) {
   switch (status) {
-    case "unread":
-      return <Badge>Unread</Badge>
-    case "reviewing":
-      return <Badge variant="warning">Reviewing</Badge>
+    case "maybe":
+      return <Badge variant="warning">Maybe</Badge>
     case "shortlisted":
       return <Badge variant="success">Shortlisted</Badge>
     case "contacted":
       return <Badge variant="secondary">Contacted</Badge>
     case "rejected":
       return <Badge variant="outline">Not a fit</Badge>
-    default:
+    case "undecided":
       return null
   }
+}
+
+/**
+ * Initials, with the "new" dot on the top-right corner. The dot's ring is a
+ * cut-out, so it takes the colour of the card it sits on.
+ */
+function ApplicantAvatar({
+  applicant,
+  className,
+}: {
+  applicant: Applicant
+  className?: string
+}) {
+  return (
+    <Avatar className={cn("shrink-0", className)}>
+      <AvatarFallback>{initials(applicant.name)}</AvatarFallback>
+      {isNew(applicant) && (
+        <AvatarBadge aria-hidden className="top-0 bottom-auto ring-card" />
+      )}
+    </Avatar>
+  )
 }
 
 /**
@@ -228,25 +329,27 @@ function PillTrigger({
 }
 
 /**
- * ONE ROW OF PILLS, IN EVERY VIEW. This used to be a column beside the cards
- * and a row above the split view, which meant a recruiter changing view had to
- * find the filters again. The pills cost a row instead of a column, so the
- * view that could not afford 16rem of controls is no longer the odd one out —
- * and the panel they replaced lives on inside the drawer, which is what every
- * pill opens below `md`.
+ * ONE ROW OF PILLS, IN EVERY VIEW: search, sort, experience, notice, location.
+ * They cost a row instead of a column, so no view is the odd one out — and the
+ * panel they replaced lives on inside the drawer, which is what every pill
+ * opens below `md`.
+ *
+ * The sort pill switches between MOST RECENT and BEST MATCH (plus most
+ * experience and soonest available). In To review it sorts inside New and
+ * inside Earlier, never across them. There is no salary filter, deliberately:
+ * filtering on current pay ranks people by their last employer's budget.
  *
  * It sits OUTSIDE the tab panels, not repeated in each: five copies of one
  * search box is five things a screen reader has to tell apart, and the query
  * would reset every time you changed tab.
  */
-function FilterBar() {
+function FilterBar({ sort = "Most recent" }: { sort?: string }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <PillTrigger icon label="Search responses" marked />
-      <PillTrigger label="Most recent" marked={false} />
-      <PillTrigger label="9–14 yrs" marked />
+      <PillTrigger label={sort} marked={false} />
+      <PillTrigger label="12+ yrs" marked />
       <PillTrigger label="Any notice period" marked={false} />
-      <PillTrigger label="Any salary" marked={false} />
       <PillTrigger label="Bengaluru" marked />
     </div>
   )
@@ -273,6 +376,63 @@ function ViewSwitcher() {
   )
 }
 
+const DECISIONS = [
+  {
+    value: "shortlisted",
+    label: "Shortlist",
+    icon: CheckIcon,
+    active: "bg-success/10 text-success data-[pressed]:bg-success/10",
+  },
+  {
+    value: "maybe",
+    label: "Maybe",
+    icon: CircleHelpIcon,
+    active: "bg-warning/10 text-warning data-[pressed]:bg-warning/10",
+  },
+  {
+    value: "rejected",
+    label: "Not a fit",
+    icon: XIcon,
+    active:
+      "bg-destructive/10 text-destructive data-[pressed]:bg-destructive/10",
+  },
+]
+
+/**
+ * Yes, maybe, no — one segmented control, because they are one question.
+ * Clicking the active one clears it, which puts the candidate back in To
+ * review.
+ */
+function Decisions({ applicant }: { applicant: Applicant }) {
+  return (
+    <ToggleGroup
+      variant="outline"
+      spacing={0}
+      aria-label={`Decision for ${applicant.name}`}
+      defaultValue={
+        DECISIONS.some((decision) => decision.value === applicant.status)
+          ? [applicant.status]
+          : []
+      }
+    >
+      {DECISIONS.map((decision) => (
+        <ToggleGroupItem
+          key={decision.value}
+          value={decision.value}
+          aria-label={decision.label}
+          className={
+            applicant.status === decision.value
+              ? decision.active
+              : "text-muted-foreground"
+          }
+        >
+          <decision.icon />
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  )
+}
+
 /**
  * LinkedIn Recruiter's shape: a column of labels down the left, the facts
  * beside them. Labels give the eye a fixed left edge to run down, so comparing
@@ -282,7 +442,7 @@ function ViewSwitcher() {
  * ONE `grid`, NOT A TWO-COLUMN FLEX PER ROW. A fixed first track means every
  * label in the card shares an edge even when one value wraps to six lines.
  */
-function BucketRows({ applicant }: { applicant: (typeof APPLICANTS)[number] }) {
+function BucketRows({ applicant }: { applicant: Applicant }) {
   return (
     <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 border-t border-border pt-3 text-sm sm:grid-cols-[7rem_minmax(0,1fr)]">
       <dt className="text-xs leading-6 font-medium text-muted-foreground sm:text-right">
@@ -354,11 +514,7 @@ function CardActions() {
   )
 }
 
-function ApplicantCard({
-  applicant,
-}: {
-  applicant: (typeof APPLICANTS)[number]
-}) {
+function ApplicantCard({ applicant }: { applicant: Applicant }) {
   return (
     <Item className="@container/card flex-col items-stretch gap-3 bg-card px-5 py-4 ring-1 ring-foreground/10">
       <div className="flex items-start justify-between gap-3">
@@ -366,18 +522,18 @@ function ApplicantCard({
           {/* Initials, not a photograph. A recruiter screening on a face is
               the failure mode this whole screen should not encourage — the
               avatar is here to anchor the row, not to show anybody. */}
-          <Avatar className="size-10 shrink-0">
-            <AvatarFallback className="text-xs">
-              {initials(applicant.name)}
-            </AvatarFallback>
-          </Avatar>
+          <ApplicantAvatar applicant={applicant} className="size-12" />
 
           <div className="flex min-w-0 flex-col gap-0.5">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-heading text-base font-medium">
                 {applicant.name}
               </span>
-              <StatusBadge status={applicant.status} />
+              {isNew(applicant) ? (
+                <span className="sr-only">New</span>
+              ) : (
+                <StatusBadge status={applicant.status} />
+              )}
             </div>
             <span className="text-sm text-muted-foreground">
               {applicant.title} at {applicant.company}
@@ -390,13 +546,8 @@ function ApplicantCard({
         </div>
 
         {/* Decide, at the top of the right-hand column. */}
-        <div className="-my-1.5 -mr-2 flex shrink-0 items-center gap-1">
-          <Button variant="ghost" size="icon-sm" aria-label="Shortlist">
-            <CheckIcon />
-          </Button>
-          <Button variant="ghost" size="icon-sm" aria-label="Not a fit">
-            <XIcon />
-          </Button>
+        <div className="-my-1.5 -mr-2 shrink-0">
+          <Decisions applicant={applicant} />
         </div>
       </div>
 
@@ -406,10 +557,87 @@ function ApplicantCard({
   )
 }
 
-function CardList() {
+/**
+ * The heading over one run of To review. The count is the run's own; the aside
+ * is what the run is — for New, how far through today's arrivals you are.
+ */
+function QueueHeading({
+  title,
+  count,
+  aside,
+}: {
+  title: string
+  count: number
+  aside: string
+}) {
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 pt-2 first:pt-0">
+      <h3 className="text-sm font-medium">
+        {title}{" "}
+        <span className="font-normal text-muted-foreground tabular-nums">
+          · {count}
+        </span>
+      </h3>
+      <span className="text-xs text-muted-foreground tabular-nums">
+        {aside}
+      </span>
+    </div>
+  )
+}
+
+/**
+ * TO REVIEW IS TWO RUNS UNDER HEADINGS — New since the last visit, then
+ * Earlier: the day's work in the order you do it. Every other tab is one run
+ * of that tab's people, with no heading.
+ */
+const RUNS = [
+  {
+    key: "new",
+    title: `New since ${LAST_VISIT}`,
+    count: QUEUE.fresh,
+    aside: `${QUEUE.done} of ${QUEUE.arrived} done`,
+    test: (applicant: Applicant) => applicant.fresh,
+  },
+  {
+    key: "earlier",
+    title: "Earlier",
+    count: QUEUE.earlier,
+    aside: "Skipped, or not reached yet",
+    test: (applicant: Applicant) => !applicant.fresh,
+  },
+]
+
+function CardList({ bucket }: { bucket: Status | "all" }) {
+  if (bucket === "undecided") {
+    const queue = APPLICANTS.filter((a) => a.status === "undecided")
+    return (
+      <div className="flex flex-col gap-3">
+        {RUNS.map((run) => (
+          <React.Fragment key={run.key}>
+            <QueueHeading
+              title={run.title}
+              count={run.count}
+              aside={run.aside}
+            />
+            <div role="list" className="flex flex-col gap-3">
+              {queue.filter(run.test).map((applicant) => (
+                <ApplicantCard key={applicant.id} applicant={applicant} />
+              ))}
+            </div>
+          </React.Fragment>
+        ))}
+      </div>
+    )
+  }
+
+  const people =
+    bucket === "all"
+      ? APPLICANTS
+      : APPLICANTS.filter((applicant) => applicant.status === bucket)
+
   return (
     <div role="list" className="flex flex-col gap-3">
-      {APPLICANTS.map((applicant) => (
+      {people.map((applicant) => (
         <ApplicantCard key={applicant.id} applicant={applicant} />
       ))}
     </div>
@@ -420,45 +648,114 @@ function CardList() {
  * The same applicants, one to a line.
  *
  * THE COLUMNS ARE THE CARD'S FACTS, IN THE CARD'S ORDER, so switching view
- * moves the information around rather than changing what there is to know. The
+ * moves the information around rather than changing what there is to know.
+ * Name and current role share the first cell, stacked as on the card. The
  * skills are the one thing that does not come across: three badges per row is
  * the widest column on the table and the least comparable thing on it.
  *
- * Numbers are right-aligned and tabular so experience, pay and notice line up
- * — that alignment is the entire reason to be in this view.
+ * New is a dot in a slot every row reserves, so the names line up whether it is
+ * there or not. To review's two runs are heading rows spanning the table, so
+ * New and Earlier stay one table with one set of columns.
+ *
+ * Numbers are right-aligned and tabular so pay and notice line up — that
+ * alignment is the entire reason to be in this view.
  */
 function ApplicantTable() {
+  const queue = APPLICANTS.filter((a) => a.status === "undecided")
+
   return (
     <Table>
       <TableHeader>
-        <TableRow>
+        <TableRow className="hover:bg-transparent">
           <TableHead>Candidate</TableHead>
-          <TableHead>Now</TableHead>
-          <TableHead className="text-right">Experience</TableHead>
-          <TableHead className="text-right">Salary</TableHead>
+          <TableHead>Location</TableHead>
+          <TableHead className="text-right">Exp</TableHead>
+          <TableHead className="text-right">Current</TableHead>
           <TableHead className="text-right">Notice</TableHead>
+          <TableHead>Applied</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
-        {APPLICANTS.map((applicant) => (
-          <TableRow key={applicant.id}>
-            <TableCell className="font-medium">{applicant.name}</TableCell>
-            <TableCell className="text-muted-foreground">
-              {applicant.title} at {applicant.company}
-            </TableCell>
-            <TableCell className="text-right tabular-nums">
-              {applicant.experience}
-            </TableCell>
-            <TableCell className="text-right tabular-nums">
-              {applicant.salary}
-            </TableCell>
-            <TableCell className="text-right tabular-nums">
-              {applicant.notice}
-            </TableCell>
-          </TableRow>
+        {RUNS.map((run) => (
+          <React.Fragment key={run.key}>
+            <TableRow className="bg-muted/40 hover:bg-muted/40">
+              <TableCell colSpan={6} className="py-2 whitespace-normal">
+                <QueueHeading
+                  title={run.title}
+                  count={run.count}
+                  aside={run.aside}
+                />
+              </TableCell>
+            </TableRow>
+            {queue.filter(run.test).map((applicant) => (
+              <TableRow key={applicant.id}>
+                <TableCell>
+                  <div className="flex items-start gap-2">
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "mt-1.5 size-2 shrink-0 rounded-full",
+                        isNew(applicant) ? "bg-primary" : "invisible"
+                      )}
+                    />
+                    <div className="flex flex-col gap-0.5">
+                      <span className="font-medium">
+                        {applicant.name}
+                        {isNew(applicant) && (
+                          <span className="sr-only">, new</span>
+                        )}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {applicant.title} at {applicant.company}
+                      </span>
+                    </div>
+                  </div>
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {applicant.location}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {applicant.experience}
+                </TableCell>
+                <TableCell className="text-right font-medium tabular-nums">
+                  {applicant.salary}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {applicant.notice}
+                </TableCell>
+                <TableCell className="text-muted-foreground">
+                  {applicant.appliedAgo}
+                </TableCell>
+              </TableRow>
+            ))}
+          </React.Fragment>
         ))}
       </TableBody>
     </Table>
+  )
+}
+
+/**
+ * A decision takes the card out of the list the instant it is made — that is
+ * what makes the queue shrink — so a misclick is undone from where you are,
+ * not by finding the person again in another tab. In the app it sits fixed at
+ * the bottom of the screen for six seconds; here it is drawn in place.
+ */
+function UndoBar() {
+  return (
+    <div
+      role="status"
+      className="flex w-fit items-center gap-2 rounded-full bg-foreground py-1.5 pr-1.5 pl-4 text-sm whitespace-nowrap text-background shadow-lg"
+    >
+      <span>Ananya Krishnan moved to Shortlisted</span>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="rounded-full text-background hover:bg-background/15 hover:text-background dark:hover:bg-background/15"
+      >
+        Undo
+      </Button>
+    </div>
   )
 }
 
@@ -467,7 +764,7 @@ function ResponseManager() {
     <div className="@container/main flex flex-col gap-4 px-4 lg:px-6">
       <JobHeader />
 
-      <Tabs className="gap-4" defaultValue="all">
+      <Tabs className="gap-4" defaultValue="undecided">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <TabsList className="max-w-full overflow-x-auto">
             {BUCKETS.map((bucket) => (
@@ -487,7 +784,7 @@ function ResponseManager() {
 
         {BUCKETS.map((bucket) => (
           <TabsContent key={bucket.value} value={bucket.value}>
-            <CardList />
+            <CardList bucket={bucket.value} />
           </TabsContent>
         ))}
       </Tabs>
@@ -506,25 +803,38 @@ const meta = {
 One job, and everybody who applied to it. Mirrors
 \`apps/web/src/routes/job.tsx\` — the biggest surface in the prototype.
 
+**Organised by decision, not by reading.** A recruiter comes back each day to
+the same question: who still needs a decision from me, and who arrived since I
+was last here. So the page opens on **To review** — everybody without a
+decision — and the tabs after it are where decisions land: Maybe, Shortlisted,
+Contacted, then Not a fit and All last. Whether a card was *opened* is not
+something the screen tracks.
+
+**To review is two runs.** *New since yesterday, 4:10 pm*, with how many of
+today's arrivals are done, then *Earlier* — skipped, or not reached yet. The
+line between them is fixed for the whole visit, so refreshing cannot quietly
+empty New. The same two runs head the cards, the table and the split list.
+
+**The dot means new** — applied since the last visit and still undecided — on
+the avatar's corner, or in a reserved slot in the table. Decisions keep their
+badges; no decision gets none.
+
+**A decision leaves the list at once**, which is what makes the queue shrink,
+with an undo bar for the misclick.
+
+**Most recent or Best match.** The sort pill switches between them; in To
+review it sorts inside New and inside Earlier, never across.
+
 **A triage screen, not a profile reader.** A card carries only what you judge
-on at a glance, and the decision is two buttons on the card rather than a
-round trip through a profile.
+on at a glance, and the decision — yes, maybe, no — is on the card.
 
 **Three views, three densities, none of them the winner.** Cards are for
-scanning — four lines a person, enough to triage. The table is for comparing:
-one line a person with every number in a column, which is the only way to
-answer "who is on a short notice period" across 148 rows. Split is for
-reading — a thin list beside a whole profile, for when the list is down to the
-ten people worth an hour.
-
-**The tabs are the same shape as the Jobs page**, down to the count on the
-trigger. Two list screens one click apart should not have two different ideas
-of what a tab is.
+scanning. The table is for comparing: one line a person with every number in a
+column. Split is for reading — a thin list beside a whole profile.
 
 **One row of filter pills, in every view.** Each opens its own popover on a
-pointer; below \`md\` every one of them opens the single drawer instead — the
-same controls, in the shape each input can actually use. See Components →
-Popover, Command and Drawer.
+pointer; below \`md\` every one of them opens the single drawer instead. See
+Components → Popover, Command and Drawer.
 
 In the app the tab, view, sort, filters, selected candidate, open profile
 panel and CV/profile tab all live in the query string, so any state worth
@@ -559,7 +869,12 @@ export const JobHeaderStory: Story = {
 export const FilterPills: Story = {
   name: "Filter pills",
   decorators: [padded],
-  render: () => <FilterBar />,
+  render: () => (
+    <div className="flex flex-col gap-3">
+      <FilterBar />
+      <FilterBar sort="Best match" />
+    </div>
+  ),
 }
 
 export const Card: Story = {
@@ -574,19 +889,29 @@ export const TableView: Story = {
   render: () => <ApplicantTable />,
 }
 
-/** Every bucket can be empty, and each says something different when it is. */
+/**
+ * Every decision has a badge; no decision has none. "New" is the avatar's dot,
+ * shown here beside them.
+ */
 export const StatusRange: Story = {
   name: "Status badges",
   decorators: [padded],
   render: () => (
-    <div className="flex flex-wrap gap-2">
-      {["unread", "reviewing", "shortlisted", "contacted", "rejected"].map(
+    <div className="flex flex-wrap items-center gap-3">
+      <ApplicantAvatar applicant={APPLICANTS[0]} className="size-12" />
+      {(["maybe", "shortlisted", "contacted", "rejected"] as const).map(
         (status) => (
           <StatusBadge key={status} status={status} />
         )
       )}
     </div>
   ),
+}
+
+export const UndoBarStory: Story = {
+  name: "Undo bar",
+  decorators: [padded],
+  render: () => <UndoBar />,
 }
 
 /** The skills the posting asked for, as the card marks them. */

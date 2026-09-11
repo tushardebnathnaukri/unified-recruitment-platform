@@ -7,7 +7,6 @@ import {
   ClockIcon,
   MapPinIcon,
   SearchIcon,
-  SparklesIcon,
   TicketIcon,
   UsersIcon,
 } from "lucide-react"
@@ -15,7 +14,6 @@ import {
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Card } from "@workspace/ui/components/card"
-import { Chip } from "@workspace/ui/components/chip"
 import { Item, ItemActions, ItemContent } from "@workspace/ui/components/item"
 import { ListCard } from "@workspace/ui/components/list-card"
 import { Meta as MetaLine, MetaItem } from "@workspace/ui/components/meta"
@@ -42,7 +40,7 @@ const STATS = [
   {
     label: "Applicants",
     value: "271",
-    detail: "48 you haven't opened",
+    detail: "48 new since your last visit",
     icon: UsersIcon,
   },
   {
@@ -65,7 +63,7 @@ const JOBS = [
     title: "Principal Engineer, Platform Infrastructure",
     location: "Bengaluru",
     applicants: 148,
-    unread: 32,
+    newSinceVisit: 32,
     expiresInDays: 6,
     plan: "Pro",
   },
@@ -74,7 +72,7 @@ const JOBS = [
     title: "Engineering Manager — Payments",
     location: "Multiple locations",
     applicants: 61,
-    unread: 0,
+    newSinceVisit: 0,
     expiresInDays: 3,
     plan: "Pro",
   },
@@ -83,7 +81,7 @@ const JOBS = [
     title: "Product Designer II",
     location: "Pune",
     applicants: 7,
-    unread: 7,
+    newSinceVisit: 7,
     expiresInDays: 14,
     plan: "Basic",
   },
@@ -92,7 +90,7 @@ const JOBS = [
     title: "Head of Talent Acquisition",
     location: "Gurugram",
     applicants: 55,
-    unread: 9,
+    newSinceVisit: 9,
     expiresInDays: 21,
     plan: "Basic",
   },
@@ -152,61 +150,51 @@ const PROJECTS = [
   },
 ]
 
-const STARTERS = [
-  {
-    label: "Platform engineer",
-    text: "Staff platform engineer in Bengaluru, 9–14 years, has run Kafka at scale",
-  },
-  {
-    label: "Engineering manager",
-    text: "Engineering manager for payments, 7–11 years, has managed a team of 6+",
-  },
-  {
-    label: "Product designer",
-    text: "Senior product designer, 6+ years, owns a design system end to end",
-  },
-]
-
 function ViewAll({ children }: { children: React.ReactNode }) {
   return (
-    <Button variant="link" size="sm" className="px-0" render={<a href="#" />}>
+    <Button
+      variant="link"
+      size="sm"
+      className="px-0"
+      nativeButton={false}
+      render={<a href="#" />}
+    >
       {children}
       <ArrowRightIcon data-icon="inline-end" />
     </Button>
   )
 }
 
-/** Card + Textarea + Chip + Button. No accent tint: position and size do the emphasis. */
+/**
+ * Card + Textarea + Button: describe the role, and the arrow (or Enter) runs a
+ * database search with the text. Search is the one action — no starter chips,
+ * no "Start project"; projects file themselves by role now.
+ *
+ * `rounded-none` on the textarea is load-bearing: it clips its text to its own
+ * corners, and with the padding at zero the inherited curve cut the left edge
+ * off the first letter.
+ */
 function RequirementBox() {
   const [draft, setDraft] = React.useState("")
 
   return (
-    <Card className="gap-0 overflow-hidden py-0 shadow-lg">
-      <label className="flex cursor-text items-start gap-3 p-4">
-        <SparklesIcon className="mt-1 size-4 shrink-0 text-primary" />
-        <Textarea
-          rows={2}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          aria-label="Describe the role you are hiring for"
-          placeholder="Describe who you're hiring for — seniority, location, and what they need to have actually done."
-          className="min-h-14 resize-none border-0 bg-transparent p-0 text-base shadow-none focus-visible:border-0 focus-visible:ring-0 md:text-sm dark:bg-transparent"
-        />
-      </label>
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-muted/40 px-4 py-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <span className="text-xs text-muted-foreground">Try</span>
-          {STARTERS.map((starter) => (
-            <Chip key={starter.label} onClick={() => setDraft(starter.text)}>
-              {starter.label}
-            </Chip>
-          ))}
-        </div>
-        <Button size="sm" disabled={draft.trim() === ""}>
-          Start project
-          <ArrowRightIcon data-icon="inline-end" />
-        </Button>
-      </div>
+    <Card className="gap-4 p-4 shadow-lg">
+      <Textarea
+        rows={2}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        aria-label="Describe the role you are hiring for"
+        placeholder="Describe who you're hiring for — seniority, location, and what they need to have actually done."
+        className="min-h-12 resize-none rounded-none border-0 bg-transparent p-0 text-base shadow-none focus-visible:border-0 focus-visible:ring-0 md:text-sm dark:bg-transparent"
+      />
+      <Button
+        size="icon-sm"
+        className="self-end rounded-full"
+        aria-label="Search the database"
+        disabled={draft.trim() === ""}
+      >
+        <ArrowRightIcon />
+      </Button>
     </Card>
   )
 }
@@ -262,10 +250,10 @@ function ActiveJobs() {
                 </MetaLine>
               </ItemContent>
               <ItemActions className="items-baseline">
-                {job.unread > 0 ? (
+                {job.newSinceVisit > 0 ? (
                   <>
                     <span className="text-lg font-medium tabular-nums">
-                      {job.unread}
+                      {job.newSinceVisit}
                     </span>
                     <span className="text-xs text-muted-foreground">
                       new of {job.applicants}
@@ -331,9 +319,11 @@ function RecentSearches() {
 function RecentProjects() {
   return (
     <section className="flex min-w-0 flex-col gap-3">
+      {/* No "New project" link: projects are made by what you start, one per
+          role, so there is nothing to create by hand. */}
       <SectionHeader
         title="Recent projects"
-        action={<ViewAll>New project</ViewAll>}
+        description="One per role, from whatever you start above"
       />
       <ListCard>
         {PROJECTS.map((project) => {
@@ -392,6 +382,13 @@ Each block is its own story so the pieces can be reviewed alone. Read the
 whole page to see the layout rules: two *equal* columns for jobs and
 searches (neither is an aside), projects on their own full-width row above
 them, and every breakpoint a container query on the content column.
+
+**The requirement box searches.** Describe the role; the arrow or Enter runs a
+database search with it. There is no "Start project" — projects file
+themselves by role, which is why Recent projects has no create link.
+
+**"New" means new since your last visit** — the head of each job's To review
+queue on the response manager — not "unread".
         `,
       },
     },
@@ -418,7 +415,7 @@ export const FullPage: Story = {
           <div className="flex flex-col gap-1 text-primary-foreground">
             <p className="text-xl font-semibold">Good afternoon, Priya</p>
             <p className="text-sm">
-              Two interviews today, and 48 applicants you haven&rsquo;t opened.
+              Two interviews today, and 48 new applicants since yesterday.
             </p>
           </div>
         </div>
