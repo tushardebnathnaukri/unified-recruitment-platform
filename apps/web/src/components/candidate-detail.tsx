@@ -14,6 +14,8 @@ import {
 } from "lucide-react"
 import * as React from "react"
 
+import { useListCopy } from "@/lib/list-source"
+
 /**
  * Everything a candidate's profile SAYS, without deciding where it sits.
  *
@@ -249,18 +251,38 @@ function Skills({
   matched: string[]
   required: string[]
 }) {
+  const copy = useListCopy()
   const missing = required.filter((skill) => !matched.includes(skill))
   const other = applicant.skills.filter((skill) => !matched.includes(skill))
+
+  // A search that named no skills asked for nothing, so there is nothing to
+  // be matched or missing — just what they have.
+  if (required.length === 0) {
+    return (
+      <section className="flex flex-col gap-3">
+        <SectionHeader title="Skills" />
+        <Card size="sm" className="gap-4 px-(--card-spacing)">
+          <SkillRow label="Has" empty="None listed">
+            {applicant.skills.map((skill) => (
+              <Badge key={skill} variant="outline" className="font-normal">
+                {skill}
+              </Badge>
+            ))}
+          </SkillRow>
+        </Card>
+      </section>
+    )
+  }
 
   return (
     <section className="flex flex-col gap-3">
       <SectionHeader
         title="Skills"
-        description={`${matched.length} of the ${required.length} this posting asks for`}
+        description={`${matched.length} of the ${required.length} ${copy.askedFor}`}
       />
 
       <Card size="sm" className="gap-4 px-(--card-spacing)">
-        <SkillRow label="Matched" empty="None of the posting's requirements">
+        <SkillRow label="Matched" empty={copy.noRequirementsMet}>
           {matched.map((skill) => (
             <Badge key={skill} variant="success" className="font-normal">
               {skill}

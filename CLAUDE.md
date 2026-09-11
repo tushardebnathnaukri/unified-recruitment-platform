@@ -153,10 +153,68 @@ framework mode. Import from `react-router` (`react-router-dom` is a deprecated s
 `src/App.tsx`, pages in `src/routes/`.
 
 Designed so far: `/dashboard`, `/jobs` (four status tabs), `/jobs/:jobId` — the response manager,
-the biggest surface in here — `/jobs/:jobId/applicants/:applicantId`, and `/insights`. Still
-`PlaceholderPage`: `/jobs/new`, `/database`, `/search`, `/projects/new`. `/reference/dashboard` is a
-hardcoded replica of the live iimjobs dashboard, kept for side-by-side comparison and deliberately
-outside the design system — see the note at the top of `legacy-dashboard.tsx`.
+the biggest surface in here — `/jobs/:jobId/applicants/:applicantId`, `/insights`, and `/database`
+(search box, recent searches, results). Still `PlaceholderPage`: `/jobs/new`, `/search`,
+`/projects/new`. `/reference/dashboard` is a hardcoded replica of the live iimjobs dashboard, kept
+for side-by-side comparison and deliberately outside the design system — see the note at the top of
+`legacy-dashboard.tsx`.
+
+**The response manager is `components/candidate-list.tsx`, not `routes/job.tsx`.** It moved out
+when the database's results turned out to be the same screen: `CandidateList` takes the people, the
+skills they are matched against, a header and an empty state, and owns everything else — tabs,
+views, pills, panel, undo. `routes/job.tsx` is now the job header and a thin wrapper. The words that
+differ between the two ("Applied" / "Updated", "New since …", what the skills were asked for by)
+come from `lib/list-source.ts` through a context that `CandidateList` sets from its `source` prop;
+it defaults to `posting`, so the candidate page and anything older needs no provider. Change triage
+there and it lands on both screens.
+
+**`/database` is one box with three modes under it** — Keywords, Natural language, Job
+description — not the live product's three tabs over three forms. The mode only changes how the
+text is read, so the draft survives a switch. `mode`, `boolean` and `q` are in the URL; `q`
+present means the page is that search's results. A bare `?q=` (what the Dashboard's box sends) is
+a natural-language search. The results' search-within box is `?find=`, because `q` is taken.
+
+`lib/database.ts` deals a search's people from the same generator as a posting's, through a
+posting-shaped stand-in: the recent row's `matches` is the count and its `newSince` is who carries
+the new dot. Search results pass `layout="results"` — a ranked list, not a queue: no decision tabs
+(a decision is a badge, not a move), cards only, and the caller's own `sidebar` and `toolbar`. The
+job page is `layout="queue"` and keeps its three filters as pills.
+
+**The database has two filter designs, picked on /settings** ("Database filters", via
+`useFilterVariant` in `lib/filter-variant.ts` — localStorage, no provider). **Juicebox** (the
+default, `components/juicebox-filters.tsx`): the query as a pill, a Filters dialog that is edited
+as a draft with a live match count and applied on Save, ranked plain-English Criteria (`?crit=`)
+that decide what the cards highlight and the Best match order but remove nobody, and "Expand
+pool" chips whose `+N` is counted against the real pool (`expansions` in `lib/database-filters`).
+**Refine panel** is the live hirist column below. Both read and write the same URL keys, so a
+link keeps its filters whichever design opens it.
+
+Under Juicebox each card also carries **one evidence line per criterion** (`CriteriaEvidence` in
+`candidate-list.tsx`, fed by `CandidateList`'s `verdicts` prop). The verdicts come from
+`verdictsFor` in `lib/criteria.ts`, and Best match is summed from the same verdicts (`scoreFor`), so
+a card's lines are the reason it ranks where it does. A criterion naming a known skill is checked
+against the person's skills and cites a role on their card; free text gets a stable per-person
+yes/no and a line saying only where it looked — no invented quotations.
+
+**A search's city and years arrive as filters, not as a fact about the results.** `searchHref`
+writes `cur`/`xp` from `criteriaFrom`, and `resultsFor` deals a wider pool — the same people plus
+some in the next three cities and a few years either side — so the list opens on exactly the recent
+row's count and loosening a filter finds somebody. The Dashboard's box goes through `searchHref`
+too.
+
+**The refine panel matches live hirist search** (`search.hirist.tech/search/…`): the same 20
+sections in the same order, declared as rows in `SECTIONS` in `lib/database-filters.ts` and drawn
+by `components/database-filters.tsx` as a sticky column (a drawer below `@4xl/main`). Every one
+narrows something — the fields the generator never dealt (expected pay, preferred cities,
+languages…) are dealt there off each person's id by `toProfile`. **Diversity is drawn gated, as it
+is live ("Maven Exclusive"), and the mock deals nobody a gender** — it would only be guessing from
+a first name. The panel's URL keys (`xp`, `cur`, `org`…) deliberately avoid the ones
+`CandidateList` reads (`exp`, `location`, `notice`, `q`).
+The people **conform** to what the search pinned down (city and years, read by `criteriaFrom`)
+rather than being filtered after, so the row's count and the page's agree. Highlighted skills are
+exactly the ones the search named (`skillsIn`) — none if it named none. Recent searches live there
+too; the Dashboard shows the first three through the shared `SearchRow`, so those three are what its
+Storybook composition and Figma frame copy.
 
 The response manager keeps its tab, view, sort, filters, selected candidate, open profile panel and
 CV/profile tab in the query string, so any state worth showing someone is in the URL;

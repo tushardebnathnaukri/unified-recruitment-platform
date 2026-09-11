@@ -421,7 +421,7 @@ function poolsFor(job: Job) {
  * A 32-bit LCG. Not good randomness — good *repeatable* randomness, which is
  * the only property this needs.
  */
-function seededRandom(seed: number) {
+export function seededRandom(seed: number) {
   let state = seed >>> 0
   return () => {
     state = (state * 1664525 + 1013904223) >>> 0
@@ -429,7 +429,7 @@ function seededRandom(seed: number) {
   }
 }
 
-function seedFrom(text: string) {
+export function seedFrom(text: string) {
   let hash = 2166136261
   for (const char of text) {
     hash ^= char.charCodeAt(0)
@@ -471,6 +471,23 @@ function appliedAgo(daysAgo: number) {
 }
 
 /**
+ * What a database search pins down before anybody is generated: the skills it
+ * named, and the experience and city it asked for. A posting passes none of
+ * these and gets the people it always had.
+ *
+ * The people CONFORM rather than being filtered afterwards. A search for
+ * Bengaluru that came back with six cities in it, of which a filter then kept
+ * one, would put "214 matches" on the recent row and "31 of 214" on the page —
+ * two numbers for one search.
+ */
+export type GenerateOptions = {
+  required?: string[]
+  /** Inclusive, in years. */
+  experience?: [number, number]
+  location?: string
+}
+
+/**
  * Everyone who applied to this job, newest first.
  *
  * The ones who arrived since the last visit are at the top, undecided, because
@@ -479,13 +496,17 @@ function appliedAgo(daysAgo: number) {
  * so the Earlier part of To review is made of people who were skipped between
  * people who were not, which is what a real backlog looks like.
  */
-export function applicantsFor(job: Job): Applicant[] {
+export function applicantsFor(
+  job: Job,
+  options: GenerateOptions = {}
+): Applicant[] {
   const counts = responseCounts(job)
   if (counts.all === 0) return []
 
   const pools = poolsFor(job)
   const { titleBands, skillPool } = pools
-  const required = requiredSkillsFor(job)
+  const required = options.required ?? requiredSkillsFor(job)
+  const [lowest, highest] = options.experience ?? [5, 18]
 
   const random = seededRandom(seedFrom(job.id))
 
@@ -514,7 +535,10 @@ export function applicantsFor(job: Job): Applicant[] {
     const skills = new Set<string>()
     while (skills.size < 3) skills.add(pick(skillPool))
 
-    const experienceYears = 5 + Math.floor(random() * 14)
+    // One draw either way, so a job's people come out exactly as they did
+    // before a search could narrow the range.
+    const experienceYears =
+      lowest + Math.floor(random() * (highest - lowest + 1))
     const band =
       titleBands.find(([max]) => experienceYears < max) ?? titleBands.at(-1)!
 
@@ -571,7 +595,7 @@ export function applicantsFor(job: Job): Applicant[] {
       name,
       title,
       company,
-      location: pick(LOCATIONS),
+      location: options.location ?? pick(LOCATIONS),
       experienceYears,
       // Roughly five lakh a year of experience, plus a spread wide enough that
       // two people with the same experience are not on the same number.
@@ -730,6 +754,22 @@ export function sortApplicants(applicants: Applicant[], sort: string) {
   const rule = SORTS.find((option) => option.value === sort)
   if (!rule || rule.value === "recent") return applicants
   return [...applicants].sort(rule.compare)
+}
+
+/**
+ * The skills from this market's pool that a piece of text names, whole words
+ * and case-insensitive — "Kafka, Kubernetes, platform" names two. A search's
+ * skills bucket highlights these rather than four picked at random, so what is
+ * green on a card is what the recruiter typed.
+ */
+export function skillsIn(job: Job, text: string): string[] {
+  return poolsFor(job).skillPool.filter((skill) =>
+    new RegExp(`\\b${escapeRegExp(skill)}\\b`, "i").test(text)
+  )
+}
+
+function escapeRegExp(text: string) {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 }
 
 /**

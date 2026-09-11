@@ -36,6 +36,7 @@ import {
 } from "@/components/applicant-controls"
 import { CandidateDetail } from "@/components/candidate-detail"
 import { isNew, type Applicant, type ApplicantStatus } from "@/lib/applicants"
+import { useListCopy } from "@/lib/list-source"
 
 /**
  * A candidate read in a panel, without leaving the list.
@@ -78,6 +79,8 @@ export function CandidatePanel({
   /** 1-based, for the "4 of 27" between the arrows. */
   position: { index: number; total: number } | null
 }) {
+  const copy = useListCopy()
+
   /**
    * WHICH candidate's tab was chosen, not just which tab — the same shape
    * `CandidateDetail` uses for its contact disclosure, and for the same reason.
@@ -143,7 +146,9 @@ export function CandidatePanel({
                   </p>
                   <Meta>
                     <MetaItem>{applicant.location}</MetaItem>
-                    <MetaItem>Applied {applicant.appliedAgo}</MetaItem>
+                    <MetaItem>
+                      {copy.arrived} {applicant.appliedAgo}
+                    </MetaItem>
                   </Meta>
 
                   {/* WITH THE PERSON, NOT WITH THE PAGER. Reaching somebody is

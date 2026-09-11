@@ -5,6 +5,15 @@ import { Kbd } from "@workspace/ui/components/kbd"
 import { Separator } from "@workspace/ui/components/separator"
 import { BrandSwitcher } from "@/components/brand-switcher"
 import { CardVariantSwitcher } from "@/components/card-variant-switcher"
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "@workspace/ui/components/toggle-group"
+import {
+  FILTER_VARIANTS,
+  useFilterVariant,
+  type FilterVariant,
+} from "@/lib/filter-variant"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { PROTOTYPE_ITEMS } from "@/lib/nav"
 
@@ -68,10 +77,26 @@ export function SettingsPage() {
 
         <Separator />
 
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 flex-1 basis-64 flex-col gap-1">
+            <h2 className="text-sm font-medium">Database filters</h2>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Two ways to narrow a database search. Juicebox puts the query in a
+              pill with the filters in a dialog, ranked criteria and chips that
+              widen the pool; Refine panel is the live hirist column, every
+              filter on screen beside the results.
+            </p>
+          </div>
+
+          <FilterVariantSwitcher />
+        </div>
+
+        <Separator />
+
         <p className="text-xs leading-relaxed text-muted-foreground">
-          All three persist to <code className="font-mono">localStorage</code>{" "}
+          All four persist to <code className="font-mono">localStorage</code>{" "}
           and sync across tabs, so a shared preview link opens on whichever
-          brand, theme and card layout you last picked.
+          brand, theme, card layout and filters you last picked.
         </p>
       </div>
 
@@ -102,5 +127,29 @@ export function SettingsPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+/** Same shape as `CardVariantSwitcher`: two words, one toggle, no empty state. */
+function FilterVariantSwitcher() {
+  const { variant, setVariant } = useFilterVariant()
+
+  return (
+    <ToggleGroup
+      variant="outline"
+      spacing={0}
+      aria-label="Database filters"
+      value={[variant]}
+      onValueChange={(value) => {
+        const next = value[0] as FilterVariant | undefined
+        if (next) setVariant(next)
+      }}
+    >
+      {FILTER_VARIANTS.map((option) => (
+        <ToggleGroupItem key={option.value} value={option.value}>
+          {option.label}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
   )
 }

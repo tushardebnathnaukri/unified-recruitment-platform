@@ -5,6 +5,7 @@ import { BrandUrlSync } from "@/components/brand-url-sync"
 import { DashboardPage } from "@/routes/dashboard"
 import { JobDetailPage } from "@/routes/job"
 import { CandidatePage } from "@/routes/candidate"
+import { DatabasePage } from "@/routes/database"
 import { JobsPage } from "@/routes/jobs"
 import { LegacyDashboardPage } from "@/routes/legacy-dashboard"
 import { InsightsPage } from "@/routes/insights"
@@ -59,10 +60,7 @@ export function App() {
             path="jobs/:jobId/applicants/:applicantId"
             element={<CandidatePage />}
           />
-          <Route
-            path="database"
-            element={<PlaceholderPage title="Database" />}
-          />
+          <Route path="database" element={<DatabasePage />} />
           <Route path="insights" element={<InsightsPage />} />
           <Route path="search" element={<PlaceholderPage title="Search" />} />
 

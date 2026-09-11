@@ -95,51 +95,10 @@ export function activeJobsFor(brand: Brand): DashboardJob[] {
   return liveJobsFor(brand).filter((job) => job.applicants > 0)
 }
 
-export type RecentSearch = {
-  id: string
-  query: string
-  /** The filters that narrowed it, as chips — enough to tell two runs apart. */
-  filters: string[]
-  matches: number
-  ranAgo: string
-  /** Profiles opened since the search was last run. */
-  newSince: number
-}
-
-/**
- * Saved runs against the resume database.
- *
- * A search is worth listing only if it can be re-run, so each row carries what
- * made it distinct — the query and its filters — rather than a name someone had
- * to invent. `newSince` is the reason to come back: the pool moves even when
- * the query does not.
+/*
+ * Recent searches used to live here too. They moved to `lib/database.ts`
+ * because the database page owns them; the dashboard shows a slice.
  */
-const HIRIST_SEARCHES: RecentSearch[] = [
-  {
-    id: "s1",
-    query: "Kafka, Kubernetes, platform",
-    filters: ["Bengaluru", "9–14 yrs"],
-    matches: 214,
-    ranAgo: "2 hours ago",
-    newSince: 6,
-  },
-  {
-    id: "s2",
-    query: "Engineering manager, payments",
-    filters: ["Multiple locations", "7–11 yrs"],
-    matches: 88,
-    ranAgo: "Yesterday",
-    newSince: 0,
-  },
-  {
-    id: "s3",
-    query: "Design systems, Figma, mobile",
-    filters: ["Pune", "6+ yrs"],
-    matches: 37,
-    ranAgo: "3 days ago",
-    newSince: 4,
-  },
-]
 
 export type RecentProject = {
   id: string
@@ -186,41 +145,13 @@ const HIRIST_PROJECTS: RecentProject[] = [
 ]
 
 /**
- * iimjobs' half of the same two lists.
+ * iimjobs' half of the same list.
  *
- * A recruiter's projects and saved searches are the clearest tell of which
- * product they are in — more than the job list, because these are things THEY
- * wrote rather than postings they happened to receive. Leaving them tech-only
- * meant the iimjobs dashboard offered a saved search for Kafka, which is the
+ * A recruiter's projects are the clearest tell of which product they are in —
+ * more than the job list, because these are things THEY wrote rather than
+ * postings they happened to receive. Leaving them tech-only is the
  * half-converted state that makes a prototype look like a theme switcher again.
  */
-const IIMJOBS_SEARCHES: RecentSearch[] = [
-  {
-    id: "s1",
-    query: "P&L ownership, FMCG sales",
-    filters: ["Mumbai", "12–18 yrs"],
-    matches: 96,
-    ranAgo: "3 hours ago",
-    newSince: 4,
-  },
-  {
-    id: "s2",
-    query: "Category manager, personal care",
-    filters: ["Mumbai", "8–12 yrs"],
-    matches: 54,
-    ranAgo: "Yesterday",
-    newSince: 0,
-  },
-  {
-    id: "s3",
-    query: "Financial controller, CA",
-    filters: ["Bengaluru", "10+ yrs"],
-    matches: 41,
-    ranAgo: "4 days ago",
-    newSince: 2,
-  },
-]
-
 const IIMJOBS_PROJECTS: RecentProject[] = [
   {
     id: "p1",
@@ -247,10 +178,6 @@ const IIMJOBS_PROJECTS: RecentProject[] = [
     updatedAgo: "4 days ago",
   },
 ]
-
-export function recentSearchesFor(brand: Brand): RecentSearch[] {
-  return brand === "hirist" ? HIRIST_SEARCHES : IIMJOBS_SEARCHES
-}
 
 export function recentProjectsFor(brand: Brand): RecentProject[] {
   return brand === "hirist" ? HIRIST_PROJECTS : IIMJOBS_PROJECTS

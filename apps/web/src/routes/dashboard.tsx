@@ -6,7 +6,6 @@ import {
   ArrowUpRightIcon,
   ClockIcon,
   MapPinIcon,
-  SearchIcon,
 } from "lucide-react"
 
 import { Badge } from "@workspace/ui/components/badge"
@@ -34,14 +33,14 @@ import {
   newSinceVisitFor,
   performanceFor,
   recentProjectsFor,
-  recentSearchesFor,
   statsFor,
   worstDrop,
   type DashboardJob,
   type FunnelStage,
   type RecentProject,
-  type RecentSearch,
 } from "@/lib/dashboard"
+import { recentSearchesFor, searchHref } from "@/lib/database"
+import { SearchRow } from "@/components/search-row"
 import { DashboardSkeleton } from "@/components/skeletons"
 import { usePageLoading } from "@/lib/use-page-loading"
 
@@ -419,7 +418,9 @@ function Greeting() {
  * The text is handed on in the query string rather than being kept here. The
  * database page owns parsing it, this page owns asking — and a link that
  * carries its own input survives being pasted to a colleague, which router
- * state does not. `/database` is still a placeholder that ignores it.
+ * state does not. It goes as a natural-language search, which is what a
+ * description is, through `searchHref` — so the city and years in it arrive as
+ * filters, the same as a search started on the database page.
  */
 function RequirementBox() {
   const navigate = useNavigate()
@@ -427,7 +428,7 @@ function RequirementBox() {
 
   const text = draft.trim()
   const search = () => {
-    if (text) navigate(`/database?q=${encodeURIComponent(text)}`)
+    if (text) navigate(searchHref({ mode: "natural", query: text }))
   }
 
   return (
@@ -576,56 +577,16 @@ function RecentSearches() {
         action={<SectionLink to="/database">New search</SectionLink>}
       />
 
+      {/* Three, and the full list is on the database page. Each row re-runs
+          its search there rather than opening an empty box. */}
       <ListCard>
-        {recentSearchesFor(brand).map((search) => (
-          <SearchRow key={search.id} search={search} />
-        ))}
+        {recentSearchesFor(brand)
+          .slice(0, 3)
+          .map((search) => (
+            <SearchRow key={search.id} search={search} />
+          ))}
       </ListCard>
     </section>
-  )
-}
-
-/**
- * The query is the row's identity, so it gets the weight; the filters sit under
- * it as chips because two searches with the same keywords and different
- * locations are different searches and nothing else would tell them apart.
- *
- * Stacked, not media/content/actions: the query, its filters and its numbers
- * are three lines of one thing, so the Item is turned into a column.
- */
-function SearchRow({ search }: { search: RecentSearch }) {
-  return (
-    <Item
-      render={<Link to="/database" />}
-      className="flex-col items-stretch gap-2"
-    >
-      <div className="flex items-start gap-2">
-        <SearchIcon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-        <span className="min-w-0 flex-1 text-sm font-medium">
-          {search.query}
-        </span>
-      </div>
-
-      <div className="flex flex-wrap gap-1.5">
-        {search.filters.map((filter) => (
-          <Badge key={filter} variant="outline" className="font-normal">
-            {filter}
-          </Badge>
-        ))}
-      </div>
-
-      <Meta>
-        <span>{search.matches} matches</span>
-        <span>{search.ranAgo}</span>
-        {/* The only reason to re-run a saved search, so it is the only thing
-            here that gets a colour. */}
-        {search.newSince > 0 && (
-          <Badge variant="success" className="font-normal">
-            {search.newSince} new
-          </Badge>
-        )}
-      </Meta>
-    </Item>
   )
 }
 
