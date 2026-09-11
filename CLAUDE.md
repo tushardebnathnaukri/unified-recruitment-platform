@@ -164,6 +164,23 @@ CV/profile tab in the query string, so any state worth showing someone is in the
 their bucket sizes come from the job's own counts so the Jobs list and the detail page cannot
 disagree.
 
+**The response manager is organised by decision, not by reading.** Statuses are `undecided`,
+`maybe`, `shortlisted`, `contacted`, `rejected` — there is no unread or seen, because the screen
+cannot know what was read and a recruiter's daily question is "who still needs a decision from me".
+Arrival is a separate fact: `newSinceVisit`, against a constant `LAST_VISIT` (one user, no
+accounts). The page opens on **To review** — everybody undecided — as two runs, "New since …" then
+"Earlier", and the sort (Most recent / Best match) applies *inside* each run, never across. A
+decision removes the card at once, with an undo bar. The avatar's dot means new AND undecided
+(`isNew`). Jobs carry `newSinceVisit`, not `unread`, and that is what "N new" means on the Jobs list
+and the Dashboard.
+
+**The Dashboard's requirement box only searches** (`/database?q=`). Projects are meant to file
+themselves by role rather than be created, and two pieces from shapes that were tried and pulled are
+**parked — written, unused, kept on purpose**: `projectForRole` in `lib/dashboard.ts` (which project
+a role would land in) and `requirementParts` in `lib/requirement.ts` (which of location, title,
+experience, industry and skills a description covers). Do not delete them as dead code without
+asking. Word-list autocomplete on the box was built and removed.
+
 **`/insights` is the market; the Dashboard is you.** Insights answers "what does this role pay,
 where are the people, is demand rising" and reads the same for whoever searches it — it is modelled
 on `calculus.hirist.tech`, which serves the same thing at `/insights/`. "How is my hiring going" —
@@ -331,6 +348,12 @@ compositions are placeholders; swap in real instances rather than adding an icon
 cannot hold a description or `documentationLinks`, so each composition carries its Storybook URL as
 an on-canvas caption instead.
 
+**Avatar has a `badge` variant — `none` / `bottom-right` / `top-right`** — rather than a boolean,
+because Figma cannot move a layer inside an instance. `bottom-right` is `AvatarBadge`'s default in
+code; `top-right` is the response manager's "new" dot (`top-0 bottom-auto` in the app). On a card,
+override the badge's ring stroke to `card`, as `ring-card` does in code. The component does not clip
+its contents, so the badge can overlap the circle's edge the way it does in code.
+
 The assembled app shell is the exception, and it follows the rule that governs the whole file: **a
 Figma page mirrors wherever Storybook puts the story.** Storybook keeps the shell under
 `Components/Sidebar`, so the Figma frames sit on the **Sidebar** page beside the component, not in
@@ -372,12 +395,19 @@ Five things about the mirror that are easy to trip over:
   `nav-user.tsx`'s Priya Raman. When the app's fixtures change the Figma ones should follow, or a
   side-by-side comparison starts quietly lying.
 
-Two more traps worth knowing before editing anything in Figma with the Plugin API:
+Four more traps worth knowing before editing anything in Figma with the Plugin API:
 
 - **`resize()` resets auto-layout sizing to FIXED.** Set `layoutSizingVertical = "HUG"` *after* the
   resize, or a card silently stays 10px tall with its content overflowing.
 - **Reassigning `fills` on a node created by an earlier script leaves the binding unresolved** — it
   renders the placeholder colour instead. Recreate the node rather than re-filling it.
+- **`clone()` on a variant drops its `componentPropertyReferences`.** The copy's text stops following
+  the component's text property, so every instance of the new variant shows the component default
+  ("TD") while `componentProperties` reports the override as set. Re-point the clone's text with
+  `componentPropertyReferences = { characters: "<property key>" }`, then check the rendered
+  characters rather than the property value.
+- **`node.query()` cannot match a name containing `+`** — `[name=Avatar + new dot]` parses the `+` as
+  the sibling combinator and returns nothing. Use `findOne(n => n.name === …)` for names like that.
 
 Checking the Figma side against the code is an agent task, not an npm script: MCP tools only exist
 inside the agent's tool loop. `node scripts/figma-variables.mjs --print` emits a read-only Plugin API
