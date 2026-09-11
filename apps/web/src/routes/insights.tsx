@@ -447,9 +447,15 @@ function AdviceRow({ advice }: { advice: Advice }) {
   )
 }
 
+/**
+ * THE ACCENT GOES ON THE ASK, not on what they earn now. `--chart-1` is the
+ * brand token, so whichever series holds it is the one the card is pointing
+ * at — and the number a recruiter sets a band from is the ask, not the
+ * current pay it is measured against.
+ */
 const salaryConfig = {
-  current: { label: "Earning now", color: "var(--chart-1)" },
-  expected: { label: "Asking for", color: "var(--chart-2)" },
+  current: { label: "Earning now", color: "var(--chart-2)" },
+  expected: { label: "Asking for", color: "var(--chart-1)" },
 } satisfies ChartConfig
 
 /**

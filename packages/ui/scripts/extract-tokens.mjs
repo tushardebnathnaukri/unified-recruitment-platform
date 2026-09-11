@@ -42,6 +42,9 @@ const BRAND_TOKENS = [
   "ring",
   "sidebar-primary",
   "sidebar-primary-foreground",
+  // The first chart series is the recruiter's own data, so it takes the
+  // product's accent. chart-2..5 stay shared neutrals.
+  "chart-1",
 ]
 
 // Figma variable scopes, most specific rule first. Never ALL_SCOPES: it

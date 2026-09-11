@@ -77,11 +77,20 @@
     --border: oklch(0.92 0.004 286.32);
     --input: oklch(0.92 0.004 286.32);
     --ring: oklch(0.705 0.015 286.067);
-    --chart-1: oklch(0.871 0.006 286.286);
-    --chart-2: oklch(0.552 0.016 285.938);
-    --chart-3: oklch(0.442 0.017 285.786);
-    --chart-4: oklch(0.37 0.013 285.805);
-    --chart-5: oklch(0.274 0.006 286.033);
+    /* Chart series. THE FIRST ONE IS THE BRAND, the rest are shared neutrals
+       — see the note above the brand layers. This value is a placeholder in
+       exactly the way --primary's above is: a brand layer always wins.
+
+       The ramp is THEME-SCOPED, unlike the version it replaces. That was one
+       set of five values reused verbatim in .dark, so it only ran one way:
+       --chart-1 measured 1.48:1 on a light card and --chart-5 1.19:1 on a dark
+       one, against the 3:1 WCAG 1.4.11 asks of a graphical object. Every value
+       below clears 3:1 against --card in its own theme. */
+    --chart-1: oklch(0.508 0.118 165.612);
+    --chart-2: oklch(0.552 0.016 285.938); /* zinc-500 — 4.83:1 */
+    --chart-3: oklch(0.442 0.017 285.786); /* zinc-600 — 7.73:1 */
+    --chart-4: oklch(0.37 0.013 285.805); /* zinc-700 — 10.46:1 */
+    --chart-5: oklch(0.274 0.006 286.033); /* zinc-800 — 14.89:1 */
     --radius: 0.625rem;
     --sidebar: oklch(0.985 0 0);
     --sidebar-foreground: oklch(0.141 0.005 285.823);
@@ -114,11 +123,13 @@
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
     --ring: oklch(0.552 0.016 285.938);
-    --chart-1: oklch(0.871 0.006 286.286);
-    --chart-2: oklch(0.552 0.016 285.938);
-    --chart-3: oklch(0.442 0.017 285.786);
-    --chart-4: oklch(0.37 0.013 285.805);
-    --chart-5: oklch(0.274 0.006 286.033);
+    /* The ramp mirrored: the card is dark here, so the neutrals climb rather
+       than fall. zinc-500 is the pivot and holds in both themes. */
+    --chart-1: oklch(0.432 0.095 166.913);
+    --chart-2: oklch(0.552 0.016 285.938); /* zinc-500 — 3.67:1 */
+    --chart-3: oklch(0.705 0.015 286.067); /* zinc-400 — 6.74:1 */
+    --chart-4: oklch(0.871 0.006 286.286); /* zinc-300 — 11.99:1 */
+    --chart-5: oklch(0.92 0.004 286.32); /* zinc-200 — 13.98:1 */
     --sidebar: oklch(0.21 0.006 285.885);
     --sidebar-foreground: oklch(0.985 0 0);
     --sidebar-primary: oklch(0.696 0.17 162.48);
@@ -137,6 +148,17 @@
  * on purpose: if the two products ever unify, a brand layer is deleted and no
  * component changes.
  *
+ * SIX TOKENS, NOT FIVE. `--chart-1` joined the five accents: the first series
+ * on a chart is the recruiter's own data, so it wears the product's colour,
+ * while `--chart-2`…`-5` stay shared neutrals. That keeps a two-series chart
+ * readable as "mine against the reference" rather than as two arbitrary hues,
+ * and it is as reversible as the rest of this block — delete the `--chart-1`
+ * line from each layer and the ramp is neutral again.
+ *
+ * It is deliberately NOT the whole ramp. A single-hue five-step scale is a
+ * sequential palette, and nothing here charts sequential data; it would also
+ * put five oranges on hirist, 18° from `--warning`.
+ *
  * `data-brand` and the `light`/`dark` class must sit on the SAME element (the
  * <html> element, set by BrandProvider and ThemeProvider). The `:root` prefix
  * and `:not(.dark)` below depend on that.
@@ -153,6 +175,7 @@
 :root[data-brand="iimjobs"]:not(.dark) {
     --primary: oklch(0.596 0.145 163.225); /* emerald-600 */
     --primary-foreground: oklch(0.979 0.021 166.113); /* emerald-50 */
+    --chart-1: oklch(0.596 0.145 163.225); /* = primary — 3.67:1 on --card */
     --ring: oklch(0.596 0.145 163.225 / 60%);
     --sidebar-primary: oklch(0.596 0.145 163.225);
     --sidebar-primary-foreground: oklch(0.979 0.021 166.113);
@@ -161,6 +184,7 @@
 :root[data-brand="iimjobs"].dark {
     --primary: oklch(0.696 0.17 162.48); /* emerald-500 */
     --primary-foreground: oklch(0.262 0.051 172.552); /* emerald-950 */
+    --chart-1: oklch(0.696 0.17 162.48); /* = primary — 7.19:1 on --card */
     --ring: oklch(0.696 0.17 162.48 / 60%);
     --sidebar-primary: oklch(0.696 0.17 162.48);
     --sidebar-primary-foreground: oklch(0.262 0.051 172.552);
@@ -169,6 +193,7 @@
 :root[data-brand="hirist"]:not(.dark) {
     --primary: oklch(0.58 0.17 40);
     --primary-foreground: oklch(0.99 0.01 40);
+    --chart-1: oklch(0.58 0.17 40); /* = primary — 4.61:1 on --card */
     --ring: oklch(0.58 0.17 40 / 60%);
     --sidebar-primary: oklch(0.58 0.17 40);
     --sidebar-primary-foreground: oklch(0.99 0.01 40);
@@ -177,6 +202,7 @@
 :root[data-brand="hirist"].dark {
     --primary: oklch(0.7 0.15 40);
     --primary-foreground: oklch(0.18 0.04 40);
+    --chart-1: oklch(0.7 0.15 40); /* = primary — 6.27:1 on --card */
     --ring: oklch(0.7 0.15 40 / 60%);
     --sidebar-primary: oklch(0.7 0.15 40);
     --sidebar-primary-foreground: oklch(0.18 0.04 40);

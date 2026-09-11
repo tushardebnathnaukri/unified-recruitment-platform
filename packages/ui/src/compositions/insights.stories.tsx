@@ -40,6 +40,17 @@ import { designComposition } from "@workspace/ui/lib/figma"
  * on the sections below.
  */
 
+/**
+ * Charts here render WITHOUT the mount animation.
+ *
+ * recharts animates a series in from zero via `requestAnimationFrame`, and any
+ * context where rAF does not tick — a background tab, a screenshot runner, a
+ * hidden preview pane — leaves the series at zero size and draws nothing at
+ * all. A blank chart in a design review reads as a broken chart. The app keeps
+ * the animation; Storybook is the surface that has to render identically for
+ * whoever opens the link.
+ */
+
 const SALARY_PERCENTILES = [
   { label: "10th", current: 26, expected: 32 },
   { label: "25th", current: 38, expected: 45 },
@@ -234,9 +245,15 @@ function Advisory() {
   )
 }
 
+/**
+ * THE ACCENT GOES ON THE ASK, not on what they earn now. `--chart-1` is the
+ * brand token, so whichever series holds it is the one the card is pointing
+ * at — and the number a recruiter sets a band from is the ask, not the
+ * current pay it is measured against.
+ */
 const salaryConfig = {
-  current: { label: "Earning now", color: "var(--chart-1)" },
-  expected: { label: "Asking for", color: "var(--chart-2)" },
+  current: { label: "Earning now", color: "var(--chart-2)" },
+  expected: { label: "Asking for", color: "var(--chart-1)" },
 } satisfies ChartConfig
 
 /**
@@ -262,8 +279,18 @@ function SalaryCard() {
               tickMargin={8}
             />
             <ChartTooltip content={<ChartTooltipContent />} />
-            <Bar dataKey="current" fill="var(--color-current)" radius={4} />
-            <Bar dataKey="expected" fill="var(--color-expected)" radius={4} />
+            <Bar
+              dataKey="current"
+              fill="var(--color-current)"
+              radius={4}
+              isAnimationActive={false}
+            />
+            <Bar
+              dataKey="expected"
+              fill="var(--color-expected)"
+              radius={4}
+              isAnimationActive={false}
+            />
           </BarChart>
         </ChartContainer>
 
@@ -306,6 +333,7 @@ function DemandCard() {
               stroke="var(--color-postings)"
               strokeWidth={2}
               dot={false}
+              isAnimationActive={false}
             />
           </LineChart>
         </ChartContainer>

@@ -45,28 +45,33 @@ Used on **/insights** and the Dashboard's performance section.
 reason the config exists: one indirection, so a chart's palette is a token
 decision rather than a per-chart one.
 
-> **\`--chart-1\` … \`--chart-5\` are a NEUTRAL ZINC RAMP.** They are the
-> same five values in light and dark, and the brand layers do not touch them
-> — the \`[data-brand]\` blocks cover the five accent tokens only. So a chart
-> does **not** re-theme with the brand, and does not invert with the theme
-> either.
+> **\`--chart-1\` IS THE BRAND.** The first series on a chart is the
+> recruiter's own data, so it takes \`--primary\` and changes with the
+> product; \`--chart-2\`…\`--chart-5\` are shared neutrals. That keeps a
+> two-series chart readable as "mine against the reference" rather than as two
+> arbitrary hues, and it is as reversible as the rest of the brand layer —
+> delete the \`--chart-1\` line from each layer and the ramp is neutral again.
 >
-> Because the ramp only runs one way, each token is legible in exactly one
-> theme. Measured against \`--card\`:
+> It is deliberately **not** the whole ramp: five steps of one hue is a
+> sequential palette, nothing here charts sequential data, and it would put
+> five oranges on hirist, 18° from \`--warning\`.
 >
-> | token | hex | on white card | on dark card |
-> | --- | --- | --- | --- |
-> | \`--chart-1\` | \`#d4d4d8\` | **1.48:1** | 11.99:1 |
-> | \`--chart-2\` | \`#71717b\` | 4.83:1 | 3.67:1 |
-> | \`--chart-3\` | \`#52525c\` | 7.73:1 | **2.29:1** |
-> | \`--chart-4\` | \`#3f3f46\` | 10.46:1 | **1.70:1** |
-> | \`--chart-5\` | \`#27272a\` | 14.89:1 | **1.19:1** |
+> The neutrals are **theme-scoped**, which they did not used to be. One set of
+> five values was reused verbatim in \`.dark\`, so the ramp only ran one way —
+> \`--chart-1\` measured 1.48:1 on a light card and \`--chart-5\` 1.19:1 on a
+> dark one. Every value now clears the 3:1 WCAG 1.4.11 asks of a graphical
+> object, in its own theme:
 >
-> WCAG 1.4.11 asks 3:1 of a graphical object. \`--chart-1\` is the only series
-> on the Dashboard's funnel AND on the Insights demand line, so both are
-> effectively invisible in light mode. \`TODO(design)\`: whether series should
-> take the brand accent is a question nobody has answered yet, so nothing here
-> has been changed.
+> | token | light card | dark card |
+> | --- | --- | --- |
+> | \`--chart-1\` = \`--primary\` | 3.67–4.61:1 | 6.27–7.19:1 |
+> | \`--chart-2\` zinc-500 | 4.83:1 | 3.67:1 |
+> | \`--chart-3\` zinc-600 / zinc-400 | 7.73:1 | 6.74:1 |
+> | \`--chart-4\` zinc-700 / zinc-300 | 10.46:1 | 11.99:1 |
+> | \`--chart-5\` zinc-800 / zinc-200 | 14.89:1 | 13.98:1 |
+>
+> zinc-500 is the pivot and holds in both themes. The \`--chart-1\` range is
+> iimjobs to hirist.
 
 \`ChartTooltipContent\` and \`ChartLegendContent\` read their labels from the
 same config, so a series is named in one place.
@@ -83,6 +88,17 @@ inside a card whose width is a grid column.
 export default meta
 
 type Story = StoryObj<typeof meta>
+
+/**
+ * Charts here render WITHOUT the mount animation.
+ *
+ * recharts animates a series in from zero via `requestAnimationFrame`, and any
+ * context where rAF does not tick — a background tab, a screenshot runner, a
+ * hidden preview pane — leaves the series at zero size and draws nothing at
+ * all. A blank chart in a design review reads as a broken chart. The app keeps
+ * the animation; Storybook is the surface that has to render identically for
+ * whoever opens the link.
+ */
 
 const funnel = [
   { stage: "Applied", count: 420 },
@@ -118,7 +134,12 @@ export const Funnel: Story = {
           />
           <XAxis type="number" hide />
           <ChartTooltip content={<ChartTooltipContent />} />
-          <Bar dataKey="count" fill="var(--color-count)" radius={4} />
+          <Bar
+            dataKey="count"
+            fill="var(--color-count)"
+            radius={4}
+            isAnimationActive={false}
+          />
         </BarChart>
       </ChartContainer>
     </Card>
@@ -156,12 +177,14 @@ export const Demand: Story = {
             stroke="var(--color-platform)"
             strokeWidth={2}
             dot={false}
+            isAnimationActive={false}
           />
           <Line
             dataKey="frontend"
             stroke="var(--color-frontend)"
             strokeWidth={2}
             dot={false}
+            isAnimationActive={false}
           />
         </LineChart>
       </ChartContainer>
@@ -172,9 +195,9 @@ export const Demand: Story = {
 const ramp = [1, 2, 3, 4, 5]
 
 /**
- * The five chart tokens, drawn from the CSS variables. Flip the theme or the
- * brand in the toolbar: nothing here moves, which is the point being made
- * above.
+ * The five chart tokens, drawn live from the CSS variables. Flip the brand in
+ * the toolbar and the first swatch follows it; flip the theme and the other
+ * four invert.
  */
 export const Palette: Story = {
   name: "The chart ramp",

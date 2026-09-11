@@ -115,14 +115,27 @@ Charts are `packages/ui/src/components/chart.tsx` (shadcn's wrapper over **recha
 `ChartContainer` + a `ChartConfig` whose colours point at `var(--chart-N)`. Used on `/insights` and
 the Dashboard's performance section.
 
-**A chart does NOT re-theme with the brand, and does not invert with the theme.** `--chart-1` …
-`--chart-5` are a monotonic neutral zinc ramp declared once with the same five values in `:root`
-and `.dark`, and the `[data-brand]` blocks cover the five accent tokens only. Because the ramp runs
-one way, each token is legible in exactly one theme: `--chart-1` measures **1.48:1** on a light
-card and `--chart-5` **1.19:1** on a dark one, against the 3:1 WCAG 1.4.11 asks of a graphical
-object. `--chart-1` is the only series on the Dashboard's funnel *and* on the Insights demand line,
-so both are effectively invisible in light mode. See the `TODO(design)` in `chart.stories.tsx` and
-the ramp panel on the Figma **Chart** page — fixing it is a design call, not a mechanical one.
+**`--chart-1` is the brand; `--chart-2`…`-5` are shared, theme-scoped neutrals.** The first series
+on a chart is the recruiter's own data, so it takes `--primary` and changes with the product —
+which is why the brand layers now carry **six** tokens, not five. Whichever series holds `--chart-1`
+is the one the card is pointing at, so put it on the number being acted on (on `/insights` that is
+the *ask*, not current pay).
+
+It is deliberately not the whole ramp: five steps of one hue is a sequential palette, nothing here
+charts sequential data, and it would put five oranges on hirist 18° from `--warning`.
+
+The neutrals are theme-scoped because the card is white in one theme and near-black in the other.
+They did not used to be — one set of five values was reused verbatim in `.dark`, so the ramp ran one
+way and `--chart-1` measured **1.48:1** on a light card while `--chart-5` measured **1.19:1** on a
+dark one. Every value now clears the 3:1 WCAG 1.4.11 asks of a graphical object in its own theme;
+zinc-500 is the pivot and holds in both. The figures are in `chart.stories.tsx` and on the Figma
+**Chart** page.
+
+**recharts animates a series in from zero via `requestAnimationFrame`.** Anywhere rAF does not tick
+— a background tab, a screenshot runner, a hidden preview pane — the series stays at zero size and
+the chart draws its axes and grid and *nothing else*. That reads exactly like a colour bug and is
+not one. The Storybook chart stories pass `isAnimationActive={false}` so a shared link renders the
+same for whoever opens it; the app keeps the animation.
 
 Tailwind v4, configured entirely in CSS — there is no `tailwind.config`.
 `packages/ui/src/styles/globals.css` is the single source of truth: `@theme inline` token map,
@@ -325,6 +338,8 @@ Compositions. That correspondence is the only thing making the two sidebars read
 other — if you move a story, move the Figma frames with it.
 
 **`globals.css` remains the single source of truth. Tokens are generated, never drawn.**
+`extract-tokens.mjs` holds a `BRAND_TOKENS` allowlist and throws if it and the brand layers
+disagree in either direction, so adding a brand-scoped token means editing both.
 
 ```bash
 npm run tokens         # globals.css -> packages/ui/tokens.json
@@ -338,8 +353,9 @@ Five things about the mirror that are easy to trip over:
 
 - **Semantic has four modes** — `iimjobs Light/Dark`, `hirist Light/Dark` — because `--primary` and
   friends vary on *both* axes. Four is also the Figma ceiling on a Professional plan, so a third
-  brand does not fit without a plan change or a different mode model. Neutrals alias the same
-  primitive in all four modes, so only the five accent tokens actually differ.
+  brand does not fit without a plan change or a different mode model. Most neutrals alias the same
+  primitive in all four modes; the six brand tokens differ per brand, and `--chart-2`…`-5` differ
+  per theme.
 - **Colours are approximations.** Several accents and every status colour are outside the sRGB
   gamut; Figma variables are sRGB only, so they are clipped (matching the fallback hexes Tailwind
   itself publishes). Each primitive's description carries the authoritative `oklch()` value.
