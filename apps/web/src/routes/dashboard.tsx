@@ -7,7 +7,6 @@ import {
   ClockIcon,
   MapPinIcon,
   SearchIcon,
-  SparklesIcon,
 } from "lucide-react"
 
 import { Badge } from "@workspace/ui/components/badge"
@@ -19,7 +18,6 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@workspace/ui/components/chart"
-import { Chip } from "@workspace/ui/components/chip"
 import { Item, ItemActions, ItemContent } from "@workspace/ui/components/item"
 import { ListCard } from "@workspace/ui/components/list-card"
 import { Meta, MetaItem } from "@workspace/ui/components/meta"
@@ -37,7 +35,6 @@ import {
   recentProjectsFor,
   recentSearchesFor,
   statsFor,
-  suggestedRequirementsFor,
   worstDrop,
   type DashboardJob,
   type FunnelStage,
@@ -400,84 +397,63 @@ function Greeting() {
 }
 
 /**
- * Start a project by describing the role, straight off the dashboard.
+ * Describe the role, then search for it.
  *
- * IT REPLACED THE "CREATE PROJECT" BUTTON THAT SAT IN THE GREETING. Both went
- * to the same route, and a button beside a box that does the same thing better
- * is a choice the recruiter has to make for no reason. The sidebar still keeps
- * a global create action for every other page.
+ * STRIPPED BACK FOR NOW. This box has carried a "Start project" button, four
+ * action tiles with previews, and then a checklist of what the description
+ * covers plus a tray of Search / Post a job / Get insights. The last two are
+ * parked, not deleted: the checklist logic is `requirementParts` in
+ * `lib/requirement.ts`, and the automatic project a role would be filed under
+ * is `projectForRole` in `lib/dashboard.ts`.
  *
- * NO ACCENT TINT. This was a `bg-primary/5` card, and 5% of a green over a
- * near-white page is not emphasis — it reads as a panel that has been greyed
- * out. The box earns its prominence from position and size instead, and the
- * only saturated thing on it is the button, which is the thing you press.
+ * SEARCH IS THE ONE ACTION. The arrow and Enter both run it; Shift+Enter is the
+ * newline. It is useful on a half-formed query, and it is what a recruiter does
+ * most.
  *
  * The text is handed on in the query string rather than being kept here. The
- * mandate page owns parsing it, this page owns asking — and a link that carries
- * its own input survives being pasted to a colleague, which router state does
- * not.
+ * database page owns parsing it, this page owns asking — and a link that
+ * carries its own input survives being pasted to a colleague, which router
+ * state does not. `/database` is still a placeholder that ignores it.
  */
 function RequirementBox() {
   const navigate = useNavigate()
-  const { brand } = useBrand()
   const [draft, setDraft] = React.useState("")
 
-  const start = () => {
-    const value = draft.trim()
-    if (!value) return
-    navigate(`/projects/new?mandate=${encodeURIComponent(value)}`)
+  const text = draft.trim()
+  const search = () => {
+    if (text) navigate(`/database?q=${encodeURIComponent(text)}`)
   }
 
   return (
-    <Card className="gap-0 overflow-hidden py-0 shadow-lg">
-      <label className="flex cursor-text items-start gap-3 p-4">
-        <SparklesIcon className="mt-1 size-4 shrink-0 text-primary" />
-        <Textarea
-          rows={2}
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          aria-label="Describe the role you are hiring for"
-          placeholder="Describe who you're hiring for — seniority, location, and what they need to have actually done."
-          className="min-h-14 resize-none border-0 bg-transparent p-0 text-base shadow-none focus-visible:border-0 focus-visible:ring-0 md:text-sm dark:bg-transparent"
-          onKeyDown={(event) => {
-            // Cmd/Ctrl+Enter starts; a bare Enter has to stay a newline,
-            // because the useful version of this input runs to two sentences.
-            if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-              event.preventDefault()
-              start()
-            }
-          }}
-        />
-      </label>
+    <Card className="gap-4 p-4 shadow-lg">
+      {/* `rounded-none` is load-bearing. A textarea clips its text to its own
+          rounded corners, and with the padding taken to zero the inherited
+          `rounded-xl` curve cut the left edge off the first letter —
+          "Describe" read as "Oescribe". */}
+      <Textarea
+        rows={2}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        aria-label="Describe the role you are hiring for"
+        placeholder="Describe who you're hiring for — seniority, location, and what they need to have actually done."
+        className="min-h-12 resize-none rounded-none border-0 bg-transparent p-0 text-base shadow-none focus-visible:border-0 focus-visible:ring-0 md:text-sm dark:bg-transparent"
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault()
+            search()
+          }
+        }}
+      />
 
-      {/* A tinted footer rather than a tinted card: the strip separates the
-          input from its actions and keeps the primary button findable, without
-          washing colour across the thing you are trying to type into. */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-muted/40 px-4 py-3">
-        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-          <span className="text-xs text-muted-foreground">Try</span>
-          {/* Action chips, not filters: picking one fills the box rather than
-              launching, so there is no `selected` — a starter is a first draft. */}
-          {suggestedRequirementsFor(brand).map((suggestion) => (
-            <Chip
-              key={suggestion.label}
-              onClick={() => setDraft(suggestion.text)}
-            >
-              {suggestion.label}
-            </Chip>
-          ))}
-        </div>
-
-        <Button
-          type="button"
-          size="sm"
-          disabled={draft.trim() === ""}
-          onClick={start}
-        >
-          Start project
-          <ArrowRightIcon data-icon="inline-end" />
-        </Button>
-      </div>
+      <Button
+        size="icon-sm"
+        className="self-end rounded-full"
+        aria-label="Search the database"
+        disabled={!text}
+        onClick={search}
+      >
+        <ArrowRightIcon />
+      </Button>
     </Card>
   )
 }
@@ -652,9 +628,11 @@ function RecentProjects() {
 
   return (
     <section className="flex min-w-0 flex-col gap-3">
+      {/* No "New project" link: projects are made by what you start in the
+          box above, one per role, so there is nothing to create by hand. */}
       <SectionHeader
         title="Recent projects"
-        action={<SectionLink to="/projects/new">New project</SectionLink>}
+        description="One per role, from whatever you start above"
       />
 
       <ListCard>

@@ -86,35 +86,6 @@ export function activeJobsFor(brand: Brand): DashboardJob[] {
   return liveJobsFor(brand).filter((job) => job.applicants > 0)
 }
 
-/**
- * Starters for the dashboard's requirement box.
- *
- * A blank prompt is the hardest empty state in software, and "describe who you
- * are hiring for" is a sentence nobody wants to compose cold.
- *
- * THE LABEL IS SHORT AND THE TEXT IS LONG. Putting the whole mandate on the
- * chip made three chips that wrapped over two lines and shoved the button
- * around; the role alone is enough to say what the starter is. Picking one
- * fills the box rather than launching — a starter is a first draft, and the
- * point of these is that you edit the numbers before you go.
- */
-const HIRIST_REQUIREMENTS: Requirement[] = [
-  {
-    label: "Platform engineer",
-    text: "Staff platform engineer in Bengaluru, 9–14 years, has run Kafka at scale",
-  },
-  {
-    label: "Engineering manager",
-    text: "Engineering manager for payments, 7–11 years, has managed a team of 6+",
-  },
-  {
-    label: "Product designer",
-    text: "Senior product designer, 6+ years, owns a design system end to end",
-  },
-]
-
-export type Requirement = { label: string; text: string }
-
 export type RecentSearch = {
   id: string
   query: string
@@ -206,30 +177,14 @@ const HIRIST_PROJECTS: RecentProject[] = [
 ]
 
 /**
- * iimjobs' half of the same three lists.
+ * iimjobs' half of the same two lists.
  *
- * A recruiter's projects, saved searches and starter prompts are the clearest
- * tell of which product they are in — more than the job list, because these are
- * things THEY wrote rather than postings they happened to receive. Leaving them
- * tech-only meant the iimjobs dashboard suggested "Platform engineer" and
- * offered a saved search for Kafka, which is the half-converted state that
- * makes a prototype look like a theme switcher again.
+ * A recruiter's projects and saved searches are the clearest tell of which
+ * product they are in — more than the job list, because these are things THEY
+ * wrote rather than postings they happened to receive. Leaving them tech-only
+ * meant the iimjobs dashboard offered a saved search for Kafka, which is the
+ * half-converted state that makes a prototype look like a theme switcher again.
  */
-const IIMJOBS_REQUIREMENTS: Requirement[] = [
-  {
-    label: "Sales leader",
-    text: "VP of enterprise sales in Mumbai, 12–18 years, has carried a 100Cr quota",
-  },
-  {
-    label: "Marketing head",
-    text: "Head of brand marketing for a consumer business, 10–15 years, FMCG background",
-  },
-  {
-    label: "Finance controller",
-    text: "Financial controller, CA, 10+ years, has closed books for a listed company",
-  },
-]
-
 const IIMJOBS_SEARCHES: RecentSearch[] = [
   {
     id: "s1",
@@ -284,16 +239,53 @@ const IIMJOBS_PROJECTS: RecentProject[] = [
   },
 ]
 
-export function suggestedRequirementsFor(brand: Brand): Requirement[] {
-  return brand === "hirist" ? HIRIST_REQUIREMENTS : IIMJOBS_REQUIREMENTS
-}
-
 export function recentSearchesFor(brand: Brand): RecentSearch[] {
   return brand === "hirist" ? HIRIST_SEARCHES : IIMJOBS_SEARCHES
 }
 
 export function recentProjectsFor(brand: Brand): RecentProject[] {
   return brand === "hirist" ? HIRIST_PROJECTS : IIMJOBS_PROJECTS
+}
+
+const FILLER = new Set(["a", "an", "and", "for", "of", "the"])
+
+/** Words that name a role, with the punctuation and filler taken out. */
+function roleWords(text: string): string[] {
+  return text
+    .replace(/—.*$/, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter((word) => word && !FILLER.has(word))
+}
+
+/**
+ * The project a role would be filed under, if there is one already.
+ *
+ * PROJECTS ARE NOT CREATED, THEY ACCUMULATE. Anything started from the
+ * dashboard — a search, a posting, a look at the market — lands in the project
+ * for its role, and the first thing done for a new role makes one. So the
+ * question the start box asks here is only "does this role have a project
+ * yet", matched on whole words either way round: "Engineering manager for
+ * payments" finds "Engineering Manager, Payments", and a half-typed "Staff"
+ * finds "Staff Platform Engineer", but "C" does not find "CFO".
+ *
+ * TODO(design): the mechanics — what counts as the same role, whether a
+ * recruiter can merge or split two, what a project holds — are not decided.
+ */
+export function projectForRole(
+  brand: Brand,
+  role: string
+): RecentProject | undefined {
+  const typed = roleWords(role)
+  if (typed.length === 0) return undefined
+
+  return recentProjectsFor(brand).find((project) => {
+    const named = roleWords(project.name)
+    const [shorter, longer] =
+      typed.length <= named.length ? [typed, named] : [named, typed]
+    return shorter.every((word, i) => word === longer[i])
+  })
 }
 
 /**

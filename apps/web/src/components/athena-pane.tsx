@@ -97,8 +97,7 @@ export function AthenaPane() {
             className="min-h-9 resize-none border-0 bg-transparent p-1 shadow-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
             onKeyDown={(event) => {
               // Enter sends and Shift+Enter breaks the line — the convention
-              // every chat has, and the opposite of the dashboard's requirement
-              // box, where the useful input is two sentences rather than one.
+              // every chat has, and the same as the dashboard's requirement box.
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault()
                 send(draft)
