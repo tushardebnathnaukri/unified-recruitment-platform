@@ -1,3 +1,5 @@
+import type { Brand } from "@workspace/ui/lib/brands"
+
 /**
  * Market data behind Insights, modelled on Calculus.
  *
@@ -11,6 +13,11 @@
  * the median, the city shares sum to 100, and expected pay sits above current
  * everywhere, because a reviewer who spots an impossible number spends the
  * meeting on the data instead of the design.
+ *
+ * RECENT QUERIES ARE THE ONE EXCEPTION, AND ARE BRAND-KEYED. Everything above
+ * is the market and reads the same for anyone; a recruiter's own past lookups
+ * are the recruiter's, the same way Database's recent searches are — see
+ * `recentQueriesFor` at the bottom of this file.
  */
 
 export type Percentile = { label: string; current: number; expected: number }
@@ -314,4 +321,33 @@ export function poolFor(selected: Record<string, string[]>): number {
   }
 
   return Math.max(1, Math.round(POOL_SIZE * fraction))
+}
+
+export type RecentQuery = {
+  id: string
+  query: string
+  ranAgo: string
+}
+
+/**
+ * Past lookups on this page — just the query and when, unlike Database's
+ * recent searches: there is no filter or match count to carry because a
+ * query here has not narrowed anything yet, it only picks which market to
+ * show. Clicking one re-runs it exactly like typing it into the box.
+ */
+const RECENT_QUERIES: Record<Brand, RecentQuery[]> = {
+  iimjobs: [
+    { id: "r1", query: "VP Enterprise Sales", ranAgo: "1 hour ago" },
+    { id: "r2", query: "Category Manager, FMCG", ranAgo: "Yesterday" },
+    { id: "r3", query: "Chief of Staff", ranAgo: "4 days ago" },
+  ],
+  hirist: [
+    { id: "r1", query: "Engineering Manager", ranAgo: "2 hours ago" },
+    { id: "r2", query: "Kafka", ranAgo: "Yesterday" },
+    { id: "r3", query: "Site Reliability Engineer", ranAgo: "5 days ago" },
+  ],
+}
+
+export function recentQueriesFor(brand: Brand): RecentQuery[] {
+  return RECENT_QUERIES[brand]
 }

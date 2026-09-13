@@ -1,5 +1,5 @@
 import * as React from "react"
-import { useSearchParams } from "react-router"
+import { Link, useSearchParams } from "react-router"
 import {
   ArrowDownRightIcon,
   ChevronDownIcon,
@@ -8,8 +8,10 @@ import {
   ArrowUpRightIcon,
   LightbulbIcon,
   MinusIcon,
+  ScaleIcon,
   SearchIcon,
   SlidersHorizontalIcon,
+  TrendingUpIcon,
 } from "lucide-react"
 import { Bar, BarChart, CartesianGrid, Line, LineChart, XAxis } from "recharts"
 
@@ -23,8 +25,17 @@ import {
   type ChartConfig,
 } from "@workspace/ui/components/chart"
 import { Checkbox } from "@workspace/ui/components/checkbox"
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from "@workspace/ui/components/drawer"
 import { Input } from "@workspace/ui/components/input"
+import { Item, ItemActions, ItemContent } from "@workspace/ui/components/item"
 import { Label } from "@workspace/ui/components/label"
+import { ListCard } from "@workspace/ui/components/list-card"
 import { SectionHeader } from "@workspace/ui/components/section-header"
 import {
   Table,
@@ -35,6 +46,8 @@ import {
   TableRow,
 } from "@workspace/ui/components/table"
 import { cn } from "@workspace/ui/lib/utils"
+import { useBrand } from "@workspace/ui/components/brand-provider"
+import { AuroraBand } from "@/components/aurora-band"
 import {
   ADVICE,
   CITIES,
@@ -47,9 +60,11 @@ import {
   SALARY_PERCENTILES,
   SALARY_SUMMARY,
   poolFor,
+  recentQueriesFor,
   type Advice,
   type Facet,
   type FlowRow,
+  type RecentQuery,
 } from "@/lib/insights"
 
 /**
@@ -101,20 +116,38 @@ export function InsightsPage() {
     if (text) search(text)
   }
 
+  // The Refine drawer, opened from the "Filters" chip below @4xl. Declared
+  // here rather than after the empty-state return so hook order stays fixed
+  // regardless of whether a query is present.
+  const [filtersOpen, setFiltersOpen] = React.useState(false)
+
   if (!query) {
     return (
-      <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-6 px-4 pt-8 pb-12 text-center lg:px-6">
-        <div className="flex flex-col items-center gap-1">
-          <p className="text-2xl font-semibold tracking-tight text-balance">
+      // `-mt-4 md:-mt-6` cancels the shell's top padding so the band runs
+      // edge to edge under the header, the same trick the Dashboard's hero
+      // uses — this is the one other place asking "what do you want" gets
+      // the aurora rather than a plain heading.
+      <div className="-mt-4 flex flex-col md:-mt-6">
+        <AuroraBand className="pt-10 pb-16">
+          <p className="mx-auto max-w-2xl px-4 text-center text-2xl font-semibold tracking-tight text-balance text-primary-foreground lg:px-6">
             What role or skill are you looking up?
           </p>
-          <p className="text-sm text-muted-foreground">
-            See what it pays, where the people are, and whether demand is
-            rising — before you post for it.
-          </p>
+        </AuroraBand>
+
+        {/* `relative` is load-bearing, as on the Dashboard: the band above is
+            a positioned element, so without it the band would paint over this
+            whole column and swallow the card that overlaps back into it. The
+            card sits half on the aurora and half on the page underneath it —
+            `-mt-8` against the band's own `pb-16` puts the seam through the
+            card's middle rather than under it. */}
+        <div className="relative mx-auto -mt-8 w-full max-w-2xl px-4 lg:px-6">
+          <QueryBar query={draft} onQueryChange={setDraft} onSubmit={submit} />
         </div>
 
-        <QueryBar query={draft} onQueryChange={setDraft} onSubmit={submit} />
+        <div className="mx-auto flex w-full max-w-2xl flex-col gap-8 px-4 pt-8 pb-12 lg:px-6">
+          <ValueProps />
+          <RecentQueries />
+        </div>
       </div>
     )
   }
@@ -167,50 +200,178 @@ export function InsightsPage() {
   )
 
   return (
-    <div className="flex flex-col gap-6 px-4 lg:px-6">
-      <div className="flex flex-col gap-2">
-        <QueryBar query={draft} onQueryChange={setDraft} onSubmit={submit} />
-        <p className="text-xs text-muted-foreground">
-          Everything below describes people matching "{query}", not your
-          postings.
-        </p>
-      </div>
+    // The Refine rail is a sticky column beside the cards at @4xl and up; below
+    // that width there is no room for it, so the same facets reopen as a
+    // drawer off the "Filters" chip in `AppliedBar` — one `open` state serves
+    // both the chip and the drawer it triggers.
+    <Drawer
+      open={filtersOpen}
+      onOpenChange={setFiltersOpen}
+      swipeDirection="right"
+    >
+      <div className="flex flex-col gap-6 px-4 lg:px-6">
+        <div className="flex flex-col gap-2">
+          <QueryBar query={draft} onQueryChange={setDraft} onSubmit={submit} />
+          <p className="text-xs text-muted-foreground">
+            Everything below describes people matching "{query}", not your
+            postings.
+          </p>
+        </div>
 
-      <div className="flex flex-col gap-6 @4xl/main:flex-row @4xl/main:items-start">
-        <FacetRail selected={selected} onToggle={toggle} onClear={clearAll} />
+        <div className="flex flex-col gap-6 @4xl/main:flex-row @4xl/main:items-start">
+          <FacetRail selected={selected} onToggle={toggle} onClear={clearAll} />
 
-        <div className="flex min-w-0 flex-1 flex-col gap-6">
-          <AppliedBar
-            matched={matched}
-            applied={applied}
-            onRemove={toggle}
-            onClear={clearAll}
-          />
-
-          <Advisory />
-
-          <div className="grid gap-6 @3xl/main:grid-cols-2">
-            <SalaryCard />
-            <DemandCard />
-          </div>
-
-          <GeographyCard />
-
-          <div className="grid gap-6 @3xl/main:grid-cols-2">
-            <FlowCard
-              title="Where they come from"
-              hint="Previous employer of people now in this role"
-              rows={FLOW_IN}
+          <div className="flex min-w-0 flex-1 flex-col gap-6">
+            <AppliedBar
+              matched={matched}
+              applied={applied}
+              onRemove={toggle}
+              onClear={clearAll}
+              onOpenFilters={() => setFiltersOpen(true)}
             />
-            <FlowCard
-              title="Where they go"
-              hint="Who hires them next"
-              rows={FLOW_OUT}
-            />
+
+            <Advisory />
+
+            <div className="grid gap-6 @3xl/main:grid-cols-2">
+              <SalaryCard />
+              <DemandCard />
+            </div>
+
+            <GeographyCard />
+
+            <div className="grid gap-6 @3xl/main:grid-cols-2">
+              <FlowCard
+                title="Where they come from"
+                hint="Previous employer of people now in this role"
+                rows={FLOW_IN}
+              />
+              <FlowCard
+                title="Where they go"
+                hint="Who hires them next"
+                rows={FLOW_OUT}
+              />
+            </div>
           </div>
         </div>
       </div>
+
+      <DrawerContent>
+        <DrawerHeader>
+          <DrawerTitle>Refine</DrawerTitle>
+          <DrawerDescription>
+            {matched.toLocaleString("en-IN")} of{" "}
+            {POOL_SIZE.toLocaleString("en-IN")} profiles
+          </DrawerDescription>
+          {applied.length > 0 && (
+            <Button
+              variant="link"
+              size="sm"
+              className="h-auto self-start px-0 text-xs"
+              onClick={clearAll}
+            >
+              Clear all
+            </Button>
+          )}
+        </DrawerHeader>
+        <div className="overflow-y-auto px-4 pb-4">
+          <FacetRail
+            layout="drawer"
+            selected={selected}
+            onToggle={toggle}
+            onClear={clearAll}
+          />
+        </div>
+      </DrawerContent>
+    </Drawer>
+  )
+}
+
+/**
+ * What the empty state is selling, before it asks for a query — three of the
+ * things a search below actually produces, not generic copy about the page.
+ */
+const VALUE_PROPS = [
+  {
+    icon: ScaleIcon,
+    lead: "Benchmark pay",
+    detail: "by skills, titles, and geography.",
+  },
+  {
+    icon: LightbulbIcon,
+    lead: "Decide faster",
+    detail: "with an advisory that says what to do, not just what happened.",
+  },
+  {
+    icon: TrendingUpIcon,
+    lead: "Track demand",
+    detail: "by location, experience, and time.",
+  },
+]
+
+/** Three cards in a row, not stacked — the same width the search box below sets. */
+function ValueProps() {
+  return (
+    <div className="flex w-full flex-col gap-3 sm:flex-row">
+      {VALUE_PROPS.map((item) => (
+        <Card
+          key={item.lead}
+          className="min-w-0 flex-1 items-start gap-2 p-4 text-left"
+        >
+          <item.icon className="size-5 text-primary" aria-hidden="true" />
+          <p className="text-sm leading-relaxed">
+            <span className="font-medium">{item.lead}</span>{" "}
+            <span className="text-muted-foreground">{item.detail}</span>
+          </p>
+        </Card>
+      ))}
     </div>
+  )
+}
+
+/**
+ * Past lookups, one click from being re-run.
+ *
+ * LIGHTER THAN DATABASE'S RECENT SEARCHES ON PURPOSE. A row there carries
+ * filters, a match count and a "new" badge because the pool underneath it
+ * moves; a query here has not narrowed anything yet, it only picks which
+ * market to look at, so the row is just the query and when.
+ */
+function RecentQueries() {
+  const { brand } = useBrand()
+  const queries = recentQueriesFor(brand)
+
+  return (
+    <div className="flex flex-col gap-3">
+      <SectionHeader title="Recent lookups" />
+
+      <ListCard>
+        {queries.map((recent) => (
+          <RecentQueryRow key={recent.id} recent={recent} />
+        ))}
+      </ListCard>
+    </div>
+  )
+}
+
+function RecentQueryRow({ recent }: { recent: RecentQuery }) {
+  return (
+    <Item render={<Link to={`?q=${encodeURIComponent(recent.query)}`} />}>
+      <ItemContent className="min-w-0 flex-row flex-wrap items-center gap-2">
+        <SearchIcon
+          aria-hidden
+          className="size-3.5 shrink-0 text-muted-foreground"
+        />
+        <span className="min-w-0 flex-1 text-sm font-medium">
+          {recent.query}
+        </span>
+      </ItemContent>
+
+      <ItemActions>
+        <span className="text-xs text-muted-foreground">
+          {recent.ranAgo}
+        </span>
+      </ItemActions>
+    </Item>
   )
 }
 
@@ -265,12 +426,21 @@ function QueryBar({
  * list of equals, which is a rail you scroll rather than one you use. Location,
  * experience and salary are the three a recruiter narrows by first; the rest
  * are there when the question is more specific than that.
+ *
+ * TWO LAYOUTS, ONE SET OF SECTIONS — the same split `RefinePanel` makes on the
+ * Database page. `"column"` is the sticky card beside the cards, hidden below
+ * @4xl where there is no room for it; `"drawer"` is the bare sections with no
+ * card of their own, for the `DrawerContent` the "Filters" chip in
+ * `AppliedBar` opens at that width. The heading, count and "Clear all" live
+ * only in the column — the drawer gets its own from `DrawerHeader`.
  */
 function FacetRail({
+  layout = "column",
   selected,
   onToggle,
   onClear,
 }: {
+  layout?: "column" | "drawer"
   selected: Record<string, string[]>
   onToggle: (facetId: string, value: string) => void
   onClear: () => void
@@ -284,8 +454,28 @@ function FacetRail({
     0
   )
 
+  const sections = FACETS.map((facet) => (
+    <FacetSection
+      key={facet.id}
+      facet={facet}
+      open={open.has(facet.id)}
+      chosen={selected[facet.id]}
+      onToggleSection={() =>
+        setOpen((current) => {
+          const next = new Set(current)
+          if (next.has(facet.id)) next.delete(facet.id)
+          else next.add(facet.id)
+          return next
+        })
+      }
+      onToggle={onToggle}
+    />
+  ))
+
+  if (layout === "drawer") return <>{sections}</>
+
   return (
-    <Card className="h-fit gap-0 p-4 @4xl/main:sticky @4xl/main:top-4 @4xl/main:max-h-[calc(100svh---spacing(24))] @4xl/main:w-64 @4xl/main:shrink-0 @4xl/main:overflow-y-auto">
+    <Card className="hidden h-fit gap-0 p-4 @4xl/main:sticky @4xl/main:top-4 @4xl/main:flex @4xl/main:max-h-[calc(100svh---spacing(24))] @4xl/main:w-64 @4xl/main:shrink-0 @4xl/main:overflow-y-auto">
       <div className="flex h-8 items-center justify-between gap-2">
         <span className="flex items-center gap-2 text-sm font-medium">
           <SlidersHorizontalIcon className="size-4" aria-hidden="true" />
@@ -306,23 +496,7 @@ function FacetRail({
         )}
       </div>
 
-      {FACETS.map((facet) => (
-        <FacetSection
-          key={facet.id}
-          facet={facet}
-          open={open.has(facet.id)}
-          chosen={selected[facet.id]}
-          onToggleSection={() =>
-            setOpen((current) => {
-              const next = new Set(current)
-              if (next.has(facet.id)) next.delete(facet.id)
-              else next.add(facet.id)
-              return next
-            })
-          }
-          onToggle={onToggle}
-        />
-      ))}
+      {sections}
     </Card>
   )
 }
@@ -390,25 +564,49 @@ function FacetSection({
 }
 
 /**
- * What is currently narrowing the page, and how much is left.
+ * What is currently narrowing the page, how much is left, and — below @4xl,
+ * where the Refine rail has nowhere to sit — the only way back to it.
  *
- * ABOVE THE RESULTS, NOT ONLY IN THE RAIL. On a narrow column the rail sits
- * above the cards and scrolls away; without this a recruiter reads numbers for
- * a slice of the market with no reminder that they asked for a slice.
+ * ABOVE THE RESULTS, NOT ONLY IN THE RAIL. A recruiter reading numbers for a
+ * slice of the market needs the reminder that they asked for a slice even
+ * when the rail itself is out of sight, whether that is because it scrolled
+ * away or because this width does not show it at all.
+ *
+ * THE FIRST CHIP OPENS THE DRAWER, rather than a separate button beside the
+ * chips: it is shaped like the applied filters that follow it because it
+ * belongs to the same idea — "what is narrowing this" — even though tapping
+ * it does not remove anything. `@4xl/main:hidden` because the rail itself is
+ * on screen at that width and the drawer it opens would be redundant.
  */
 function AppliedBar({
   matched,
   applied,
   onRemove,
   onClear,
+  onOpenFilters,
 }: {
   matched: number
   applied: { facetId: string; value: string; label: string }[]
   onRemove: (facetId: string, value: string) => void
   onClear: () => void
+  onOpenFilters: () => void
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        onClick={onOpenFilters}
+        className="inline-flex items-center gap-1.5 rounded-4xl border border-border bg-muted/40 py-1 pr-2.5 pl-2.5 text-xs transition-colors hover:bg-muted @4xl/main:hidden"
+      >
+        <SlidersHorizontalIcon className="size-3.5" />
+        Filters
+        {applied.length > 0 && (
+          <Badge className="h-4 min-w-4 rounded-full px-1 tabular-nums">
+            {applied.length}
+          </Badge>
+        )}
+      </button>
+
       <span className="text-sm">
         <span className="font-medium tabular-nums">
           {matched.toLocaleString("en-IN")}
