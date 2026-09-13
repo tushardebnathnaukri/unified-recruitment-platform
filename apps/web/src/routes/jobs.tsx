@@ -346,14 +346,13 @@ function Where({ children }: { children: React.ReactNode }) {
  * the posting is doing exactly what it was bought to do. The age of the oldest
  * follow-up followed it. The counts in the accent are the only colour left, so
  * the card is now read for what it holds rather than scanned for what is wrong.
- * NOTE: the dashboard's job row still ambers its expiry under seven days; if
- * this is the right call, that one should follow.
+ * The dashboard's "Live jobs" list renders this same row, so the two agree.
  *
  * Recommendations and the follow-up age have both come off the card. Both are
  * still in `lib/jobs.ts` — nothing reads `followUpOldestDays` now — if this
  * line should carry either again.
  */
-function LiveRow({ job }: { job: LiveJob }) {
+export function LiveRow({ job }: { job: LiveJob }) {
   return (
     <JobRowShell
       job={job}

@@ -9,6 +9,7 @@ import {
   SearchIcon,
   Settings2Icon,
   SwatchBookIcon,
+  UsersIcon,
 } from "lucide-react"
 
 export type NavItem = {
@@ -39,8 +40,19 @@ export const NAV_ITEMS: NavItem[] = [
   },
   { to: "/jobs", label: "Jobs", icon: BriefcaseIcon, end: false },
   // Sits next to Jobs because it is the other way into a candidate: Jobs is
-  // who came to you, Database is who you go and find.
-  { to: "/database", label: "Database", icon: DatabaseIcon, end: false },
+  // who came to you, Search Resume is who you go and find.
+  {
+    to: "/database",
+    label: "Search Resume",
+    icon: DatabaseIcon,
+    end: false,
+  },
+  {
+    to: "/my-candidates",
+    label: "My Candidates",
+    icon: UsersIcon,
+    end: false,
+  },
   // INSIGHTS, NOT ANALYTICS. What lives here is the market — what a role pays,
   // where the people are, whether demand is rising — and a recruiter reads
   // "analytics" as "how is my hiring going". That question is answered on the

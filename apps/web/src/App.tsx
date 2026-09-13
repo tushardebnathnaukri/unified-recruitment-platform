@@ -61,6 +61,10 @@ export function App() {
             element={<CandidatePage />}
           />
           <Route path="database" element={<DatabasePage />} />
+          <Route
+            path="my-candidates"
+            element={<PlaceholderPage title="My Candidates" />}
+          />
           <Route path="insights" element={<InsightsPage />} />
           <Route path="search" element={<PlaceholderPage title="Search" />} />
 
