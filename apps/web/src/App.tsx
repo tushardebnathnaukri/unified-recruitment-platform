@@ -9,6 +9,7 @@ import { DatabasePage } from "@/routes/database"
 import { JobsPage } from "@/routes/jobs"
 import { LegacyDashboardPage } from "@/routes/legacy-dashboard"
 import { InsightsPage } from "@/routes/insights"
+import { InterviewsPage } from "@/routes/interviews"
 import { PlaceholderPage } from "@/routes/placeholder"
 import { PlaygroundPage } from "@/routes/playground"
 import { SettingsPage } from "@/routes/settings"
@@ -65,10 +66,7 @@ export function App() {
             path="my-candidates"
             element={<PlaceholderPage title="My Lists" />}
           />
-          <Route
-            path="interviews"
-            element={<PlaceholderPage title="Interviews" />}
-          />
+          <Route path="interviews" element={<InterviewsPage />} />
           <Route path="insights" element={<InsightsPage />} />
           <Route path="search" element={<PlaceholderPage title="Search" />} />
 
