@@ -76,7 +76,48 @@ import {
  */
 export function InsightsPage() {
   const [params, setParams] = useSearchParams()
-  const query = params.get("q") ?? "Engineering Manager"
+  const query = params.get("q")?.trim() ?? ""
+
+  // The box follows the URL when the URL brings a query — a pasted link, the
+  // back button — the same rule the Database search box follows. It does not
+  // clear when the query does, so leaving the results for the empty state
+  // (there is no "clear" control here, only a fresh search) keeps the text.
+  const [draft, setDraft] = React.useState(query)
+  const [followed, setFollowed] = React.useState(query)
+  if (query !== followed) {
+    setFollowed(query)
+    if (query) setDraft(query)
+  }
+
+  const search = (next: string) => {
+    const params2 = new URLSearchParams(params)
+    if (next) params2.set("q", next)
+    else params2.delete("q")
+    setParams(params2, { replace: true })
+  }
+
+  const submit = () => {
+    const text = draft.trim()
+    if (text) search(text)
+  }
+
+  if (!query) {
+    return (
+      <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-6 px-4 pt-8 pb-12 text-center lg:px-6">
+        <div className="flex flex-col items-center gap-1">
+          <p className="text-2xl font-semibold tracking-tight text-balance">
+            What role or skill are you looking up?
+          </p>
+          <p className="text-sm text-muted-foreground">
+            See what it pays, where the people are, and whether demand is
+            rising — before you post for it.
+          </p>
+        </div>
+
+        <QueryBar query={draft} onQueryChange={setDraft} onSubmit={submit} />
+      </div>
+    )
+  }
 
   /**
    * One param per facet, comma separated, absent when nothing is picked — so
@@ -127,15 +168,13 @@ export function InsightsPage() {
 
   return (
     <div className="flex flex-col gap-6 px-4 lg:px-6">
-      <QueryBar
-        query={query}
-        onQueryChange={(next) => {
-          const params2 = new URLSearchParams(params)
-          if (next) params2.set("q", next)
-          else params2.delete("q")
-          setParams(params2, { replace: true })
-        }}
-      />
+      <div className="flex flex-col gap-2">
+        <QueryBar query={draft} onQueryChange={setDraft} onSubmit={submit} />
+        <p className="text-xs text-muted-foreground">
+          Everything below describes people matching "{query}", not your
+          postings.
+        </p>
+      </div>
 
       <div className="flex flex-col gap-6 @4xl/main:flex-row @4xl/main:items-start">
         <FacetRail selected={selected} onToggle={toggle} onClear={clearAll} />
@@ -184,29 +223,32 @@ export function InsightsPage() {
 function QueryBar({
   query,
   onQueryChange,
+  onSubmit,
 }: {
   query: string
   onQueryChange: (query: string) => void
+  onSubmit: () => void
 }) {
   return (
-    <Card className="gap-3 p-4">
+    <Card className="w-full gap-3 p-4">
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-56 flex-1">
           <SearchIcon className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
             onChange={(event) => onQueryChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter") return
+              event.preventDefault()
+              onSubmit()
+            }}
             aria-label="Role or skill to look up"
             placeholder="A role or a skill — Engineering Manager, Kafka"
             className="pl-9"
           />
         </div>
-        <Button>Search</Button>
+        <Button onClick={onSubmit}>Search</Button>
       </div>
-
-      <p className="text-xs text-muted-foreground">
-        Everything below describes people matching this, not your postings.
-      </p>
     </Card>
   )
 }

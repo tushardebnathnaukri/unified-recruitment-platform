@@ -63,7 +63,11 @@ export function App() {
           <Route path="database" element={<DatabasePage />} />
           <Route
             path="my-candidates"
-            element={<PlaceholderPage title="My Candidates" />}
+            element={<PlaceholderPage title="My Lists" />}
+          />
+          <Route
+            path="interviews"
+            element={<PlaceholderPage title="Interviews" />}
           />
           <Route path="insights" element={<InsightsPage />} />
           <Route path="search" element={<PlaceholderPage title="Search" />} />

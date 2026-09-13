@@ -1,6 +1,7 @@
 import type { LucideIcon } from "lucide-react"
 import {
   BriefcaseIcon,
+  CalendarCheckIcon,
   ChartColumnIcon,
   CircleHelpIcon,
   DatabaseIcon,
@@ -17,6 +18,8 @@ export type NavItem = {
   label: string
   icon: LucideIcon
   end: boolean
+  /** Draws a divider above this item, separating it from the one before. */
+  separatorBefore?: boolean
 }
 
 /** A utility-nav entry. Without `to` it renders as a button and goes nowhere. */
@@ -47,17 +50,24 @@ export const NAV_ITEMS: NavItem[] = [
     icon: DatabaseIcon,
     end: false,
   },
-  {
-    to: "/my-candidates",
-    label: "My Candidates",
-    icon: UsersIcon,
-    end: false,
-  },
   // INSIGHTS, NOT ANALYTICS. What lives here is the market — what a role pays,
   // where the people are, whether demand is rising — and a recruiter reads
   // "analytics" as "how is my hiring going". That question is answered on the
   // Dashboard, by numbers about their own postings.
   { to: "/insights", label: "Insights", icon: ChartColumnIcon, end: false },
+  {
+    to: "/my-candidates",
+    label: "My Lists",
+    icon: UsersIcon,
+    end: false,
+    separatorBefore: true,
+  },
+  {
+    to: "/interviews",
+    label: "Interviews",
+    icon: CalendarCheckIcon,
+    end: false,
+  },
 ]
 
 /**
