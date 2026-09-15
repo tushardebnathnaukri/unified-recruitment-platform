@@ -26,6 +26,7 @@ import {
 import { BRANDS } from "@workspace/ui/lib/brands"
 import { cn } from "@workspace/ui/lib/utils"
 
+import { useAthenaContext } from "@/components/athena-provider"
 import { AuroraBand } from "@/components/aurora-band"
 import { CandidateList } from "@/components/candidate-list"
 import {
@@ -47,7 +48,14 @@ import {
   type SearchResults,
 } from "@/lib/database"
 import { matchesFilters } from "@/lib/applicants"
-import type { CandidateSource } from "@/lib/candidate-source"
+import {
+  findMorePeople,
+  saveTopFive,
+  summariseResults,
+  whyBestMatch,
+  type SearchResultsContext,
+} from "@/lib/athena"
+import { candidateHref, type CandidateSource } from "@/lib/candidate-source"
 import {
   defaultCriteria,
   scoreFor,
@@ -535,6 +543,51 @@ function SearchResultsPage({
     kind: "search",
     label: headlineFor(query, mode),
     href: searchHref({ query, mode, boolean }),
+  })
+
+  /**
+   * What Athena can answer about these results. Under either filter design:
+   * both write the same URL keys, so loosening a filter from her answer is the
+   * same `apply` the Juicebox dialog uses, and "Expand pool" is counted here
+   * even when the refine panel shows no chips for it.
+   */
+  const athena: SearchResultsContext = {
+    headline: headlineFor(query, mode),
+    people: people.map(decided),
+    requiredSkills,
+    verdictsOf: juicebox
+      ? (person) => verdicts.get(person.id) ?? []
+      : undefined,
+    hrefFor: (person) => candidateHref(candidateSource(), person.id),
+    expansions: () =>
+      expansions(params, scored, count).map((expansion) => ({
+        label: expansion.label,
+        gain: expansion.gain,
+        apply: () => apply(expansion.params),
+      })),
+    from: candidateSource(),
+  }
+  useAthenaContext({
+    label: athena.headline,
+    detail: `${people.length} matches`,
+    openers: [
+      {
+        prompt: "Why is the best match first?",
+        answer: () => whyBestMatch(athena),
+      },
+      {
+        prompt: "How can I find more people?",
+        answer: () => findMorePeople(athena),
+      },
+      {
+        prompt: "Summarise these results",
+        answer: () => summariseResults(athena),
+      },
+      {
+        prompt: "Save the top five to a list",
+        answer: () => saveTopFive(athena),
+      },
+    ],
   })
 
   const panel = {

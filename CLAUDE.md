@@ -323,8 +323,15 @@ strongest five" are Best match's top five, and shortlisting from the pane moves 
 behind it. Free text gets `CANNOT_ANSWER`, never a plausible invention. Replies are **blocks**
 (`athena-blocks.tsx`): text, candidate rows with Shortlist/Maybe, a **proposal** (a batch decision
 that does nothing until Apply, and has Undo), link rows (to a route or to a dock thread), and a
-**draft**. The job page, the candidate page and the Dashboard register contexts so far. Every other
-page shows only the "Looking at" line.
+**draft**. The job page, the candidate page, Search Resume's results and the Dashboard register contexts so
+far. Every other page shows only the "Looking at" line.
+
+**On Search Resume, Athena reads the same numbers the page does.** "Why is the best match first?"
+prints the top person's verdicts, the same `verdictsFor` lines the card shows. It says when the top
+two are level on the criteria and the search's own order decides. "How can I find more people?"
+runs `expansions` (under both filter designs, since they share URL keys), and each row's Apply is
+the page's own `apply`, so +64 really lands 64 more people. "Save the top five" files people into a
+list and removes nobody from any list, like the bulk save.
 
 **Check that an answer can actually appear before designing it.** The mock pools never deal anybody
 all of a posting's four required skills; three of four is the ceiling. So "shortlist the full

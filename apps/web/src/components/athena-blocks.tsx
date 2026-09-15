@@ -2,8 +2,12 @@ import * as React from "react"
 import { Link } from "react-router"
 import {
   ArrowRightIcon,
+  BookmarkIcon,
   CheckIcon,
+  ListPlusIcon,
   MessageCircleIcon,
+  MinusIcon,
+  ThumbsUpIcon,
   Undo2Icon,
 } from "lucide-react"
 
@@ -14,9 +18,20 @@ import {
 } from "@workspace/ui/components/avatar"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@workspace/ui/components/dropdown-menu"
 import { Textarea } from "@workspace/ui/components/textarea"
 import { useDecisions } from "@/components/decisions-provider"
 import { useMessages } from "@/components/messages-provider"
+import { NewListDialog } from "@/components/save-to-list"
+import { useSavedLists } from "@/components/saved-lists-provider"
 import type { Applicant } from "@/lib/applicants"
 import {
   DECISION_LABELS,
@@ -49,6 +64,12 @@ export function AthenaBlock({ block }: { block: Block }) {
       return <DraftBlock block={block} />
     case "compare":
       return <CompareBlock block={block} />
+    case "evidence":
+      return <EvidenceBlock verdicts={block.verdicts} />
+    case "expand":
+      return <ExpandBlock items={block.items} />
+    case "save":
+      return <SaveBlock block={block} />
   }
 }
 
@@ -232,6 +253,168 @@ function CompareBlock({
           )
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * A person's verdict on each criterion — the result card's own evidence lines,
+ * stacked for the pane's width: chip over sentence rather than beside it.
+ */
+function EvidenceBlock({
+  verdicts,
+}: {
+  verdicts: Extract<Block, { kind: "evidence" }>["verdicts"]
+}) {
+  return (
+    <ul className="flex flex-col divide-y overflow-hidden rounded-xl border bg-card">
+      {verdicts.map((verdict) => (
+        <li
+          key={verdict.criterion}
+          className="flex flex-col items-start gap-1.5 p-3"
+        >
+          <Badge
+            variant={verdict.met ? "success" : "outline"}
+            className="max-w-full font-normal"
+            title={verdict.criterion}
+          >
+            {verdict.met ? (
+              <ThumbsUpIcon data-icon="inline-start" />
+            ) : (
+              <MinusIcon data-icon="inline-start" />
+            )}
+            <span className="sr-only">
+              {verdict.met ? "Meets" : "Does not meet"}:{" "}
+            </span>
+            <span className="truncate">{verdict.label}</span>
+          </Badge>
+          <span className={verdict.met ? "text-xs text-foreground" : "text-xs"}>
+            {verdict.evidence}
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/**
+ * "Expand pool", answered. Each row loosens one filter on the page behind the
+ * pane, and the number is who it adds. Applying one changes the others' counts
+ * — they were each counted against the search as it was — so once one is
+ * applied the rest say so rather than offering numbers that are now stale.
+ */
+function ExpandBlock({
+  items,
+}: {
+  items: Extract<Block, { kind: "expand" }>["items"]
+}) {
+  const [applied, setApplied] = React.useState<string | null>(null)
+
+  return (
+    <ul className="flex flex-col divide-y overflow-hidden rounded-xl border bg-card">
+      {items.map((item) => (
+        <li key={item.label} className="flex items-center gap-2 p-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <span className="text-sm text-foreground">{item.label}</span>
+            <span className="text-xs text-success tabular-nums">
+              +{item.gain} {item.gain === 1 ? "person" : "people"}
+            </span>
+          </div>
+          {applied === item.label ? (
+            <span className="flex items-center gap-1 text-xs text-foreground">
+              <CheckIcon className="size-3.5 text-primary" />
+              Applied
+            </span>
+          ) : applied ? (
+            <span className="text-xs">Ask again for new counts</span>
+          ) : (
+            <Button
+              size="xs"
+              variant="outline"
+              onClick={() => {
+                item.apply()
+                setApplied(item.label)
+              }}
+            >
+              Apply
+            </Button>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/**
+ * People to file into a list. ADDS, NEVER REMOVES, like the selection bar's
+ * Save to list: these five are already in whatever lists they are in, and
+ * picking one more should not quietly take them out of the rest.
+ */
+function SaveBlock({ block }: { block: Extract<Block, { kind: "save" }> }) {
+  const { lists, listsOf, setLists, createList } = useSavedLists()
+  const [naming, setNaming] = React.useState(false)
+  const [savedTo, setSavedTo] = React.useState<string | null>(null)
+
+  const file = (listId: string) => {
+    for (const person of block.people) {
+      const current = listsOf(person.id)
+      if (!current.includes(listId))
+        setLists(person, [...current, listId], block.from)
+    }
+    setSavedTo(listId)
+  }
+  const savedName = lists.find((list) => list.id === savedTo)?.name
+
+  return (
+    <div className="flex flex-col gap-3 rounded-xl border bg-card p-3">
+      <div className="flex -space-x-2">
+        {block.people.map((person) => (
+          <PersonAvatar key={person.id} person={person} ring />
+        ))}
+      </div>
+      <p className="text-xs leading-relaxed">{namesOf(block.people)}</p>
+
+      {savedName ? (
+        <div className="flex items-center gap-2 text-sm text-foreground">
+          <CheckIcon className="size-4 text-primary" />
+          <span className="min-w-0 truncate">
+            Added {block.people.length} to {savedName}
+          </span>
+        </div>
+      ) : (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={<Button size="sm" className="self-start" />}
+          >
+            <BookmarkIcon data-icon="inline-start" />
+            Save {block.people.length} to a list
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-64">
+            {/* The label inside the group: Base UI's GroupLabel throws
+                outside one (see CLAUDE.md). */}
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>Add them to</DropdownMenuLabel>
+              {lists.map((list) => (
+                <DropdownMenuItem key={list.id} onClick={() => file(list.id)}>
+                  <span className="truncate">{list.name}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => setNaming(true)}>
+              <ListPlusIcon />
+              New list…
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+
+      <NewListDialog
+        open={naming}
+        onOpenChange={setNaming}
+        description={`Name it by what it is for. The ${block.people.length} go straight in.`}
+        onCreate={(name) => file(createList(name))}
+      />
     </div>
   )
 }

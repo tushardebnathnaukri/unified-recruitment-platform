@@ -5,6 +5,8 @@ import {
   type Applicant,
   type ApplicantStatus,
 } from "@/lib/applicants"
+import type { CandidateSource } from "@/lib/candidate-source"
+import type { Verdict } from "@/lib/criteria"
 import type { Job, LiveJob } from "@/lib/jobs"
 import type { Conversation, Message } from "@/lib/messages"
 
@@ -30,6 +32,25 @@ export type Block =
       kind: "candidates"
       /** `href` is absent where a person has no page to go to (My Lists). */
       people: { person: Applicant; reason: string; href?: string }[]
+    }
+  | {
+      /** A person's verdict on each of a search's criteria, as the card prints them. */
+      kind: "evidence"
+      verdicts: Verdict[]
+    }
+  | {
+      /**
+       * Ways to loosen a search, each with the number of people it would add.
+       * `apply` writes the loosened filter into the page's URL.
+       */
+      kind: "expand"
+      items: { label: string; gain: number; apply: () => void }[]
+    }
+  | {
+      /** People to file into a list the recruiter picks. Adds, never removes. */
+      kind: "save"
+      people: Applicant[]
+      from?: CandidateSource
     }
   | {
       /**
@@ -569,6 +590,180 @@ export function compareCandidates({
         kind: "compare",
         people: people.map((person) => ({ person, href: hrefFor(person) })),
         requiredSkills,
+      },
+    ],
+  }
+}
+
+// ─── A search's results ──────────────────────────────────────────────────────
+
+/**
+ * What the Search Resume results page knows when a question is asked. People
+ * are the ones matching right now, with this session's decisions laid over.
+ * `verdictsOf` is present only under the Juicebox filters, where criteria rank
+ * the list; under the refine panel the search's own skills do.
+ */
+export type SearchResultsContext = {
+  headline: string
+  people: Applicant[]
+  requiredSkills: string[]
+  verdictsOf?: (person: Applicant) => Verdict[]
+  hrefFor: (person: Applicant) => string
+  /** Counted on demand — each one runs every loosening against the whole pool. */
+  expansions: () => { label: string; gain: number; apply: () => void }[]
+  from: CandidateSource
+}
+
+const byMatch = (people: Applicant[]) =>
+  [...people].sort((a, b) => b.match - a.match)
+
+/** Why the top of Best match is the top, read off the same verdicts the card prints. */
+export function whyBestMatch(context: SearchResultsContext): Reply {
+  const { headline, people, requiredSkills, verdictsOf, hrefFor } = context
+  if (people.length === 0) {
+    return text(headline, "Nobody matches this search as it is filtered now.")
+  }
+
+  const [top, next] = byMatch(people)
+  const blocks: Block[] = []
+
+  if (verdictsOf) {
+    const verdicts = verdictsOf(top)
+    const met = verdicts.filter((verdict) => verdict.met).length
+    blocks.push({
+      kind: "text",
+      text:
+        verdicts.length === 0
+          ? `${top.name} is first of ${people.length}. This search has no criteria, so the order is the search's own.`
+          : `${top.name} is first of ${people.length} on Best match. They meet ${met} of the ${verdicts.length} criteria, and criteria higher on the list count for more.`,
+    })
+    if (verdicts.length > 0) blocks.push({ kind: "evidence", verdicts })
+    if (next && verdicts.length > 0) {
+      const theirs = verdictsOf(next)
+      const nextMet = theirs.filter((verdict) => verdict.met).length
+      const missesFirst = !theirs[0]?.met && verdicts[0]?.met
+      // The same weighting `scoreFor` uses. Level on it, the order between the
+      // two is the search's own tie-break — said, rather than left to look
+      // like a reason the criteria gave.
+      const weight = (list: Verdict[]) =>
+        list.reduce(
+          (sum, verdict, index) =>
+            verdict.met ? sum + (list.length - index) : sum,
+          0
+        )
+      const level = weight(theirs) === weight(verdicts)
+      blocks.push({
+        kind: "text",
+        text: level
+          ? `Second is ${next.name}, level on the criteria (${nextMet} of ${theirs.length}), so the search's own ranking decides between them.`
+          : `Second is ${next.name}, meeting ${nextMet} of ${theirs.length}${missesFirst ? `, but not the first: ${theirs[0].criterion.toLowerCase()}` : ""}.`,
+      })
+    }
+  } else if (requiredSkills.length === 0) {
+    blocks.push({
+      kind: "text",
+      text: `${top.name} is first of ${people.length}. The search named no skills, so the order is the search's own ranking.`,
+    })
+  } else {
+    const matched = matchedSkills(top, requiredSkills)
+    blocks.push({
+      kind: "text",
+      text: `${top.name} is first of ${people.length} on Best match: ${matched.length} of the ${requiredSkills.length} skills the search named${matched.length > 0 ? ` (${listOf(matched)})` : ""}, the most of anyone here.`,
+    })
+  }
+
+  blocks.push({
+    kind: "candidates",
+    people: [
+      {
+        person: top,
+        reason: reasonFor(top, requiredSkills),
+        href: hrefFor(top),
+      },
+    ],
+  })
+
+  return { about: headline, blocks }
+}
+
+/** The loosenings worth the most people, each applicable from the answer. */
+export function findMorePeople(context: SearchResultsContext): Reply {
+  const options = context.expansions()
+
+  if (options.length === 0) {
+    return text(
+      context.headline,
+      "No filter is narrowing this search in a way that would find more people. A broader search is the way in — the back arrow keeps this one's text."
+    )
+  }
+
+  return {
+    about: context.headline,
+    blocks: [
+      {
+        kind: "text",
+        text: `${context.people.length} match now. Each of these loosens one filter; the number is counted against the whole pool, not estimated.`,
+      },
+      { kind: "expand", items: options },
+    ],
+  }
+}
+
+/** The five best matches, to be filed into a list the recruiter picks. */
+export function saveTopFive(context: SearchResultsContext): Reply {
+  const top = byMatch(context.people).slice(0, 5)
+
+  if (top.length === 0) {
+    return text(
+      context.headline,
+      "Nobody matches this search, so there is nobody to save."
+    )
+  }
+
+  return {
+    about: context.headline,
+    blocks: [
+      {
+        kind: "text",
+        text: `The ${count(top.length, "best match", "best matches")}. Pick a list and they are added to it; nobody is taken out of a list they are already in.`,
+      },
+      { kind: "save", people: top, from: context.from },
+    ],
+  }
+}
+
+/** What the people matching look like, as a group. */
+export function summariseResults(context: SearchResultsContext): Reply {
+  const { headline, people } = context
+  if (people.length === 0) {
+    return text(headline, "Nobody matches this search as it is filtered now.")
+  }
+
+  const years = people
+    .map((person) => person.experienceYears)
+    .sort((a, b) => a - b)
+  const pay = people
+    .map((person) => person.currentCtcLakh)
+    .sort((a, b) => a - b)
+  const cities = new Map<string, number>()
+  for (const person of people)
+    cities.set(person.location, (cities.get(person.location) ?? 0) + 1)
+  const [city, inCity] = [...cities].sort((a, b) => b[1] - a[1])[0]
+  const soon = people.filter((person) => person.noticeDays <= 30).length
+  const decided = people.filter(
+    (person) => person.status !== "undecided"
+  ).length
+
+  return {
+    about: headline,
+    blocks: [
+      {
+        kind: "text",
+        text: `${count(people.length, "person matches", "people match")}${decided > 0 ? `, ${decided} of them already with a decision` : ""}. ${inCity} are in ${city}, the most of any city.`,
+      },
+      {
+        kind: "text",
+        text: `Experience runs ${years[0]}–${years.at(-1)} years (median ${years[Math.floor(years.length / 2)]}). Current pay runs ₹${pay[0]}L–₹${pay.at(-1)}L (median ₹${pay[Math.floor(pay.length / 2)]}L), and ${Math.round((soon / people.length) * 100)}% can join within 30 days.`,
       },
     ],
   }
