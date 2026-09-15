@@ -1,6 +1,7 @@
 import { SparklesIcon } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
+import { Kbd } from "@workspace/ui/components/kbd"
 import { Separator } from "@workspace/ui/components/separator"
 import { SidebarTrigger } from "@workspace/ui/components/sidebar"
 import {
@@ -71,7 +72,9 @@ export function SiteHeader({ title }: { title: string }) {
               <SparklesIcon data-icon="inline-start" />
               Athena
             </TooltipTrigger>
-            <TooltipContent>Ask Athena about this page</TooltipContent>
+            <TooltipContent>
+              Ask Athena about this page <Kbd>A</Kbd>
+            </TooltipContent>
           </Tooltip>
         )}
       </div>

@@ -37,7 +37,7 @@ import { titleForPath } from "@/lib/nav"
  * the same idea on a phone.
  */
 export function AthenaPane() {
-  const { open, setOpen, context } = useAthena()
+  const { open, setOpen, context, pending, clearPending } = useAthena()
   const { pathname } = useLocation()
   const { brand } = useBrand()
   const [threads, setThreads] = React.useState<
@@ -105,6 +105,20 @@ export function AthenaPane() {
       }, 600)
     )
   }
+
+  // A question asked from outside the pane — a card's menu, the selection bar.
+  // Held until any reply in flight has landed rather than dropped, and read
+  // through a ref so the effect is about the question, not about `ask`, which
+  // is a new function every render.
+  const askRef = React.useRef(ask)
+  React.useEffect(() => {
+    askRef.current = ask
+  })
+  React.useEffect(() => {
+    if (!pending || thinkingIn) return
+    clearPending()
+    askRef.current(pending.prompt, pending)
+  }, [pending, thinkingIn, clearPending])
 
   // Newest message into view. Layout effect rather than effect: after paint the
   // thread has already been seen in its old position, which reads as a jump.

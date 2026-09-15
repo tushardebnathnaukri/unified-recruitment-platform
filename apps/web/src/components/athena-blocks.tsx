@@ -47,6 +47,8 @@ export function AthenaBlock({ block }: { block: Block }) {
       return <LinksBlock items={block.items} />
     case "draft":
       return <DraftBlock block={block} />
+    case "compare":
+      return <CompareBlock block={block} />
   }
 }
 
@@ -76,12 +78,7 @@ function CandidatesBlock({
             <div className="flex items-start gap-2.5">
               <PersonAvatar person={person} />
               <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <Link
-                  to={href}
-                  className="truncate text-sm font-medium text-foreground underline-offset-4 hover:underline"
-                >
-                  {person.name}
-                </Link>
+                <PersonName name={person.name} href={href} />
                 <span className="truncate text-xs text-muted-foreground">
                   {person.title} · {person.company}
                 </span>
@@ -123,6 +120,132 @@ function CandidatesBlock({
         )
       })}
     </ul>
+  )
+}
+
+/**
+ * Two or three people as columns, attribute by attribute.
+ *
+ * A LABEL OVER EACH ROW, NOT A LABEL COLUMN. At 384px a column of labels costs
+ * a third of the width three people need; a label spanning the row above their
+ * values costs a line instead. The value that leads on a fact with an agreed
+ * direction — most skills asked for, soonest start — is set in the foreground
+ * colour and the rest are muted, so the comparison reads without counting.
+ *
+ * The decision row is live, like the candidate rows: shortlist one here and
+ * the list behind moves.
+ */
+function CompareBlock({
+  block,
+}: {
+  block: Extract<Block, { kind: "compare" }>
+}) {
+  const { decided, decide } = useDecisions()
+  const people = block.people.map(({ person, href }) => ({
+    person: decided(person),
+    href,
+    matched: person.skills.filter((skill) =>
+      block.requiredSkills.includes(skill)
+    ),
+  }))
+  const columns = {
+    gridTemplateColumns: `repeat(${people.length}, minmax(0, 1fr))`,
+  }
+
+  const mostSkills = Math.max(...people.map((p) => p.matched.length))
+  const soonest = Math.min(...people.map((p) => p.person.noticeDays))
+  const lead = (leads: boolean) =>
+    leads && people.length > 1 ? "font-medium text-foreground" : ""
+
+  const row = (
+    label: string,
+    cell: (entry: (typeof people)[number]) => React.ReactNode
+  ) => (
+    <div className="flex flex-col gap-1 border-t px-3 py-2">
+      <span className="text-[10px] font-medium tracking-[0.07em] uppercase">
+        {label}
+      </span>
+      <div className="grid gap-2 text-xs" style={columns}>
+        {people.map((entry) => (
+          <div key={entry.person.id} className="min-w-0 break-words">
+            {cell(entry)}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="flex flex-col overflow-hidden rounded-xl border bg-card">
+      <div className="grid gap-2 p-3" style={columns}>
+        {people.map(({ person, href }) => (
+          <div
+            key={person.id}
+            className="flex min-w-0 flex-col items-start gap-1.5"
+          >
+            <PersonAvatar person={person} />
+            <PersonName name={person.name} href={href} />
+            <span className="line-clamp-2 text-xs">
+              {person.title} · {person.company}
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {block.requiredSkills.length > 0 &&
+        row("Skills asked for", ({ matched }) => (
+          <span className={lead(matched.length === mostSkills)}>
+            {matched.length} of {block.requiredSkills.length}
+            {matched.length > 0 && (
+              <span className="block font-normal text-muted-foreground">
+                {matched.join(", ")}
+              </span>
+            )}
+          </span>
+        ))}
+      {row("Experience", ({ person }) => `${person.experienceYears} yrs`)}
+      {row("Current pay", ({ person }) => `₹${person.currentCtcLakh}L`)}
+      {row("Notice", ({ person }) => (
+        <span className={lead(person.noticeDays === soonest)}>
+          {person.noticeDays === 0
+            ? "Can join now"
+            : `${person.noticeDays} days`}
+        </span>
+      ))}
+      {row("Location", ({ person }) => person.location)}
+
+      <div className="grid gap-2 border-t p-3" style={columns}>
+        {people.map(({ person }) =>
+          person.status === "undecided" ? (
+            <Button
+              key={person.id}
+              size="xs"
+              className="min-w-0"
+              onClick={() => decide(person.id, "shortlisted")}
+            >
+              Shortlist
+            </Button>
+          ) : (
+            <Badge key={person.id} variant="secondary" className="max-w-full">
+              {DECISION_LABELS[person.status]}
+            </Badge>
+          )
+        )}
+      </div>
+    </div>
+  )
+}
+
+/** A person's name, linked to their page when they have one. */
+function PersonName({ name, href }: { name: string; href?: string }) {
+  const className =
+    "max-w-full truncate text-sm font-medium text-foreground underline-offset-4"
+  return href ? (
+    <Link to={href} className={`${className} hover:underline`}>
+      {name}
+    </Link>
+  ) : (
+    <span className={className}>{name}</span>
   )
 }
 

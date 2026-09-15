@@ -4,6 +4,10 @@ import { useSearchParams } from "react-router"
 import {
   CalendarCheckIcon,
   CalendarPlusIcon,
+  CheckIcon,
+  CircleHelpIcon,
+  BookmarkIcon,
+  ListPlusIcon,
   ChevronDownIcon,
   DownloadIcon,
   EllipsisIcon,
@@ -14,15 +18,18 @@ import {
   PanelsTopLeftIcon,
   PhoneIcon,
   SearchIcon,
+  SparklesIcon,
   Table2Icon,
   ThumbsUpIcon,
   Trash2Icon,
   TrophyIcon,
   UserRoundIcon,
+  XIcon,
 } from "lucide-react"
 
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
+import { Checkbox } from "@workspace/ui/components/checkbox"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -33,6 +40,9 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from "@workspace/ui/components/dropdown-menu"
 import {
   Empty,
@@ -55,10 +65,15 @@ import { CandidatePanel } from "@/components/candidate-panel"
 import { CandidateDetail } from "@/components/candidate-detail"
 import { useAthena } from "@/components/athena-provider"
 import { useDecisions } from "@/components/decisions-provider"
-import { SaveToList } from "@/components/save-to-list"
+import { useMessages } from "@/components/messages-provider"
+import { NewListDialog, SaveToList } from "@/components/save-to-list"
+import { useSavedLists } from "@/components/saved-lists-provider"
+import { firstMessageTo } from "@/lib/messages"
 import { ScheduleInterview } from "@/components/schedule-interview"
+import { aboutCandidate, compareCandidates } from "@/lib/athena"
 import {
   CandidateSourceContext,
+  candidateHref,
   type CandidateSource,
 } from "@/lib/candidate-source"
 import { Meta, MetaItem } from "@workspace/ui/components/meta"
@@ -186,6 +201,26 @@ const DEFAULT_BUCKET: ResponseBucket = "undecided"
  * better match from three weeks ago does not jump ahead of today's arrivals.
  * `filter` is stable, so each half keeps the order the sort already gave it.
  */
+/**
+ * Who is ticked, and asking Athena about people — handed down to the cards and
+ * table rows by context rather than threaded through four layers of props. The
+ * split view does not take part: its list already has a selection, the person
+ * whose CV is open, and a second kind of selected in the same narrow column
+ * would be two highlights meaning two things.
+ */
+type Picking = {
+  isPicked: (id: string) => boolean
+  toggle: (id: string) => void
+  /** Ticks or unticks a whole run at once — "Select all" over a tab. */
+  setMany: (ids: string[], on: boolean) => void
+  askAbout: (people: Applicant[]) => void
+}
+
+const PickingContext = React.createContext<Picking | null>(null)
+
+/** How many people a comparison holds: three columns is what the pane fits. */
+const COMPARE_MAX = 3
+
 function queueOrder(applicants: Applicant[]) {
   return [
     ...applicants.filter((applicant) => applicant.newSinceVisit),
@@ -440,9 +475,8 @@ function CandidateListBody({
    * not by finding the person again in another tab.
    */
   const [undo, setUndo] = React.useState<{
-    id: string
-    name: string
-    from: ApplicantStatus
+    /** Everybody the decision moved, and where each of them was before. */
+    moved: { id: string; name: string; from: ApplicantStatus }[]
     to: ApplicantStatus
     at: number
   } | null>(null)
@@ -453,14 +487,30 @@ function CandidateListBody({
     // the decision again clears it — there is nothing to bring back.
     if (!results && applicant && applicant.status !== status) {
       setUndo({
-        id,
-        name: applicant.name,
-        from: applicant.status,
+        moved: [{ id, name: applicant.name, from: applicant.status }],
         to: status,
         at: Date.now(),
       })
     }
     decide(id, status)
+  }
+
+  /**
+   * A decision for everybody ticked. ALWAYS UNDOABLE, results included: one
+   * card's decision on a results list is a badge you can see and press again,
+   * but twelve at once is not something anybody can take back by hand.
+   */
+  const decideMany = (people: Applicant[], status: ApplicantStatus) => {
+    const moved = people
+      .filter((person) => person.status !== status)
+      .map((person) => ({
+        id: person.id,
+        name: person.name,
+        from: person.status,
+      }))
+    if (moved.length === 0) return
+    moved.forEach((entry) => decide(entry.id, status))
+    setUndo({ moved, to: status, at: Date.now() })
   }
 
   React.useEffect(() => {
@@ -548,75 +598,154 @@ function CandidateListBody({
 
   const openProfile = (id: string) => setParams({ profile: id })
 
+  /**
+   * TICKED PEOPLE, IN THE URL like everything else on this screen, so "compare
+   * these three" is a link. In the order they were ticked, which is the order
+   * their columns take. Kept across tabs and through decisions: somebody you
+   * shortlisted a second ago is still somebody you meant to compare.
+   */
+  const pickedIds = (searchParams.get("picked") ?? "")
+    .split(",")
+    .filter(Boolean)
+  const picked = pickedIds
+    .map((id) => all.find((applicant) => applicant.id === id))
+    .filter((applicant): applicant is Applicant => Boolean(applicant))
+  const setPicked = (ids: string[]) =>
+    setParams({ picked: ids.length > 0 ? ids.join(",") : null })
+
+  const { ask, open: athenaOpen } = useAthena()
+  const sourceFor = React.useContext(CandidateSourceContext)
+  const askAbout = (people: Applicant[]) => {
+    const context = {
+      people,
+      requiredSkills,
+      hrefFor: (person: Applicant) =>
+        sourceFor ? candidateHref(sourceFor(person), person.id) : undefined,
+    }
+    const firsts = people.map((person) => person.name.split(" ")[0])
+    ask(
+      people.length === 1
+        ? {
+            prompt: `Tell me about ${people[0].name}`,
+            answer: () => aboutCandidate(context),
+          }
+        : {
+            prompt: `Compare ${firsts.slice(0, -1).join(", ")} and ${firsts.at(-1)}`,
+            answer: () => compareCandidates(context),
+          }
+    )
+  }
+
+  const picking: Picking = {
+    isPicked: (id) => pickedIds.includes(id),
+    // From the URL as it is now, not as this render saw it: two ticks in quick
+    // succession would otherwise both start from the same list and the second
+    // would undo the first.
+    toggle: (id) =>
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current)
+          const ids = (current.get("picked") ?? "").split(",").filter(Boolean)
+          const updated = ids.includes(id)
+            ? ids.filter((other) => other !== id)
+            : [...ids, id]
+          if (updated.length > 0) next.set("picked", updated.join(","))
+          else next.delete("picked")
+          return next
+        },
+        { replace: true }
+      ),
+    setMany: (ids, on) =>
+      setSearchParams(
+        (current) => {
+          const next = new URLSearchParams(current)
+          const before = (current.get("picked") ?? "")
+            .split(",")
+            .filter(Boolean)
+          const updated = on
+            ? [...before, ...ids.filter((id) => !before.includes(id))]
+            : before.filter((id) => !ids.includes(id))
+          if (updated.length > 0) next.set("picked", updated.join(","))
+          else next.delete("picked")
+          return next
+        },
+        { replace: true }
+      ),
+    askAbout,
+  }
+
   return (
-    <div className="flex flex-col gap-5 px-4 lg:px-6">
-      {/* Mounted at the page rather than inside a view, because it is the same
+    <PickingContext value={picking}>
+      <div className="flex flex-col gap-5 px-4 lg:px-6">
+        {/* Mounted at the page rather than inside a view, because it is the same
           panel whichever of the three is rendering and closing it must not
           depend on which one opened it. */}
-      <CandidatePanel
-        applicant={profiled}
-        requiredSkills={requiredSkills}
-        onDecide={decideWithUndo}
-        onClose={() => setParams({ profile: null })}
-        onPrev={at > 0 ? () => step(-1) : undefined}
-        onNext={at >= 0 && at < walkable.length - 1 ? () => step(1) : undefined}
-        position={at >= 0 ? { index: at + 1, total: walkable.length } : null}
-      />
+        <CandidatePanel
+          applicant={profiled}
+          requiredSkills={requiredSkills}
+          onDecide={decideWithUndo}
+          onClose={() => setParams({ profile: null })}
+          onPrev={at > 0 ? () => step(-1) : undefined}
+          onNext={
+            at >= 0 && at < walkable.length - 1 ? () => step(1) : undefined
+          }
+          position={at >= 0 ? { index: at + 1, total: walkable.length } : null}
+        />
 
-      {header}
+        {header}
 
-      {/* Results keep their filters on screen with nobody left under them —
+        {/* Results keep their filters on screen with nobody left under them —
           otherwise narrowing to zero would take away the controls that undo
           it. The empty list says so in its own words instead. */}
-      {generated.length === 0 && !results ? (
-        empty
-      ) : results ? (
-        <div className="flex flex-col gap-4 @4xl/main:flex-row @4xl/main:items-start">
-          {/* `items-start` is load-bearing: stretched to the row's height, a
+        {generated.length === 0 && !results ? (
+          empty
+        ) : results ? (
+          <div className="flex flex-col gap-4 @4xl/main:flex-row @4xl/main:items-start">
+            {/* `items-start` is load-bearing: stretched to the row's height, a
               sticky sidebar has nowhere to stick. */}
-          {sidebar}
+            {sidebar}
 
-          <div className="flex min-w-0 flex-1 flex-col gap-4">
-            {toolbar}
-            {loading ? (
-              <ApplicantListSkeleton />
-            ) : (
-              <ApplicantList
-                applicants={listFor("all")}
-                bucket={BUCKETS.find((bucket) => bucket.value === "all")!}
-                progress={null}
-                view="cards"
-                verdicts={verdicts}
-                annotate={annotate}
-                requiredSkills={requiredSkills}
-                selectedId={selectedId}
-                onSelect={(id) => setParams({ candidate: id })}
-                doc={doc}
-                onDocChange={(next) =>
-                  setParams({ doc: next === "cv" ? null : next })
-                }
-                onOpenProfile={openProfile}
-                onDecide={decideWithUndo}
-              />
-            )}
+            <div className="flex min-w-0 flex-1 flex-col gap-4">
+              {toolbar}
+              {loading ? (
+                <ApplicantListSkeleton />
+              ) : (
+                <ApplicantList
+                  applicants={listFor("all")}
+                  bucket={BUCKETS.find((bucket) => bucket.value === "all")!}
+                  progress={null}
+                  view="cards"
+                  verdicts={verdicts}
+                  annotate={annotate}
+                  requiredSkills={requiredSkills}
+                  selectedId={selectedId}
+                  onSelect={(id) => setParams({ candidate: id })}
+                  doc={doc}
+                  onDocChange={(next) =>
+                    setParams({ doc: next === "cv" ? null : next })
+                  }
+                  onOpenProfile={openProfile}
+                  onDecide={decideWithUndo}
+                />
+              )}
+            </div>
           </div>
-        </div>
-      ) : (
-        <Tabs
-          className="gap-4"
-          value={active}
-          onValueChange={(value) => {
-            const next = String(value)
-            setParams({ bucket: next === DEFAULT_BUCKET ? null : next })
-          }}
-        >
-          {/* THE TAB ROW SPANS BOTH COLUMNS. The buckets are not a property of
+        ) : (
+          <Tabs
+            className="gap-4"
+            value={active}
+            onValueChange={(value) => {
+              const next = String(value)
+              setParams({ bucket: next === DEFAULT_BUCKET ? null : next })
+            }}
+          >
+            {/* THE TAB ROW SPANS BOTH COLUMNS. The buckets are not a property of
               the list column — they are which of five lists this whole screen
               is showing, and the filter panel narrows whichever one you pick.
               Sitting the tabs inside the list column said the opposite: that
               the filters were a peer of the tabs rather than something applied
               underneath them. */}
-          {/* THE TABS AND THE PILLS STICK AS ONE BLOCK. Two separately sticky
+            {/* THE TABS AND THE PILLS STICK AS ONE BLOCK. Two separately sticky
               rows would need the second offset by the first's height, and the
               gap between them would let cards show through once stuck.
               `sticky top-0`, not offset by `--header-height`: `SiteHeader` is
@@ -626,30 +755,30 @@ function CandidateListBody({
               `CandidateList`'s own `px-4 lg:px-6` gutter so the cards' rings
               are covered edge to edge. `z-20`, not `z-10`: `AvatarBadge` is
               `z-10` and later in the DOM, so a tie puts the new dot on top. */}
-          <div className="sticky top-0 z-20 -mx-4 flex flex-col gap-4 border-b border-border bg-card px-4 py-2 lg:-mx-6 lg:px-6">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <TabsList className="max-w-full overflow-x-auto">
-                {BUCKETS.map((bucket) => (
-                  <TabsTrigger key={bucket.value} value={bucket.value}>
-                    {bucket.label}
-                    <span className="text-xs text-muted-foreground tabular-nums">
-                      {counts[bucket.value]}
-                    </span>
-                  </TabsTrigger>
-                ))}
-              </TabsList>
+            <div className="sticky top-0 z-20 -mx-4 flex flex-col gap-4 border-b border-border bg-card px-4 py-2 lg:-mx-6 lg:px-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <TabsList className="max-w-full overflow-x-auto">
+                  {BUCKETS.map((bucket) => (
+                    <TabsTrigger key={bucket.value} value={bucket.value}>
+                      {bucket.label}
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {counts[bucket.value]}
+                      </span>
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
 
-              {!isMobile && (
-                <ViewSwitcher
-                  view={view}
-                  onChange={(next) =>
-                    setParams({ view: next === "cards" ? null : next })
-                  }
-                />
-              )}
-            </div>
+                {!isMobile && (
+                  <ViewSwitcher
+                    view={view}
+                    onChange={(next) =>
+                      setParams({ view: next === "cards" ? null : next })
+                    }
+                  />
+                )}
+              </div>
 
-            {/* The panel that narrows the list, then the list, side by side above
+              {/* The panel that narrows the list, then the list, side by side above
               896px of CONTENT width — a container query, not a viewport one,
               because the thing that has to fit both is the content column, and
               it changes width when the nav sidebar collapses.
@@ -665,64 +794,381 @@ function CandidateListBody({
               It is OUTSIDE the tab panels, not repeated in each: five copies of
               one search box is five things a screen reader has to tell apart,
               and the query would reset every time you changed tab. */}
-            <FilterBar {...filterProps} />
-          </div>
-
-          <div className="flex flex-col">
-            <div className="flex min-w-0 flex-1 flex-col">
-              {loading ? (
-                <ApplicantListSkeleton />
-              ) : (
-                BUCKETS.map((bucket) => (
-                  <TabsContent key={bucket.value} value={bucket.value}>
-                    <ApplicantList
-                      applicants={listFor(bucket.value)}
-                      bucket={bucket}
-                      progress={bucket.value === "undecided" ? progress : null}
-                      view={view}
-                      requiredSkills={requiredSkills}
-                      selectedId={selectedId}
-                      onSelect={(id) => setParams({ candidate: id })}
-                      doc={doc}
-                      onDocChange={(next) =>
-                        setParams({ doc: next === "cv" ? null : next })
-                      }
-                      onOpenProfile={openProfile}
-                      onDecide={decideWithUndo}
-                    />
-                  </TabsContent>
-                ))
-              )}
+              <FilterBar {...filterProps} />
             </div>
-          </div>
-        </Tabs>
-      )}
 
-      {/* The live region is always mounted and only its contents change, so
+            <div className="flex flex-col">
+              <div className="flex min-w-0 flex-1 flex-col">
+                {loading ? (
+                  <ApplicantListSkeleton />
+                ) : (
+                  BUCKETS.map((bucket) => (
+                    <TabsContent key={bucket.value} value={bucket.value}>
+                      <ApplicantList
+                        applicants={listFor(bucket.value)}
+                        bucket={bucket}
+                        progress={
+                          bucket.value === "undecided" ? progress : null
+                        }
+                        view={view}
+                        requiredSkills={requiredSkills}
+                        selectedId={selectedId}
+                        onSelect={(id) => setParams({ candidate: id })}
+                        doc={doc}
+                        onDocChange={(next) =>
+                          setParams({ doc: next === "cv" ? null : next })
+                        }
+                        onOpenProfile={openProfile}
+                        onDecide={decideWithUndo}
+                      />
+                    </TabsContent>
+                  ))
+                )}
+              </div>
+            </div>
+          </Tabs>
+        )}
+
+        {/* The live region is always mounted and only its contents change, so
           a screen reader announces the decision rather than missing an
           element that arrived already filled. */}
-      <div role="status" aria-live="polite">
-        {undo && (
-          <div className="fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-2 rounded-full bg-foreground py-1.5 pr-1.5 pl-4 text-sm whitespace-nowrap text-background shadow-lg">
-            <span>
-              {undo.name} {undo.to === "undecided" ? "back in" : "moved to"}{" "}
-              {BUCKETS.find((bucket) => bucket.value === undo.to)?.label}
-            </span>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="rounded-full text-background hover:bg-background/15 hover:text-background dark:hover:bg-background/15"
-              onClick={() => {
-                decide(undo.id, undo.from)
-                setUndo(null)
-              }}
+        <div role="status" aria-live="polite">
+          {undo && (
+            <div
+              className={cn(
+                "fixed left-1/2 z-40 flex -translate-x-1/2 items-center",
+                athenaOpen && BAR_BESIDE_ATHENA,
+                picked.length > 0 ? "bottom-20" : "bottom-6",
+                "gap-2 rounded-full bg-foreground py-1.5 pr-1.5 pl-4 text-sm whitespace-nowrap text-background shadow-lg"
+              )}
             >
-              Undo
-            </Button>
-          </div>
+              <span>
+                {undo.moved.length === 1
+                  ? undo.moved[0].name
+                  : `${undo.moved.length} people`}{" "}
+                {undo.to === "undecided" ? "back in" : "moved to"}{" "}
+                {BUCKETS.find((bucket) => bucket.value === undo.to)?.label}
+              </span>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="rounded-full text-background hover:bg-background/15 hover:text-background dark:hover:bg-background/15"
+                onClick={() => {
+                  undo.moved.forEach((entry) => decide(entry.id, entry.from))
+                  setUndo(null)
+                }}
+              >
+                Undo
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {picked.length > 0 && (
+          <SelectionBar
+            beside={athenaOpen}
+            picked={picked}
+            onAsk={() => askAbout(picked)}
+            onDecide={(status) => {
+              decideMany(picked, status)
+              // On a queue they have just left the tab you are looking at;
+              // keeping them ticked would be a selection you cannot see.
+              setPicked([])
+            }}
+            onClear={() => setPicked([])}
+          />
         )}
       </div>
+    </PickingContext>
+  )
+}
+
+/**
+ * Centred on what is left of the window once Athena has her column, not on the
+ * window. Centred on the window, the bars ran under the message dock's
+ * launcher, which moves aside for her and lands at the content's right edge.
+ * Above `md` only, where she is a column rather than a cover.
+ */
+const BAR_BESIDE_ATHENA = "md:left-[calc((100vw-var(--athena-width))/2)]"
+
+const BULK_DECISIONS: {
+  value: Extract<ApplicantStatus, "shortlisted" | "maybe" | "rejected">
+  label: string
+  icon: LucideIcon
+}[] = [
+  { value: "shortlisted", label: "Shortlist", icon: CheckIcon },
+  { value: "maybe", label: "Maybe", icon: CircleHelpIcon },
+  { value: "rejected", label: "Not a fit", icon: XIcon },
+]
+
+/** Ghost controls on the dark pill, where the system's ghost would vanish. */
+const ON_BAR =
+  "rounded-full text-background hover:bg-background/15 hover:text-background aria-expanded:bg-background/15 aria-expanded:text-background dark:hover:bg-background/15"
+
+/**
+ * What to do with the ticked people.
+ *
+ * DECISIONS AND ATHENA ON THE BAR, THE REST BEHIND ⋯. The three decisions are
+ * the card's own yes / maybe / no, in the same order and icons, because they
+ * are what a recruiter ticks a dozen people to do. Athena is the other thing
+ * worth a button — and only for one to three people, the most a comparison
+ * holds; past that she steps off the bar rather than sitting there disabled.
+ * Save, message and download are occasional, and a pill that carries all of
+ * them is too wide to sit beside Athena's pane.
+ *
+ * Under the undo bar, which moves up to make room, because the undo is about
+ * the last thing you did and this is about what you are about to do.
+ */
+function SelectionBar({
+  beside,
+  picked,
+  onAsk,
+  onDecide,
+  onClear,
+}: {
+  /** Athena is open, so centre on the content rather than the window. */
+  beside: boolean
+  picked: Applicant[]
+  onAsk: () => void
+  onDecide: (status: ApplicantStatus) => void
+  onClear: () => void
+}) {
+  return (
+    <div
+      role="region"
+      aria-label="Selected candidates"
+      className={cn(
+        "fixed bottom-6 left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full bg-foreground py-1.5 pr-1.5 pl-4 text-sm whitespace-nowrap text-background shadow-lg",
+        beside && BAR_BESIDE_ATHENA
+      )}
+    >
+      <span className="mr-1 tabular-nums">{picked.length} selected</span>
+
+      {BULK_DECISIONS.map((decision) => (
+        <Tooltip key={decision.value}>
+          <TooltipTrigger
+            render={
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label={`${decision.label} ${picked.length}`}
+                className={ON_BAR}
+                onClick={() => onDecide(decision.value)}
+              />
+            }
+          >
+            <decision.icon />
+          </TooltipTrigger>
+          <TooltipContent>{decision.label}</TooltipContent>
+        </Tooltip>
+      ))}
+
+      <BulkMore picked={picked} onDone={onClear} />
+
+      {picked.length <= COMPARE_MAX && (
+        <Button size="sm" className="ml-1 rounded-full" onClick={onAsk}>
+          <SparklesIcon data-icon="inline-start" />
+          {picked.length === 1 ? "Ask Athena" : "Compare in Athena"}
+        </Button>
+      )}
+
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        aria-label="Clear selection"
+        className={ON_BAR}
+        onClick={onClear}
+      >
+        <XIcon />
+      </Button>
     </div>
+  )
+}
+
+/**
+ * The bar's occasional actions. SAVE FILES, IT DOES NOT TOGGLE: the card's
+ * menu ticks and unticks one person's lists, but a dozen people are in a dozen
+ * different lists already, so picking a list here adds everybody to it and
+ * takes nobody out of anything. MESSAGE WRITES DRAFTS, one per thread, and
+ * opens the dock on them — the same promise Athena's drafts make, that nothing
+ * goes until the recruiter sends it.
+ *
+ * The new-list dialog sits outside the menu, which unmounts when it closes.
+ */
+function BulkMore({
+  picked,
+  onDone,
+}: {
+  picked: Applicant[]
+  onDone: () => void
+}) {
+  const { lists, listsOf, setLists, createList } = useSavedLists()
+  const { fillDrafts } = useMessages()
+  const sourceFor = React.useContext(CandidateSourceContext)
+  const [naming, setNaming] = React.useState(false)
+  // Held while the dialog is open: the selection is cleared on save, and the
+  // dialog must still know who it is filing.
+  const [filing, setFiling] = React.useState<Applicant[]>([])
+
+  const fileAll = (people: Applicant[], listId: string) => {
+    for (const person of people) {
+      const current = listsOf(person.id)
+      if (!current.includes(listId))
+        setLists(person, [...current, listId], sourceFor?.(person))
+    }
+    onDone()
+  }
+
+  const messageAll = () => {
+    fillDrafts(
+      picked.map((person) => {
+        const source = sourceFor?.(person)
+        return {
+          to: {
+            id: person.id,
+            name: person.name,
+            role: source?.label ?? person.title,
+            photo: person.photo,
+          },
+          body: firstMessageTo(person.name, source),
+        }
+      })
+    )
+    onDone()
+  }
+
+  return (
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              size="icon-sm"
+              variant="ghost"
+              aria-label="More actions for the selected"
+              className={ON_BAR}
+            />
+          }
+        >
+          <EllipsisIcon />
+        </DropdownMenuTrigger>
+
+        <DropdownMenuContent side="top" align="center" className="min-w-56">
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <BookmarkIcon />
+              Save to list
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="w-64">
+              {/* The label inside the group: Base UI's GroupLabel throws
+                  outside one (see CLAUDE.md). */}
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>
+                  Add {picked.length}{" "}
+                  {picked.length === 1 ? "person" : "people"} to
+                </DropdownMenuLabel>
+                {lists.map((list) => (
+                  <DropdownMenuItem
+                    key={list.id}
+                    onClick={() => fileAll(picked, list.id)}
+                  >
+                    <span className="truncate">{list.name}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => {
+                  setFiling(picked)
+                  setNaming(true)
+                }}
+              >
+                <ListPlusIcon />
+                New list…
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+
+          <DropdownMenuItem onClick={messageAll}>
+            <MailIcon />
+            Message {picked.length}
+          </DropdownMenuItem>
+
+          {/* A no-op, like the card's own: there are no CVs to download. */}
+          <DropdownMenuItem>
+            <DownloadIcon />
+            Download {picked.length === 1 ? "CV" : `${picked.length} CVs`}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <NewListDialog
+        open={naming}
+        onOpenChange={setNaming}
+        description={`Name it by what it is for. The ${filing.length} selected go straight in.`}
+        onCreate={(name) => fileAll(filing, createList(name))}
+      />
+    </>
+  )
+}
+
+/**
+ * Ticks everybody in the tab — ALL OF IT, NOT THE PAGE ON SCREEN, and it says
+ * the number so that is not a surprise. Half-ticked when some are. `compact` is
+ * the table's header cell, where the column is the label.
+ */
+function SelectAll({
+  people,
+  compact = false,
+}: {
+  people: Applicant[]
+  compact?: boolean
+}) {
+  const picking = React.useContext(PickingContext)
+  if (!picking || people.length === 0) return null
+
+  const ids = people.map((person) => person.id)
+  const count = ids.filter((id) => picking.isPicked(id)).length
+  const every = count === ids.length
+  const label = every ? "Clear selection" : `Select all ${ids.length}`
+
+  const box = (
+    <Checkbox
+      checked={every}
+      indeterminate={count > 0 && !every}
+      onCheckedChange={() => picking.setMany(ids, !every)}
+      aria-label={label}
+    />
+  )
+
+  if (compact) return box
+
+  return (
+    <Label className="flex w-fit items-center gap-2 px-5 text-sm font-normal text-muted-foreground">
+      {box}
+      {label}
+    </Label>
+  )
+}
+
+/** A card's or row's tick. Absent outside a list that can pick. */
+function PickBox({
+  applicant,
+  className,
+}: {
+  applicant: Applicant
+  className?: string
+}) {
+  const picking = React.useContext(PickingContext)
+  if (!picking) return null
+
+  return (
+    <Checkbox
+      checked={picking.isPicked(applicant.id)}
+      onCheckedChange={() => picking.toggle(applicant.id)}
+      aria-label={`Select ${applicant.name}`}
+      className={className}
+    />
   )
 }
 
@@ -862,31 +1308,35 @@ function ApplicantList({
       ) : view === "table" ? (
         <ApplicantTable
           sections={sectionsOf(shown)}
+          everyone={applicants}
           requiredSkills={requiredSkills}
           onDecide={onDecide}
           onOpenProfile={onOpenProfile}
         />
       ) : (
-        sectionsOf(shown).map((section) => (
-          <React.Fragment key={section.key}>
-            {section.heading}
-            {section.rows.length > 0 && (
-              <div role="list" className="flex flex-col gap-3">
-                {section.rows.map((applicant) => (
-                  <ApplicantCard
-                    key={applicant.id}
-                    applicant={applicant}
-                    requiredSkills={requiredSkills}
-                    verdicts={verdicts?.(applicant)}
-                    annotation={annotate?.(applicant)}
-                    onDecide={onDecide}
-                    onOpenProfile={onOpenProfile}
-                  />
-                ))}
-              </div>
-            )}
-          </React.Fragment>
-        ))
+        <>
+          <SelectAll people={applicants} />
+          {sectionsOf(shown).map((section) => (
+            <React.Fragment key={section.key}>
+              {section.heading}
+              {section.rows.length > 0 && (
+                <div role="list" className="flex flex-col gap-3">
+                  {section.rows.map((applicant) => (
+                    <ApplicantCard
+                      key={applicant.id}
+                      applicant={applicant}
+                      requiredSkills={requiredSkills}
+                      verdicts={verdicts?.(applicant)}
+                      annotation={annotate?.(applicant)}
+                      onDecide={onDecide}
+                      onOpenProfile={onOpenProfile}
+                    />
+                  ))}
+                </div>
+              )}
+            </React.Fragment>
+          ))}
+        </>
       )}
 
       <div
@@ -1025,6 +1475,9 @@ function ApplicantCard({
     <Item className="@container/card flex-col items-stretch gap-3 bg-card px-5 py-4 ring-1 ring-foreground/10">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
+          {/* Beside the photo, vertically on its middle: the tick is about the
+              person, and the photo is the person at a glance. */}
+          <PickBox applicant={applicant} className="mt-4" />
           <ApplicantAvatar
             name={applicant.name}
             photo={applicant.photo}
@@ -1497,11 +1950,14 @@ function ViewSwitcher({
  */
 function ApplicantTable({
   sections,
+  everyone,
   requiredSkills,
   onDecide,
   onOpenProfile,
 }: {
   sections: Section[]
+  /** The whole tab, not the page of it on screen — what "select all" ticks. */
+  everyone: Applicant[]
   requiredSkills: string[]
   onDecide: (id: string, status: ApplicantStatus) => void
   onOpenProfile: (id: string) => void
@@ -1529,6 +1985,9 @@ function ApplicantTable({
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
+            <TableHead className="w-10 pr-0">
+              <SelectAll people={everyone} compact />
+            </TableHead>
             <TableHead>Candidate</TableHead>
             <TableHead>Matched skills</TableHead>
             <TableHead>Location</TableHead>
@@ -1554,7 +2013,7 @@ function ApplicantTable({
                   rather than two tables that line up by coincidence. */}
               {section.heading && (
                 <TableRow className="bg-muted/40 hover:bg-muted/40">
-                  <TableCell colSpan={8} className="py-2 whitespace-normal">
+                  <TableCell colSpan={9} className="py-2 whitespace-normal">
                     {section.heading}
                   </TableCell>
                 </TableRow>
@@ -1565,6 +2024,9 @@ function ApplicantTable({
                   className="group/row cursor-pointer"
                   onClick={(event) => onRowClick(event, applicant.id)}
                 >
+                  <TableCell data-row-actions className="w-10 pr-0">
+                    <PickBox applicant={applicant} />
+                  </TableCell>
                   {/* Who they are and where they are now, as one cell: the role is
                   how a recruiter tells two names apart, and as its own column it
                   was the widest thing on the table.
@@ -1699,6 +2161,7 @@ function ApplicantActions({
   onDecide: (id: string, status: ApplicantStatus) => void
 }) {
   const copy = useListCopy()
+  const picking = React.useContext(PickingContext)
 
   return (
     // Around the whole menu, not inside it: a menu's items unmount when it
@@ -1746,6 +2209,12 @@ function ApplicantActions({
             <DropdownMenuSeparator className="md:hidden" />
 
             <DropdownMenuGroup>
+              {picking && (
+                <DropdownMenuItem onClick={() => picking.askAbout([applicant])}>
+                  <SparklesIcon />
+                  Ask Athena
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem>
                 <DownloadIcon />
                 Download CV

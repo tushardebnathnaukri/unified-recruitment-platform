@@ -341,6 +341,26 @@ and its first send moves them to Contacted, as the candidate page's Message butt
 say `{first name}`, filled in per recipient, so one draft serves a shortlist. The dock's composer is
 a textarea because a draft is read before it is sent.
 
+**Questions also come from the list, not only the page.** Every card and table row in
+`CandidateList` has a checkbox, plus "Select all N" over the cards and in the table header (the
+whole tab, not the page on screen). The ticked people are `?picked=`, in tick order. The selection
+bar carries the card's three decisions (Shortlist / Maybe / Not a fit, with one Undo for the whole
+batch, on results as well as queues), a ⋯ menu, and Athena. The ⋯ menu has Save to list, Message and
+Download CVs. **Save to list adds everyone to a list and removes nobody from any**, unlike the card's
+menu, which toggles. **Message writes drafts** into each thread with `firstMessageTo` and opens the
+dock, just like Athena's drafts. Athena offers "Ask Athena" for one person and "Compare in Athena"
+for two or three (`COMPARE_MAX`), and leaves the bar entirely for more. A decision or action clears
+the selection. A card's
+⋯ menu has "Ask Athena" too. Both go through `ask()` on the Athena provider, which opens the pane and
+leaves the question in `pending` for the pane to answer like an opener. The answers are
+`aboutCandidate` and `compareCandidates`, which take whatever skills the list was asked for (a
+posting's or a search's), so they work on Jobs, Search Resume and My Lists alike. The comparison only
+highlights the leader on facts with an agreed direction (most skills, soonest start); pay and
+experience are shown but not ranked. The split view has no checkboxes, because its list already
+selects whose CV is open. Bare **A** toggles Athena, guarded like the theme's **D**. With Athena
+open, the selection and undo bars centre on the content column (`BAR_BESIDE_ATHENA`), because
+centred on the window they ran under the dock's launcher.
+
 **The nav has two borrowers.** `CandidateList` collapses it below 1400px, and Athena collapses it for
 her pane. Handing it back goes through `restoreNav` on the Athena provider, which defers while she
 is open. Restoring directly used to throw the nav open beside her when you left a job page.

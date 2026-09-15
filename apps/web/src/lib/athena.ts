@@ -28,7 +28,18 @@ export type Block =
   | {
       /** People, each with the reason they are here, and a decision to hand. */
       kind: "candidates"
-      people: { person: Applicant; reason: string; href: string }[]
+      /** `href` is absent where a person has no page to go to (My Lists). */
+      people: { person: Applicant; reason: string; href?: string }[]
+    }
+  | {
+      /**
+       * Two or three people side by side, one column each, for the facts a
+       * shortlist is decided on. The skills are what the list was asked for —
+       * a posting's, or a search's.
+       */
+      kind: "compare"
+      people: { person: Applicant; href?: string }[]
+      requiredSkills: string[]
     }
   | {
       /**
@@ -444,6 +455,120 @@ export function similarToReview({
           reason: reasonFor(other, requiredSkills),
           href: hrefFor(other),
         })),
+      },
+    ],
+  }
+}
+
+// ─── Any list of people ──────────────────────────────────────────────────────
+
+/**
+ * The people a question from a list is about, with what that list knows: the
+ * skills it was asked for and where each person's page is. The same shape on a
+ * posting, a search and My Lists — `CandidateList` builds it.
+ */
+export type Picked = {
+  people: Applicant[]
+  requiredSkills: string[]
+  hrefFor: (person: Applicant) => string | undefined
+}
+
+/** One person, asked about from their card. */
+export function aboutCandidate({
+  people: [person],
+  requiredSkills,
+  hrefFor,
+}: Picked): Reply {
+  const matched = matchedSkills(person, requiredSkills)
+  const missing = requiredSkills.filter((skill) => !matched.includes(skill))
+
+  const fit =
+    requiredSkills.length === 0
+      ? "This list was not asked for any skills, so there is nothing to match them on."
+      : missing.length === 0
+        ? `They have all ${requiredSkills.length} skills asked for: ${listOf(matched)}.`
+        : matched.length === 0
+          ? `They have none of the skills asked for (${listOf(requiredSkills)}).`
+          : `They have ${matched.length} of the ${requiredSkills.length} skills asked for: ${listOf(matched)}. Missing ${listOf(missing)}.`
+
+  const notice =
+    person.noticeDays === 0
+      ? "can join now"
+      : `are on a ${person.noticeDays}-day notice`
+
+  return {
+    about: person.name,
+    blocks: [
+      {
+        kind: "text",
+        text: `${person.title} at ${person.company} in ${person.location}, with ${person.experienceYears} years of experience. ${fit}`,
+      },
+      {
+        kind: "text",
+        text: `They earn ${person.currentCtcLakh} LPA now and ${notice}.`,
+      },
+      {
+        kind: "candidates",
+        people: [
+          {
+            person,
+            reason: reasonFor(person, requiredSkills),
+            href: hrefFor(person),
+          },
+        ],
+      },
+    ],
+  }
+}
+
+/**
+ * Two or three people side by side, with a line saying where each one leads.
+ * Leads only on facts with a direction everybody agrees on — more of the skills
+ * asked for, able to start sooner. Pay and experience are shown, not ranked:
+ * whether cheaper or more senior is better is the recruiter's call.
+ */
+export function compareCandidates({
+  people,
+  requiredSkills,
+  hrefFor,
+}: Picked): Reply {
+  const firsts = people.map((person) => firstNameOf(person.name))
+  const skillCounts = people.map(
+    (person) => matchedSkills(person, requiredSkills).length
+  )
+  const lines: string[] = []
+
+  if (requiredSkills.length > 0) {
+    const most = Math.max(...skillCounts)
+    const leaders = firsts.filter((_, index) => skillCounts[index] === most)
+    lines.push(
+      leaders.length === people.length
+        ? `They have the same number of the skills asked for (${most} of ${requiredSkills.length}).`
+        : `${listOf(leaders)} ${leaders.length === 1 ? "has" : "have"} the most of the skills asked for (${most} of ${requiredSkills.length}).`
+    )
+  }
+
+  const soonest = Math.min(...people.map((person) => person.noticeDays))
+  const quick = firsts.filter(
+    (_, index) => people[index].noticeDays === soonest
+  )
+  if (quick.length < people.length) {
+    lines.push(
+      `${listOf(quick)} can start soonest (${soonest === 0 ? "now" : `${soonest}-day notice`}).`
+    )
+  }
+
+  return {
+    about: listOf(firsts),
+    blocks: [
+      {
+        kind: "text",
+        text: lines.join(" ") || "They are level on skills and notice.",
+      },
+      {
+        kind: "compare",
+        people: people.map((person) => ({ person, href: hrefFor(person) })),
+        requiredSkills,
       },
     ],
   }

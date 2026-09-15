@@ -203,3 +203,27 @@ export const CONVERSATIONS: Conversation[] = [
     ],
   },
 ]
+
+/**
+ * The first message to somebody a recruiter is reaching out to in bulk, said
+ * in terms of how they came in: an applicant is thanked for applying to the
+ * posting, and a person a search found is told they were found. Without a
+ * source (My Lists, where each person carries their own) it names no role.
+ *
+ * Only ever a draft — `MessagesProvider.fillDrafts` puts it in a composer and
+ * the recruiter sends it.
+ */
+export function firstMessageTo(
+  name: string,
+  source?: { kind: "job" | "search"; label: string }
+) {
+  const first = name.split(" ")[0] ?? name
+  if (source?.kind === "job")
+    return `Hi ${first}, thanks for applying to the ${source.label} role. I would like to set up a 30-minute call this week to talk it through. What times work for you?`
+  if (source?.kind === "search")
+    // The search is not quoted at them: "while looking for Kafka, Kubernetes,
+    // platform" is the recruiter's query, not a sentence to a person. The
+    // thread's subtitle keeps which search it was.
+    return `Hi ${first}, I came across your profile and I think you could be a strong fit for a role we are hiring for. Would you be open to a 30-minute call this week?`
+  return `Hi ${first}, I would like to talk to you about a role we are hiring for. Would you be open to a 30-minute call this week?`
+}

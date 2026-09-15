@@ -3,7 +3,7 @@
 import * as React from "react"
 
 import { useSidebar } from "@workspace/ui/components/sidebar"
-import type { AthenaPageContext } from "@/lib/athena"
+import type { AthenaPageContext, Opener } from "@/lib/athena"
 
 /**
  * Whether Athena — the copilot — is open, for the whole app, and what the page
@@ -36,6 +36,14 @@ type AthenaState = {
    * is hers for now, so it reopens when she closes instead of under her.
    */
   restoreNav: () => void
+  /**
+   * Ask a question from somewhere other than the pane — a card's menu, the
+   * selection bar. Opens Athena and puts the question in her thread, answered
+   * like an opener. The pane takes it from `pending` and clears it.
+   */
+  ask: (question: Opener) => void
+  pending: Opener | null
+  clearPending: () => void
 }
 
 const Context = React.createContext<AthenaState | null>(null)
@@ -44,6 +52,7 @@ export function AthenaProvider({ children }: { children: React.ReactNode }) {
   const { open: navOpen, setOpen: setNavOpen } = useSidebar()
   const [open, setOpenState] = React.useState(false)
   const [context, setContext] = React.useState<AthenaPageContext | null>(null)
+  const [pending, setPending] = React.useState<Opener | null>(null)
 
   /**
    * What the nav was doing before Athena borrowed its room. A ref rather than
@@ -82,12 +91,54 @@ export function AthenaProvider({ children }: { children: React.ReactNode }) {
     [navOpen, setNavOpen]
   )
 
-  // No `toggle`: the header and the dock only open and the pane only closes,
-  // so nothing needs to flip a value it cannot see. It can come back the moment
-  // something does — a keyboard shortcut would be the obvious one.
+  const ask = React.useCallback(
+    (question: Opener) => {
+      if (!openRef.current) setOpen(true)
+      setPending(question)
+    },
+    [setOpen]
+  )
+  const clearPending = React.useCallback(() => setPending(null), [])
+
+  /**
+   * A, bare, opens and closes her — the same shape as the theme's D in
+   * `ThemeProvider`, and ignored while typing for the same reason. The header
+   * button and the pane's close stay the visible ways; this is the one thing
+   * that flips a value it cannot see, which is why it is the only toggle.
+   */
+  const setOpenRef = React.useRef(setOpen)
+  React.useEffect(() => {
+    setOpenRef.current = setOpen
+  }, [setOpen])
+  React.useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.repeat || event.metaKey || event.ctrlKey || event.altKey) return
+      if (event.key.toLowerCase() !== "a") return
+      const target = event.target
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target.closest("input, textarea, select, [contenteditable='true']"))
+      )
+        return
+      setOpenRef.current(!openRef.current)
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [])
+
   const value = React.useMemo(
-    () => ({ open, setOpen, context, setContext, restoreNav }),
-    [open, setOpen, context, restoreNav]
+    () => ({
+      open,
+      setOpen,
+      context,
+      setContext,
+      restoreNav,
+      ask,
+      pending,
+      clearPending,
+    }),
+    [open, setOpen, context, restoreNav, ask, pending, clearPending]
   )
 
   return <Context.Provider value={value}>{children}</Context.Provider>
