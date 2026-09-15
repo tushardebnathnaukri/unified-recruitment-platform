@@ -6,12 +6,20 @@ import type {
 } from "@storybook/react-vite"
 import {
   ArrowLeftIcon,
+  BookmarkIcon,
+  CalendarCheckIcon,
+  CalendarPlusIcon,
   CheckIcon,
+  ChevronDownIcon,
+  ChevronRightIcon,
   CircleHelpIcon,
+  DownloadIcon,
+  EllipsisIcon,
   LayoutListIcon,
   MailIcon,
   PanelsTopLeftIcon,
   SearchIcon,
+  SparklesIcon,
   Table2Icon,
   XIcon,
 } from "lucide-react"
@@ -23,6 +31,7 @@ import {
 } from "@workspace/ui/components/avatar"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
+import { Checkbox } from "@workspace/ui/components/checkbox"
 import { Chip } from "@workspace/ui/components/chip"
 import { Item } from "@workspace/ui/components/item"
 import { Meta, MetaItem } from "@workspace/ui/components/meta"
@@ -514,11 +523,24 @@ function CardActions() {
   )
 }
 
-function ApplicantCard({ applicant }: { applicant: Applicant }) {
+function ApplicantCard({
+  applicant,
+  picked = false,
+}: {
+  applicant: Applicant
+  /** Ticked for the selection bar. Every card carries the box. */
+  picked?: boolean
+}) {
   return (
     <Item className="@container/card flex-col items-stretch gap-3 bg-card px-5 py-4 ring-1 ring-foreground/10">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
+          {/* Beside the photo, on its middle: the tick is about the person. */}
+          <Checkbox
+            defaultChecked={picked}
+            aria-label={`Select ${applicant.name}`}
+            className="mt-4"
+          />
           {/* Initials, not a photograph. A recruiter screening on a face is
               the failure mode this whole screen should not encourage — the
               avatar is here to anchor the row, not to show anybody. */}
@@ -607,11 +629,40 @@ const RUNS = [
   },
 ]
 
-function CardList({ bucket }: { bucket: Status | "all" }) {
+/**
+ * Ticks everybody in the tab — all of it, not the page on screen, which is why
+ * it says the number. Half-ticked when some are.
+ */
+function SelectAll({ count, picked = 0 }: { count: number; picked?: number }) {
+  const every = picked === count
+  return (
+    <label className="flex w-fit items-center gap-2 px-5 text-sm text-muted-foreground">
+      <Checkbox
+        checked={every}
+        indeterminate={picked > 0 && !every}
+        aria-label={every ? "Clear selection" : `Select all ${count}`}
+      />
+      {every ? "Clear selection" : `Select all ${count}`}
+    </label>
+  )
+}
+
+function CardList({
+  bucket,
+  picked = [],
+}: {
+  bucket: Status | "all"
+  /** Ids ticked, for the selection stories. */
+  picked?: string[]
+}) {
   if (bucket === "undecided") {
     const queue = APPLICANTS.filter((a) => a.status === "undecided")
     return (
       <div className="flex flex-col gap-3">
+        <SelectAll
+          count={BUCKETS.find((b) => b.value === "undecided")!.count}
+          picked={picked.length}
+        />
         {RUNS.map((run) => (
           <React.Fragment key={run.key}>
             <QueueHeading
@@ -621,7 +672,11 @@ function CardList({ bucket }: { bucket: Status | "all" }) {
             />
             <div role="list" className="flex flex-col gap-3">
               {queue.filter(run.test).map((applicant) => (
-                <ApplicantCard key={applicant.id} applicant={applicant} />
+                <ApplicantCard
+                  key={applicant.id}
+                  applicant={applicant}
+                  picked={picked.includes(applicant.id)}
+                />
               ))}
             </div>
           </React.Fragment>
@@ -667,6 +722,9 @@ function ApplicantTable() {
     <Table>
       <TableHeader>
         <TableRow className="hover:bg-transparent">
+          <TableHead className="w-10 pr-0">
+            <Checkbox aria-label="Select all 101" />
+          </TableHead>
           <TableHead>Candidate</TableHead>
           <TableHead>Location</TableHead>
           <TableHead className="text-right">Exp</TableHead>
@@ -679,7 +737,7 @@ function ApplicantTable() {
         {RUNS.map((run) => (
           <React.Fragment key={run.key}>
             <TableRow className="bg-muted/40 hover:bg-muted/40">
-              <TableCell colSpan={6} className="py-2 whitespace-normal">
+              <TableCell colSpan={7} className="py-2 whitespace-normal">
                 <QueueHeading
                   title={run.title}
                   count={run.count}
@@ -689,6 +747,9 @@ function ApplicantTable() {
             </TableRow>
             {queue.filter(run.test).map((applicant) => (
               <TableRow key={applicant.id}>
+                <TableCell className="w-10 pr-0">
+                  <Checkbox aria-label={`Select ${applicant.name}`} />
+                </TableCell>
                 <TableCell>
                   <div className="flex items-start gap-2">
                     <span
@@ -741,13 +802,17 @@ function ApplicantTable() {
  * not by finding the person again in another tab. In the app it sits fixed at
  * the bottom of the screen for six seconds; here it is drawn in place.
  */
-function UndoBar() {
+function UndoBar({
+  message = "Ananya Krishnan moved to Shortlisted",
+}: {
+  message?: string
+}) {
   return (
     <div
       role="status"
       className="flex w-fit items-center gap-2 rounded-full bg-foreground py-1.5 pr-1.5 pl-4 text-sm whitespace-nowrap text-background shadow-lg"
     >
-      <span>Ananya Krishnan moved to Shortlisted</span>
+      <span>{message}</span>
       <Button
         size="sm"
         variant="ghost"
@@ -759,7 +824,190 @@ function UndoBar() {
   )
 }
 
-function ResponseManager() {
+/** Ghost controls on the dark pill, where the system's ghost would vanish. */
+const ON_BAR =
+  "rounded-full text-background hover:bg-background/15 hover:text-background dark:hover:bg-background/15"
+
+/**
+ * What to do with the ticked people. The card's three decisions, in the same
+ * order and icons, with one Undo for the whole batch; a ⋯ menu for the rarer
+ * actions; and Athena, for one to three people only — a comparison holds three,
+ * so past that she steps off the bar rather than sitting there disabled.
+ */
+function SelectionBar({ count }: { count: number }) {
+  return (
+    <div
+      role="region"
+      aria-label="Selected candidates"
+      className="flex w-fit items-center gap-1 rounded-full bg-foreground py-1.5 pr-1.5 pl-4 text-sm whitespace-nowrap text-background shadow-lg"
+    >
+      <span className="mr-1 tabular-nums">{count} selected</span>
+      {DECISIONS.map((decision) => (
+        <Button
+          key={decision.value}
+          size="icon-sm"
+          variant="ghost"
+          aria-label={`${decision.label} ${count}`}
+          className={ON_BAR}
+        >
+          <decision.icon />
+        </Button>
+      ))}
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        aria-label="More actions for the selected"
+        className={ON_BAR}
+      >
+        <EllipsisIcon />
+      </Button>
+      {count <= 3 && (
+        <Button size="sm" className="ml-1 rounded-full">
+          <SparklesIcon data-icon="inline-start" />
+          {count === 1 ? "Ask Athena" : "Compare in Athena"}
+        </Button>
+      )}
+      <Button
+        size="icon-sm"
+        variant="ghost"
+        aria-label="Clear selection"
+        className={ON_BAR}
+      >
+        <XIcon />
+      </Button>
+    </div>
+  )
+}
+
+const MENU =
+  "flex w-60 flex-col rounded-2xl bg-popover p-1 text-popover-foreground shadow-2xl ring-1 ring-foreground/5 dark:ring-foreground/10"
+const MENU_ITEM =
+  "flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm [&_svg]:size-4 [&_svg]:shrink-0"
+
+/**
+ * The bar's ⋯ menu, drawn open with Save to list's submenu beside it. Save
+ * ADDS everybody to a list and removes nobody from any — the card's own menu
+ * toggles one person's lists, but a dozen people are already in a dozen lists.
+ * Message writes a draft into each thread; Set up interviews opens the plan
+ * below.
+ */
+function SelectionMenu({ count }: { count: number }) {
+  return (
+    <div className="flex items-end gap-1">
+      <div className={MENU}>
+        <div className={cn(MENU_ITEM, "bg-accent text-accent-foreground")}>
+          <BookmarkIcon />
+          Save to list
+          <ChevronRightIcon className="ml-auto" />
+        </div>
+        <div className={MENU_ITEM}>
+          <CalendarPlusIcon />
+          Set up {count} interviews
+        </div>
+        <div className={MENU_ITEM}>
+          <MailIcon />
+          Message {count}
+        </div>
+        <div className={MENU_ITEM}>
+          <DownloadIcon />
+          Download {count} CVs
+        </div>
+      </div>
+      <div className={MENU}>
+        <p className="px-3 py-2.5 text-xs text-muted-foreground">
+          Add {count} people to
+        </p>
+        {["Bench — Principal Engineer", "Silver medalists", "Referrals"].map(
+          (list) => (
+            <div key={list} className={MENU_ITEM}>
+              {list}
+            </div>
+          )
+        )}
+        <div className="-mx-1 my-1 h-px bg-border" />
+        <div className={MENU_ITEM}>New list…</div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * "Set up N interviews", drawn in place rather than as a modal. It asks only
+ * what the batch shares — one calendar and a start day — and lays people into
+ * that calendar's free slots in tick order, skipping slots already taken. The
+ * plan is shown before Send; somebody who already has a slot is skipped, not
+ * moved, and somebody who does not fit says so.
+ */
+function BulkInterviews() {
+  const plan = [
+    { name: "Kavya Sharma", when: "16 Sep, 10:00 – 10:30 AM" },
+    { name: "Shreya Iyer", when: "16 Sep, 11:30 AM – 12:00 PM" },
+    { name: "Aman Pillai", when: "16 Sep, 2:00 – 2:30 PM" },
+    {
+      name: "Siddharth Desai",
+      when: "Skipped — already booked 18 Sep, 4:00 – 4:30 PM",
+      muted: true,
+    },
+    { name: "Sneha Reddy", when: "16 Sep, 4:00 – 4:30 PM" },
+  ]
+
+  const field = (label: string, value: string) => (
+    <div className="flex flex-col gap-1.5">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <div className="flex h-9 items-center justify-between rounded-4xl border border-input bg-input/30 px-3 text-sm">
+        {value}
+        <ChevronDownIcon className="size-4 text-muted-foreground" />
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="flex w-full max-w-lg flex-col gap-4 rounded-4xl bg-background p-6 shadow-2xl ring-1 ring-foreground/5">
+      <div className="flex flex-col gap-1">
+        <h2 className="font-heading text-base font-medium">
+          Set up 5 interviews
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          Each person gets the next free slot in one calendar, in the order you
+          ticked them. Nothing is sent until you press Send.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        {field("Calendar", "Anurag Yadav")}
+        {field("From", "16 Sep 2026")}
+      </div>
+      <ul className="flex flex-col divide-y rounded-xl bg-muted/50 text-sm">
+        {plan.map((row) => (
+          <li
+            key={row.name}
+            className="flex items-baseline justify-between gap-3 px-3 py-2"
+          >
+            <span className={row.muted ? "text-muted-foreground" : undefined}>
+              {row.name}
+            </span>
+            <span
+              className={cn(
+                "text-right text-xs",
+                row.muted ? "text-muted-foreground" : "tabular-nums"
+              )}
+            >
+              {row.when}
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="flex justify-end gap-2">
+        <Button variant="outline">Cancel</Button>
+        <Button>
+          <CalendarCheckIcon data-icon="inline-start" />
+          Send 4 invites
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+function ResponseManager({ picked = [] }: { picked?: string[] }) {
   return (
     <div className="@container/main flex flex-col gap-4 px-4 lg:px-6">
       <JobHeader />
@@ -784,10 +1032,18 @@ function ResponseManager() {
 
         {BUCKETS.map((bucket) => (
           <TabsContent key={bucket.value} value={bucket.value}>
-            <CardList bucket={bucket.value} />
+            <CardList bucket={bucket.value} picked={picked} />
           </TabsContent>
         ))}
       </Tabs>
+
+      {/* Fixed to the bottom of the screen in the app; sticky here, so a
+          story scrolls with the bar in view. */}
+      {picked.length > 0 && (
+        <div className="sticky bottom-6 flex justify-center">
+          <SelectionBar count={picked.length} />
+        </div>
+      )}
     </div>
   )
 }
@@ -821,6 +1077,14 @@ badges; no decision gets none.
 
 **A decision leaves the list at once**, which is what makes the queue shrink,
 with an undo bar for the misclick.
+
+**Every card and row has a checkbox**, and "Select all N" ticks the whole tab.
+Ticking brings up the selection bar: the three decisions for everybody at once
+(one Undo for the batch), a ⋯ menu with Save to list, Set up interviews,
+Message and Download CVs, and Athena — Ask for one person, Compare for two or
+three. Nothing in the menu sends anything: Message writes drafts, and Set up
+interviews shows its plan before Send. See **Compositions → Athena** for what
+she answers with.
 
 **Most recent or Best match.** The sort pill switches between them; in To
 review it sorts inside New and inside Earlier, never across.
@@ -909,9 +1173,52 @@ export const StatusRange: Story = {
 }
 
 export const UndoBarStory: Story = {
-  name: "Undo bar",
+  name: "Undo bar — one person and a batch",
   decorators: [padded],
-  render: () => <UndoBar />,
+  render: () => (
+    <div className="flex flex-col gap-3">
+      <UndoBar />
+      <UndoBar message="103 people moved to Maybe" />
+    </div>
+  ),
+}
+
+export const Selecting: Story = {
+  name: "Selecting candidates",
+  render: () => <ResponseManager picked={["c1", "c2"]} />,
+}
+
+/**
+ * One person gets Ask Athena, two or three get Compare, and past three Athena
+ * leaves the bar — the decisions and the menu stay.
+ */
+export const SelectionBarStory: Story = {
+  name: "Selection bar — one, three and twelve",
+  decorators: [padded],
+  render: () => (
+    <div className="flex flex-col items-start gap-3">
+      <SelectionBar count={1} />
+      <SelectionBar count={3} />
+      <SelectionBar count={12} />
+    </div>
+  ),
+}
+
+export const SelectionMenuStory: Story = {
+  name: "Selection bar menu, open",
+  decorators: [padded],
+  render: () => (
+    <div className="flex flex-col items-start gap-2">
+      <SelectionMenu count={12} />
+      <SelectionBar count={12} />
+    </div>
+  ),
+}
+
+export const BulkInterviewsStory: Story = {
+  name: "Set up interviews for the selected",
+  decorators: [padded],
+  render: () => <BulkInterviews />,
 }
 
 /** The skills the posting asked for, as the card marks them. */

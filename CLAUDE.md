@@ -476,6 +476,10 @@ this repo uses npm.)
 If the CLI stalls on an "already exists, overwrite?" prompt (a dependency like `separator`), it is
 waiting on stdin: `yes n | npx shadcn@latest add <name> -c apps/web` declines and continues.
 
+**Local divergence:** `Checkbox` draws a filled bar for `indeterminate`. The stock indicator
+drew the tick for that state too, so a half-ticked "Select all" read as all. `--overwrite` restores
+the stock one. The Figma Checkbox has no indeterminate variant yet.
+
 **Local divergence:** `packages/ui/src/hooks/use-mobile.ts` uses `useSyncExternalStore` instead of
 the stock seed-`undefined`-then-assign-in-effect, which trips `react-hooks`' cascading-render rule
 and misreports desktop on first paint. `--overwrite` restores the stock version and the lint failure.
@@ -497,6 +501,15 @@ The sidebar is five layers, in `storySort` order:
 - **Compositions** — `src/compositions/`: recipes (the dashboard, a settings row, a posting form)
   built from the layers above, with mock data copied inline because `packages/ui` cannot import
   from the app. A composition repeated a third time becomes a Pattern.
+
+**Athena and the selection bar are Compositions, not Patterns**, because each is drawn in one place.
+`Compositions → Athena` has the pane (empty, and a thread across pages) and a story per reply card:
+candidate rows, proposal, draft, comparison, evidence, expand pool, save to list, link rows.
+`Compositions → Response manager` gained checkboxes, "Select all", the selection bar (one, three
+and twelve people), its ⋯ menu drawn open, the batch undo bar and the bulk interview plan. The
+overlays are drawn in place, not as live menus or modals, so a Docs page shows them without covering
+itself. **Neither has a Figma frame yet.** The Figma mirror of Response manager predates selection,
+and there is no Athena page.
 
 The assembled app shell — sidebar, header and content column — is **not** in Compositions. It lives
 in `sidebar.stories.tsx` as `Components/Sidebar → App shell`, `→ Collapsed to the icon rail` and

@@ -290,11 +290,13 @@ function UserMenu() {
   )
 }
 
-/** Openers, so the first thing in an empty pane is not a blank box. */
+/**
+ * The questions the page under her registered — the Dashboard's, since that is
+ * the page this shell draws. Every answer and card is in Compositions → Athena.
+ */
 const OPENERS = [
-  "Who are the strongest five on this posting?",
-  "Draft a message to the shortlisted candidates",
-  "Why is this role taking longer than the last one?",
+  "Which postings need a decision from me?",
+  "Which threads are waiting on me?",
 ]
 
 /**
@@ -322,13 +324,23 @@ function AthenaPane({ onClose }: { onClose?: () => void }) {
         </Button>
       </header>
 
+      {/* What she is looking at, as the page registered it. */}
+      <div className="flex shrink-0 items-baseline gap-1.5 border-b px-4 py-2 text-xs">
+        <span className="shrink-0 text-muted-foreground">Looking at</span>
+        <span className="max-w-3/5 min-w-0 shrink-0 truncate font-medium">
+          Dashboard
+        </span>
+        <span className="min-w-0 truncate text-muted-foreground">
+          · 6 live postings
+        </span>
+      </div>
+
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-1">
             <p className="text-sm font-medium">Ask Athena</p>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              She can see the page you are on, so questions about it do not need
-              setting up.
+              She works from what is on this page, so these need no setting up.
             </p>
           </div>
 
@@ -351,7 +363,7 @@ function AthenaPane({ onClose }: { onClose?: () => void }) {
           <Textarea
             rows={1}
             aria-label="Ask Athena"
-            placeholder="Ask about this page, a candidate, a role…"
+            placeholder="Ask about this page…"
             className="min-h-9 resize-none border-0 bg-transparent p-1 shadow-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
           />
           <Button

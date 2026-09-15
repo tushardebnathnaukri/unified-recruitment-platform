@@ -10,38 +10,38 @@ and CSS variables.
 
 ## Components (shadcn/ui on Base UI)
 
-| Component | Primitive | Used in the prototype | Notes |
-| --- | --- | --- | --- |
-| Avatar | Base UI `Avatar` | Sidebar account menu | Fallback initials are the common case. Group and badge sub-parts. |
-| Badge | `useRender` | Dashboard: plan tier, search filters, "6 new" | Read-only pill. `success` / `warning` are shared status tokens, not brand. |
-| Button | Base UI `Button` | Everywhere | Reference shape for authoring: `cva` + `cn`, `data-slot`, `data-icon` for icon padding. |
-| Card | plain `div` | Dashboard, Settings | Pads vertically only; sub-parts pad horizontally. `size="sm"` for tiles. |
-| Chart | recharts 3.8 | Insights, Dashboard performance | `ChartConfig` maps series to `var(--chart-N)`. **The ramp is brand- and theme-neutral and fails contrast at both ends — see the story.** |
-| Checkbox | Base UI `Checkbox` | Insights facet rail, Database filters | Checked state takes `--primary`. |
-| Command | `cmdk` | Response manager's location filter, Database's Add-a-filter lists | A filter, not a palette. Lives inside a Popover; the popover must close on pick. |
-| Dialog | Base UI `Dialog` | Database: Filters and Criteria (Juicebox version) | Arrived as a registry dependency of Command. Drawn open in Compositions → Database. |
-| Drawer | Base UI `Drawer` | Response manager filters below `md` | Every filter pill opens the one drawer on a phone. |
-| Dropdown menu | Base UI `Menu` | Sidebar account menu | `Label` must sit in a `Group`. |
-| Empty | plain `div` | — (the live site's four empty states) | First-class state; copy pattern kept from the live product. |
-| Input | Base UI `Input` | Insights query bar | Pill-shaped; `aria-invalid` drives the error look. |
-| Input group | plain `div` | Database: search within results, filter search | One border and one focus ring around a field and its addons. A `block-end` addon makes it a composer. |
-| Item | `useRender` | Dashboard rows (via List card) | The generic row. `render={<Link />}` makes it a link and turns on hover. |
-| Kbd | plain `kbd` | Settings, Playground (the `d` shortcut), Database (⌘↵ in JD mode) | Restyles itself inside a tooltip. |
-| Label | plain `label` | — | Dims after a disabled `peer`. |
-| Popover | Base UI `Popover` | Response manager filter pills, Database filter lists | A surface holding controls. Unlike a menu it does not close itself. |
-| Radio group | Base UI `RadioGroup` | — | For a short exclusive list with a label per option. |
-| Select | Base UI `Select` | Database: sort, last seen, min/max and single-choice filters | Pass `items` for label display. Aligns selected item over the trigger by default. |
-| Separator | Base UI `Separator` | Site header, Settings | Vertical stretches unless told otherwise. |
-| Sheet | Base UI `Dialog` | Mobile sidebar | Side panel; `SheetFooter` pins to the bottom. |
-| Sidebar | shadcn block | App shell | `variant="inset"`, `collapsible="icon"`, `⌘B`. Dimensions are CSS variables on the provider. |
-| Skeleton | plain `div` | — | No backend to wait on; for designing the state. |
-| Switch | Base UI `Switch` | Database: the Boolean switch on keyword search | Immediate-effect settings. Two sizes. |
-| Table | plain table | — | For comparing rows; a list of destinations is a List card instead. |
-| Tabs | Base UI `Tabs` | — | Pill list for view switching, `line` for page sections. |
-| Textarea | plain `textarea` | Dashboard requirement box, Database search box | Grows with content. The one non-pill field. |
-| Toggle | Base UI `Toggle` | — | Icon button with pressed state. |
-| Toggle group | Base UI `ToggleGroup` | Database's three search modes; Settings' comparison switches; the response manager's view switcher and decisions | `spacing={0}` + `outline` is a segmented control. Value is always an array. |
-| Tooltip | Base UI `Tooltip` | Sidebar rail labels | Needs `TooltipProvider` above it. |
+| Component     | Primitive             | Used in the prototype                                                                                            | Notes                                                                                                                                    |
+| ------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| Avatar        | Base UI `Avatar`      | Sidebar account menu                                                                                             | Fallback initials are the common case. Group and badge sub-parts.                                                                        |
+| Badge         | `useRender`           | Dashboard: plan tier, search filters, "6 new"                                                                    | Read-only pill. `success` / `warning` are shared status tokens, not brand.                                                               |
+| Button        | Base UI `Button`      | Everywhere                                                                                                       | Reference shape for authoring: `cva` + `cn`, `data-slot`, `data-icon` for icon padding.                                                  |
+| Card          | plain `div`           | Dashboard, Settings                                                                                              | Pads vertically only; sub-parts pad horizontally. `size="sm"` for tiles.                                                                 |
+| Chart         | recharts 3.8          | Insights, Dashboard performance                                                                                  | `ChartConfig` maps series to `var(--chart-N)`. **The ramp is brand- and theme-neutral and fails contrast at both ends — see the story.** |
+| Checkbox      | Base UI `Checkbox`    | Insights facet rail, Database filters                                                                            | Checked state takes `--primary`.                                                                                                         |
+| Command       | `cmdk`                | Response manager's location filter, Database's Add-a-filter lists                                                | A filter, not a palette. Lives inside a Popover; the popover must close on pick.                                                         |
+| Dialog        | Base UI `Dialog`      | Database: Filters and Criteria (Juicebox version)                                                                | Arrived as a registry dependency of Command. Drawn open in Compositions → Database.                                                      |
+| Drawer        | Base UI `Drawer`      | Response manager filters below `md`                                                                              | Every filter pill opens the one drawer on a phone.                                                                                       |
+| Dropdown menu | Base UI `Menu`        | Sidebar account menu                                                                                             | `Label` must sit in a `Group`.                                                                                                           |
+| Empty         | plain `div`           | — (the live site's four empty states)                                                                            | First-class state; copy pattern kept from the live product.                                                                              |
+| Input         | Base UI `Input`       | Insights query bar                                                                                               | Pill-shaped; `aria-invalid` drives the error look.                                                                                       |
+| Input group   | plain `div`           | Database: search within results, filter search                                                                   | One border and one focus ring around a field and its addons. A `block-end` addon makes it a composer.                                    |
+| Item          | `useRender`           | Dashboard rows (via List card)                                                                                   | The generic row. `render={<Link />}` makes it a link and turns on hover.                                                                 |
+| Kbd           | plain `kbd`           | Settings, Playground (the `d` shortcut), Database (⌘↵ in JD mode)                                                | Restyles itself inside a tooltip.                                                                                                        |
+| Label         | plain `label`         | —                                                                                                                | Dims after a disabled `peer`.                                                                                                            |
+| Popover       | Base UI `Popover`     | Response manager filter pills, Database filter lists                                                             | A surface holding controls. Unlike a menu it does not close itself.                                                                      |
+| Radio group   | Base UI `RadioGroup`  | —                                                                                                                | For a short exclusive list with a label per option.                                                                                      |
+| Select        | Base UI `Select`      | Database: sort, last seen, min/max and single-choice filters                                                     | Pass `items` for label display. Aligns selected item over the trigger by default.                                                        |
+| Separator     | Base UI `Separator`   | Site header, Settings                                                                                            | Vertical stretches unless told otherwise.                                                                                                |
+| Sheet         | Base UI `Dialog`      | Mobile sidebar                                                                                                   | Side panel; `SheetFooter` pins to the bottom.                                                                                            |
+| Sidebar       | shadcn block          | App shell                                                                                                        | `variant="inset"`, `collapsible="icon"`, `⌘B`. Dimensions are CSS variables on the provider.                                             |
+| Skeleton      | plain `div`           | —                                                                                                                | No backend to wait on; for designing the state.                                                                                          |
+| Switch        | Base UI `Switch`      | Database: the Boolean switch on keyword search                                                                   | Immediate-effect settings. Two sizes.                                                                                                    |
+| Table         | plain table           | —                                                                                                                | For comparing rows; a list of destinations is a List card instead.                                                                       |
+| Tabs          | Base UI `Tabs`        | —                                                                                                                | Pill list for view switching, `line` for page sections.                                                                                  |
+| Textarea      | plain `textarea`      | Dashboard requirement box, Database search box                                                                   | Grows with content. The one non-pill field.                                                                                              |
+| Toggle        | Base UI `Toggle`      | —                                                                                                                | Icon button with pressed state.                                                                                                          |
+| Toggle group  | Base UI `ToggleGroup` | Database's three search modes; Settings' comparison switches; the response manager's view switcher and decisions | `spacing={0}` + `outline` is a segmented control. Value is always an array.                                                              |
+| Tooltip       | Base UI `Tooltip`     | Sidebar rail labels                                                                                              | Needs `TooltipProvider` above it.                                                                                                        |
 
 Also in the package, undocumented because they have no visual: `BrandProvider`
 / `useBrand` (writes `data-brand`), and the hooks `useIsMobile` and
@@ -49,13 +49,13 @@ Also in the package, undocumented because they have no visual: `BrandProvider`
 
 ## Patterns (ours)
 
-| Pattern | Built from | Extracted from | Rule it encodes |
-| --- | --- | --- | --- |
-| Stat card + Stat grid | Card | Dashboard stat row | Detail is a sentence, not a delta. Two or four across, never three. |
-| Section header | — | Dashboard section heads | Reserves a small button's height so sections with and without actions align. |
-| List card | Card + Item | Dashboard's three lists | The card owns the dividers; rows never know if they are first. |
-| Meta + Meta item | — | Every dashboard row's grey line | Dot separators only between rendered children; colour only for the fact that changes what you do. |
-| Chip | Base UI `Button` | Requirement box starters | A pill you press. `selected` makes it a filter toggle. Badge is the pill you read. |
+| Pattern               | Built from       | Extracted from                  | Rule it encodes                                                                                   |
+| --------------------- | ---------------- | ------------------------------- | ------------------------------------------------------------------------------------------------- |
+| Stat card + Stat grid | Card             | Dashboard stat row              | Detail is a sentence, not a delta. Two or four across, never three.                               |
+| Section header        | —                | Dashboard section heads         | Reserves a small button's height so sections with and without actions align.                      |
+| List card             | Card + Item      | Dashboard's three lists         | The card owns the dividers; rows never know if they are first.                                    |
+| Meta + Meta item      | —                | Every dashboard row's grey line | Dot separators only between rendered children; colour only for the fact that changes what you do. |
+| Chip                  | Base UI `Button` | Requirement box starters        | A pill you press. `selected` makes it a filter toggle. Badge is the pill you read.                |
 
 ## App-only components
 
@@ -64,12 +64,14 @@ theme provider or the app's data, and so have no story here:
 
 `AppShell`, `AppSidebar`, `NavMain`, `NavUser`, `SiteHeader`, `ProductSwitcher`,
 `CrossSellBanner` (the shell — see Components → Sidebar for the same tree
-without the router); `AthenaProvider` / `AthenaPane` (the copilot column) and
-`MessageDock`; `ApplicantControls`, `CandidateDetail`, `CandidateCv`,
+without the router); `AthenaProvider` / `AthenaPane` / `AthenaBlock` (the
+copilot column and its reply cards — see Compositions → Athena),
+`MessagesProvider` and `MessageDock`; `ApplicantControls`, `CandidateDetail`, `CandidateCv`,
 `CandidatePanel`, `DecisionsProvider`, `CardVariantProvider` (the response
 manager and the profile — see Compositions → Response manager and → Candidate
 profile); `CandidateList` (the response manager's screen, shared by the job
-page and the database's results), `SearchRow`, `RefinePanel` /
+page and the database's results, with its checkboxes and selection bar),
+`ScheduleInterview` / `BulkScheduleDialog`, `SearchRow`, `RefinePanel` /
 `ResultsToolbar` and `JuiceboxHeader` / `JuiceboxToolbar` (the database and its
 two filter designs — see Compositions → Database); `BrandSwitcher`, `ThemeToggle` (Settings controls); `BrandUrlSync`;
 `Skeletons`; `BrandWordmark` (the iimjobs mark, vendored SVG; hirist has none

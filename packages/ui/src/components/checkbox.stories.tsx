@@ -48,6 +48,19 @@ export const Checked: Story = {
   ),
 }
 
+/**
+ * Some of a set ticked — the list's "Select all" when part of a tab is
+ * selected. A bar, filled like checked, so it cannot be mistaken for all.
+ */
+export const Indeterminate: Story = {
+  render: (args) => (
+    <div className="flex items-center gap-2">
+      <Checkbox id="cb-some" indeterminate {...args} />
+      <Label htmlFor="cb-some">Select all 101</Label>
+    </div>
+  ),
+}
+
 export const Group: Story = {
   render: () => (
     <fieldset className="flex flex-col gap-3">
