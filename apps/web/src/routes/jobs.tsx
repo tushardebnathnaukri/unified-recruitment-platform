@@ -191,9 +191,11 @@ function JobRow({ job }: { job: Job }) {
  * navigating. One anchor, one accessible name, the whole card clickable, and
  * the menu still works.
  *
- * The states move with it: the card lights on `hover`, and takes the focus ring
- * through `has-[a:focus-visible]` when the stretched link inside it is tabbed
- * to — otherwise a keyboard user would see nothing happen at all.
+ * The states move with it: the card lifts on `hover` (a soft shadow and a
+ * slight scale, the same as the dashboard's stat tiles — `bg-muted` went muddy),
+ * and takes the focus ring through `has-[a:focus-visible]` when the stretched
+ * link inside it is tabbed to — otherwise a keyboard user would see nothing
+ * happen at all.
  *
  * The title wraps rather than truncating, for the reason the dashboard's job
  * row does — an ellipsis through "Principal Engineer, Platform Infra…" costs
@@ -209,7 +211,7 @@ function JobRowShell({
   trailing?: React.ReactNode
 }) {
   return (
-    <Item className="relative flex-col items-stretch gap-1.5 bg-card px-5 py-4 ring-1 ring-foreground/10 hover:bg-muted has-[a:focus-visible]:ring-[3px] has-[a:focus-visible]:ring-ring/50">
+    <Item className="relative flex-col items-stretch gap-1.5 bg-card px-5 py-4 ring-1 ring-foreground/10 transition-[box-shadow,scale] hover:shadow-lg hover:shadow-foreground/5 has-[a:focus-visible]:ring-[3px] has-[a:focus-visible]:ring-ring/50 motion-safe:hover:scale-[1.01]">
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {/* `font-heading text-base font-medium` is `CardTitle`'s own type —

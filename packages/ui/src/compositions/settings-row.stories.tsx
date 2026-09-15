@@ -20,7 +20,7 @@ import { designComposition } from "@workspace/ui/lib/figma"
 
 /**
  * A settings row: title and description on the left, the control on the
- * right, wrapping underneath on a narrow column. The Settings page is three
+ * right, wrapping underneath on a narrow column. The Settings page is four
  * of these in a bordered group.
  */
 function SettingRow({
@@ -64,9 +64,10 @@ const meta = {
       description: {
         component: `
 Title and description on the left, control on the right, wrapping under on
-a narrow column. \`apps/web/src/routes/settings.tsx\` is three of these in a
-bordered group; this is the same shape with each kind of control it will
-need to hold.
+a narrow column. \`apps/web/src/routes/settings.tsx\` is four of these in a
+bordered group — brand, theme, and the two design comparisons (candidate card
+and database filters); this is the same shape with each kind of control it
+will need to hold.
 
 Not a component yet on purpose — two uses is a pattern, not an API. Promote
 it to \`packages/ui\` when the real settings page arrives.
@@ -112,6 +113,36 @@ export const Prototype: Story = {
         <Button size="icon-sm" variant="ghost" aria-label="Switch to dark mode">
           <MoonIcon />
         </Button>
+      </SettingRow>
+      <Separator />
+      <SettingRow
+        title="Candidate card"
+        description="Two layouts for the same facts on the response manager. Stacked runs the labels down the left and reads like a profile; Columns lays the buckets across the card and fits roughly twice as many candidates on a screen. A real recruiter would never see this control — it is here so the two can be compared before one wins."
+      >
+        <ToggleGroup
+          variant="outline"
+          spacing={0}
+          defaultValue={["stacked"]}
+          aria-label="Candidate card layout"
+        >
+          <ToggleGroupItem value="stacked">Stacked</ToggleGroupItem>
+          <ToggleGroupItem value="columns">Columns</ToggleGroupItem>
+        </ToggleGroup>
+      </SettingRow>
+      <Separator />
+      <SettingRow
+        title="Database filters"
+        description="Two ways to narrow a database search. Juicebox puts the query in a pill with the filters in a dialog, ranked criteria and chips that widen the pool; Refine panel is the live hirist column, every filter on screen beside the results."
+      >
+        <ToggleGroup
+          variant="outline"
+          spacing={0}
+          defaultValue={["juicebox"]}
+          aria-label="Database filters"
+        >
+          <ToggleGroupItem value="juicebox">Juicebox</ToggleGroupItem>
+          <ToggleGroupItem value="panel">Refine panel</ToggleGroupItem>
+        </ToggleGroup>
       </SettingRow>
     </SettingGroup>
   ),

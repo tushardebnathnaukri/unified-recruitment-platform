@@ -413,9 +413,9 @@ export const FullPage: Story = {
       <div className="bg-primary pt-8 pb-28">
         <div className="mx-auto w-full max-w-7xl px-4 lg:px-6">
           <div className="flex flex-col gap-1 text-primary-foreground">
-            <p className="text-xl font-semibold">Good afternoon, Priya</p>
+            <p className="text-xl font-semibold">Good afternoon, Anurag</p>
             <p className="text-sm">
-              Two interviews today, and 48 new applicants since yesterday.
+              2 jobs went live, and 48 new applicants since yesterday.
             </p>
           </div>
         </div>

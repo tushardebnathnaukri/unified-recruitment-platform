@@ -3,7 +3,6 @@ import { Link } from "react-router"
 import { ArrowRightIcon } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
-import { ListCard } from "@workspace/ui/components/list-card"
 import { SectionHeader } from "@workspace/ui/components/section-header"
 import { StatCard, StatGrid } from "@workspace/ui/components/stat-card"
 
@@ -90,14 +89,24 @@ export function DashboardPage() {
               totals that can never prompt an action; the agreed replacement is
               queues with an age on them. See the StatCard story. */}
             <StatGrid>
+              {/* Each tile is a link to the page behind its number. The anchor
+                  carries the focus ring and the card takes the hover — a lift
+                  and a shadow, not the Jobs rows' `bg-muted`, which went muddy
+                  on a tile this size. */}
               {statsFor(brand).map((stat) => (
-                <StatCard
+                <Link
                   key={stat.label}
-                  label={stat.label}
-                  value={stat.value}
-                  detail={stat.detail}
-                  icon={<stat.icon />}
-                />
+                  to={stat.to}
+                  className="group/stat rounded-2xl outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                >
+                  <StatCard
+                    label={stat.label}
+                    value={stat.value}
+                    detail={stat.detail}
+                    icon={<stat.icon />}
+                    className="h-full transition-[box-shadow,scale] group-hover/stat:shadow-lg group-hover/stat:shadow-foreground/5 motion-safe:group-hover/stat:scale-[1.02]"
+                  />
+                </Link>
               ))}
             </StatGrid>
 
@@ -207,14 +216,13 @@ function RecentSearches() {
 
       {/* Three, and the full list is on the database page. Each row re-runs
           its search there rather than opening an empty box. */}
-      <ListCard>
+      <div role="list" className="flex flex-col gap-3">
         {recentSearchesFor(brand)
           .slice(0, 3)
           .map((search) => (
             <SearchRow key={search.id} search={search} />
           ))}
-      </ListCard>
+      </div>
     </section>
   )
 }
-

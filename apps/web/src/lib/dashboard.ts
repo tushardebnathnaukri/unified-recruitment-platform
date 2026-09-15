@@ -36,6 +36,8 @@ export type Stat = {
   /** Said in words rather than a bare delta — "+18%" against what is unclear. */
   detail: string
   icon: LucideIcon
+  /** Where the tile goes. Active jobs and Applicants both land on Jobs. */
+  to: string
 }
 
 /**
@@ -59,24 +61,28 @@ export function statsFor(brand: Brand): Stat[] {
       value: `${live.length}`,
       detail: `${expiring} expiring this week`,
       icon: BriefcaseIcon,
+      to: "/jobs",
     },
     {
       label: "Applicants",
       value: `${applicants}`,
       detail: `${fresh} new since your last visit`,
       icon: UsersIcon,
+      to: "/jobs",
     },
     {
       label: "Interviews",
       value: "5",
       detail: "2 today",
       icon: CalendarCheckIcon,
+      to: "/interviews",
     },
     {
       label: "Posting credits",
-      value: "9",
+      value: "87,500",
       detail: "of 25 used this quarter",
       icon: TicketIcon,
+      to: "/credits",
     },
   ]
 }

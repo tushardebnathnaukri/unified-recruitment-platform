@@ -20,16 +20,32 @@ import { modeFor, searchHref, type RecentSearch } from "@/lib/database"
  * fourth line saying so. Keywords keeps the magnifier this row always had,
  * which is what leaves the dashboard's three rows looking as they did.
  *
+ * A CARD OF ITS OWN, NOT A ROW IN A LIST CARD, on both pages — so it takes
+ * the lift-and-soft-shadow hover the dashboard's other cards have. A single
+ * row lifting out of a shared card reads as broken. `[a]:hover:bg-card`
+ * cancels Item's own `[a]:hover:bg-muted` under the same variant, so
+ * tailwind-merge drops the grey rather than both landing. Callers stack them
+ * in a `role="list"` column with `gap-3`.
+ *
  * Stacked, not media/content/actions: the query, its filters and its numbers
  * are three lines of one thing, so the Item is turned into a column.
  */
-export function SearchRow({ search }: { search: RecentSearch }) {
+export function SearchRow({
+  search,
+  className,
+}: {
+  search: RecentSearch
+  className?: string
+}) {
   const mode = modeFor(search.mode)
 
   return (
     <Item
       render={<Link to={searchHref(search)} />}
-      className="flex-col items-stretch gap-2"
+      className={cn(
+        "flex-col items-stretch gap-2 bg-card px-5 py-4 ring-1 ring-foreground/10 transition-[box-shadow,scale] hover:shadow-lg hover:shadow-foreground/5 motion-safe:hover:scale-[1.01] [a]:hover:bg-card",
+        className
+      )}
     >
       <div className="flex items-start gap-2">
         <mode.icon

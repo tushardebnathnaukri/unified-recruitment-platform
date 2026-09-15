@@ -4,6 +4,7 @@ import {
   CalendarCheckIcon,
   ChartColumnIcon,
   CircleHelpIcon,
+  CoinsIcon,
   DatabaseIcon,
   HistoryIcon,
   LayoutDashboardIcon,
@@ -67,6 +68,13 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Interviews",
     icon: CalendarCheckIcon,
     end: false,
+  },
+  {
+    to: "/credits",
+    label: "Credits",
+    icon: CoinsIcon,
+    end: false,
+    separatorBefore: true,
   },
 ]
 

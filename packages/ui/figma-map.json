@@ -230,6 +230,11 @@
       "nodeId": "117:3",
       "figmaName": "Response manager — full page",
       "storyId": "compositions-response-manager--docs"
+    },
+    "database": {
+      "nodeId": "144:2",
+      "figmaName": "Database — page (search, both results, both dialogs)",
+      "storyId": "compositions-database--docs"
     }
   },
   "pages": {
