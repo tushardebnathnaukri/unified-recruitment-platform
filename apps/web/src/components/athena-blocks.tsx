@@ -511,7 +511,7 @@ function LinksBlock({
 
   return (
     <ul className="flex flex-col divide-y overflow-hidden rounded-xl border bg-card">
-      {items.map((item) => {
+      {items.map((item, index) => {
         const body = (
           <>
             <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -522,14 +522,16 @@ function LinksBlock({
                 {item.detail}
               </span>
             </div>
-            {(item.to || item.threadId) && (
+            {(item.to || item.threadId || item.open) && (
               <ArrowRightIcon className="size-4 shrink-0 text-muted-foreground" />
             )}
           </>
         )
 
         return (
-          <li key={item.label}>
+          // Names are not unique — two different people can both be Aman
+          // Verma — so the position keeps the key unique.
+          <li key={`${index}-${item.label}`}>
             {item.to ? (
               <Link
                 to={item.to}
@@ -537,10 +539,12 @@ function LinksBlock({
               >
                 {body}
               </Link>
-            ) : item.threadId ? (
+            ) : item.threadId || item.open ? (
               <button
                 type="button"
-                onClick={() => openThread(item.threadId!)}
+                onClick={() =>
+                  item.open ? item.open() : openThread(item.threadId!)
+                }
                 className="flex w-full items-center gap-2 p-3 text-left transition-colors hover:bg-muted"
               >
                 {body}

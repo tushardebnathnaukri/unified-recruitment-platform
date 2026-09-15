@@ -57,8 +57,16 @@ import {
   TableHeader,
   TableRow,
 } from "@workspace/ui/components/table"
+import { useAthenaContext } from "@/components/athena-provider"
 import { useInterviews } from "@/components/interviews-provider"
 import { RescheduleDialog } from "@/components/schedule-interview"
+import {
+  calendarClashes,
+  hireRecommendations,
+  thisWeek,
+  unansweredInvites,
+  type InterviewsContext,
+} from "@/lib/athena"
 import {
   CALENDAR_NAMES,
   INTERVIEW_STATUSES,
@@ -102,6 +110,34 @@ export function InterviewsPage() {
   const filtered = interviews.filter((interview) => interview.status === status)
   const statusLabel =
     INTERVIEW_STATUSES.find((option) => option.value === status)?.label ?? ""
+
+  // What Athena can answer about the diary — all of it, not only the status
+  // the dropdown is showing, because "who has not accepted" is a question
+  // about the pending slots whichever view is open.
+  const diary: InterviewsContext = {
+    rows: interviews,
+    reschedule: setRescheduling,
+  }
+  const upcoming = interviews.filter((row) => row.status !== "completed")
+  useAthenaContext({
+    label: "Interviews",
+    detail: `${upcoming.length} upcoming`,
+    openers: [
+      { prompt: "What's on this week?", answer: () => thisWeek(diary) },
+      {
+        prompt: "Who hasn't accepted their invite?",
+        answer: () => unansweredInvites(diary),
+      },
+      {
+        prompt: "Is any calendar double-booked?",
+        answer: () => calendarClashes(diary),
+      },
+      {
+        prompt: "Who got a hire recommendation?",
+        answer: () => hireRecommendations(diary),
+      },
+    ],
+  })
 
   return (
     <div className="flex flex-col gap-4 px-4 lg:px-6">

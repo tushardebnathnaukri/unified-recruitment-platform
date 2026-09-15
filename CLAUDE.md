@@ -326,6 +326,21 @@ that does nothing until Apply, and has Undo), link rows (to a route or to a dock
 **draft**. The job page, the candidate page, Search Resume's results and the Dashboard register contexts so
 far. Every other page shows only the "Looking at" line.
 
+**On /interviews, Athena reads the whole diary**, not just the status the dropdown shows. Her
+questions are what's on this week (`THIS_WEEK` in `lib/interviews.ts`, since today is 15 Sep 2026),
+who hasn't accepted (with a nudge draft for all of them), whether any calendar is double-booked,
+and who got a hire recommendation. The seeded diary does hold a clash, and each clashing row opens
+the page's own `RescheduleDialog` through a link row's `open`. **There is no "missing feedback"
+question**, because every mock slot is dated after today, so the answer could only ever be "none".
+
+**"Set up N interviews" is on the selection bar's ⋯ menu** (`BulkScheduleDialog` in
+`schedule-interview.tsx`). It asks only what the batch shares (one calendar, a start day, and a
+posting for anyone found through a search) and lays people into that calendar's free slots in tick
+order, skipping taken slots. The whole plan is shown before Send. Anyone who already has a slot is
+skipped rather than moved, and anyone who doesn't fit says so. Invites go out as Awaiting Candidate
+Response. The people booked move to Contacted only when the dialog closes, and the selection clears
+only if invites went out.
+
 **On Search Resume, Athena reads the same numbers the page does.** "Why is the best match first?"
 prints the top person's verdicts, the same `verdictsFor` lines the card shows. It says when the top
 two are level on the criteria and the search's own order decides. "How can I find more people?"

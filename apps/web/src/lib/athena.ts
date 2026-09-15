@@ -7,6 +7,12 @@ import {
 } from "@/lib/applicants"
 import type { CandidateSource } from "@/lib/candidate-source"
 import type { Verdict } from "@/lib/criteria"
+import {
+  RECOMMENDATIONS,
+  THIS_WEEK,
+  whenOf,
+  type Interview,
+} from "@/lib/interviews"
 import type { Job, LiveJob } from "@/lib/jobs"
 import type { Conversation, Message } from "@/lib/messages"
 
@@ -78,7 +84,14 @@ export type Block =
        * neither only says where to look.
        */
       kind: "links"
-      items: { label: string; detail: string; to?: string; threadId?: string }[]
+      items: {
+        label: string
+        detail: string
+        to?: string
+        threadId?: string
+        /** Something the page does in place — open a dialog, say. */
+        open?: () => void
+      }[]
     }
   | {
       /**
@@ -764,6 +777,203 @@ export function summariseResults(context: SearchResultsContext): Reply {
       {
         kind: "text",
         text: `Experience runs ${years[0]}–${years.at(-1)} years (median ${years[Math.floor(years.length / 2)]}). Current pay runs ₹${pay[0]}L–₹${pay.at(-1)}L (median ₹${pay[Math.floor(pay.length / 2)]}L), and ${Math.round((soon / people.length) * 100)}% can join within 30 days.`,
+      },
+    ],
+  }
+}
+
+// ─── Interviews ──────────────────────────────────────────────────────────────
+
+/**
+ * The diary as the Interviews page holds it — seeded slots plus this session's
+ * bookings — and the page's own reschedule dialog, so an answer can open it.
+ *
+ * NO "MISSING FEEDBACK" QUESTION, ON PURPOSE. Every slot in the mock is dated
+ * after today, so nothing has happened that could be missing its write-up, and
+ * a question that can only ever answer "none" is not one worth designing.
+ */
+export type InterviewsContext = {
+  rows: Interview[]
+  reschedule: (row: Interview) => void
+}
+
+const whoAndJob = (row: Interview) => `${row.candidateName} · ${row.jobTitle}`
+
+/** This week's slots, soonest first, with how many wait next week. */
+export function thisWeek({ rows }: InterviewsContext): Reply {
+  const upcoming = rows.filter((row) => row.status !== "completed")
+  const week = upcoming.filter((row) => THIS_WEEK.includes(row.date))
+  const later = upcoming.length - week.length
+
+  if (week.length === 0) {
+    return text(
+      "Interviews",
+      later > 0
+        ? `Nothing booked for the rest of this week. ${count(later, "interview is", "interviews are")} booked for next week.`
+        : "Nothing is booked."
+    )
+  }
+
+  const days = new Set(week.map((row) => row.date)).size
+  const unconfirmed = week.filter((row) => row.status === "pending").length
+
+  return {
+    about: "Interviews",
+    blocks: [
+      {
+        kind: "text",
+        text: `${count(week.length, "interview", "interviews")} across ${count(days, "day", "days")} this week${unconfirmed > 0 ? `, ${unconfirmed} still waiting on the candidate to accept` : ""}.${later > 0 ? ` ${later} more next week.` : ""}`,
+      },
+      {
+        kind: "links",
+        items: week.map((row) => ({
+          label: `${whenOf(row)} · ${row.calendarName}`,
+          detail: `${whoAndJob(row)}${row.status === "pending" ? " · not accepted yet" : ""}`,
+          to: row.candidateHref,
+        })),
+      },
+    ],
+  }
+}
+
+/** Invites nobody has answered, with a nudge written for each. */
+export function unansweredInvites({ rows }: InterviewsContext): Reply {
+  const pending = rows.filter((row) => row.status === "pending")
+
+  if (pending.length === 0) {
+    return text("Interviews", "Every invite has been accepted.")
+  }
+
+  return {
+    about: "Interviews",
+    blocks: [
+      {
+        kind: "text",
+        text: `${count(pending.length, "candidate has", "candidates have")} not accepted yet. The soonest is ${pending[0].candidateName}, ${whenOf(pending[0])}.`,
+      },
+      {
+        kind: "links",
+        items: pending.map((row) => ({
+          label: row.candidateName,
+          detail: `${whenOf(row)} · ${row.jobTitle}`,
+          to: row.candidateHref,
+        })),
+      },
+      {
+        kind: "draft",
+        recipients: pending.map((row) => ({
+          id: row.candidateId,
+          name: row.candidateName,
+          role: row.jobTitle,
+        })),
+        body: `Hi ${FIRST_NAME}, just checking you saw my interview invite. Does the time work for you, or would another slot suit you better?`,
+      },
+    ],
+  }
+}
+
+/**
+ * Two people in one calendar at one time. The booking dialog refuses a clash,
+ * but the seeded diary predates it and can hold one — which is exactly the
+ * kind of thing worth asking a copilot to find.
+ */
+export function calendarClashes({
+  rows,
+  reschedule,
+}: InterviewsContext): Reply {
+  const live = rows.filter((row) => row.status !== "completed")
+  const clashes = live.filter((row, index) =>
+    live.some(
+      (other, earlier) =>
+        earlier < index &&
+        other.calendarName === row.calendarName &&
+        other.date === row.date &&
+        other.timeSlot === row.timeSlot
+    )
+  )
+
+  const busiest = [
+    ...new Set(live.map((row) => `${row.calendarName}|${row.date}`)),
+  ]
+    .map((key) => ({
+      key,
+      n: live.filter((row) => `${row.calendarName}|${row.date}` === key).length,
+    }))
+    .sort((a, b) => b.n - a.n)[0]
+  const [calendar, date] = busiest ? busiest.key.split("|") : []
+  const busy = busiest
+    ? ` The busiest is ${calendar} on ${date.replace(/ \d{4}$/, "")}, with ${count(busiest.n, "interview", "interviews")}.`
+    : ""
+
+  if (clashes.length === 0) {
+    return text("Interviews", `No calendar is double-booked.${busy}`)
+  }
+
+  return {
+    about: "Interviews",
+    blocks: [
+      {
+        kind: "text",
+        text: `${count(clashes.length, "slot is", "slots are")} double-booked. Rescheduling one of the pair clears it.${busy}`,
+      },
+      {
+        kind: "links",
+        items: clashes.flatMap((row) => {
+          const other = live.find(
+            (candidate) =>
+              candidate !== row &&
+              candidate.calendarName === row.calendarName &&
+              candidate.date === row.date &&
+              candidate.timeSlot === row.timeSlot
+          )!
+          return [row, other].map((clashing) => ({
+            label: `Reschedule ${clashing.candidateName}`,
+            detail: `${whenOf(clashing)} · ${clashing.calendarName} · ${clashing.jobTitle}`,
+            open: () => reschedule(clashing),
+          }))
+        }),
+      },
+    ],
+  }
+}
+
+/**
+ * Completed interviews whose feedback recommends hiring. Feedback does not
+ * move anybody's decision on the posting — that stays the recruiter's call —
+ * so this points at them rather than acting on them.
+ */
+export function hireRecommendations({ rows }: InterviewsContext): Reply {
+  const hires = rows.filter(
+    (row) =>
+      row.feedback &&
+      (row.feedback.recommendation === "strong-yes" ||
+        row.feedback.recommendation === "yes")
+  )
+  const written = rows.filter((row) => row.feedback).length
+
+  if (hires.length === 0) {
+    return text(
+      "Interviews",
+      written === 0
+        ? "No feedback has been written yet."
+        : `None of the ${count(written, "write-up", "write-ups")} recommends hiring.`
+    )
+  }
+
+  return {
+    about: "Interviews",
+    blocks: [
+      {
+        kind: "text",
+        text: `${count(hires.length, "interview recommends", "interviews recommend")} hiring, of ${count(written, "write-up", "write-ups")}. Their decisions on the posting are unchanged — that is still yours to make.`,
+      },
+      {
+        kind: "links",
+        items: hires.map((row) => ({
+          label: `${row.candidateName} · ${RECOMMENDATIONS.find((option) => option.value === row.feedback!.recommendation)?.label}`,
+          detail: `${row.jobTitle} · “${row.feedback!.notes}”`,
+          to: row.candidateHref,
+        })),
       },
     ],
   }

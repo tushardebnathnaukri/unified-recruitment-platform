@@ -181,6 +181,325 @@ export function RescheduleDialog({
   )
 }
 
+/**
+ * "Set up interviews" for everybody ticked on a list.
+ *
+ * ONE CALENDAR, THE NEXT FREE SLOTS. Booking twelve people one dialog at a
+ * time is the chore a selection exists to remove, so this asks only what they
+ * have in common — which calendar, from which day, and for a sourced person
+ * which posting — and lays them into that calendar's free slots in the order
+ * they were ticked. The plan is shown before anything is sent, with each
+ * person's slot, and it skips rather than moves anybody who already has one:
+ * rescheduling somebody is a decision about them, not about the batch.
+ *
+ * Invites go out as Awaiting Candidate Response, like the single dialog, and
+ * the people booked move to Contacted when the dialog goes away — not before,
+ * for the same reason: on a queue the decision takes them off the list the
+ * selection bar is holding.
+ */
+export function BulkScheduleDialog({
+  people,
+  open,
+  onClose,
+}: {
+  people: Applicant[]
+  open: boolean
+  /** `booked` says whether invites went out, so the caller can clear the selection. */
+  onClose: (booked: boolean) => void
+}) {
+  const { decide } = useDecisions()
+  const [session, setSession] = React.useState(0)
+  const [wasOpen, setWasOpen] = React.useState(open)
+  if (open !== wasOpen) {
+    setWasOpen(open)
+    if (open) setSession(session + 1)
+  }
+
+  /** Who was booked and still owes the Contacted decision. */
+  const owed = React.useRef<Applicant[]>([])
+  const settle = React.useCallback(() => {
+    for (const person of owed.current)
+      if (person.status !== "contacted") decide(person.id, "contacted")
+    const booked = owed.current.length > 0
+    owed.current = []
+    return booked
+  }, [decide])
+  const settleRef = React.useRef(settle)
+  React.useEffect(() => {
+    settleRef.current = settle
+  }, [settle])
+  React.useEffect(() => () => void settleRef.current(), [])
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose(settle())
+      }}
+    >
+      <DialogContent className="sm:max-w-lg">
+        <BulkBookingForm
+          key={session}
+          people={people}
+          onBooked={(booked) => {
+            owed.current = booked
+          }}
+          onDone={() => onClose(settle())}
+        />
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+type Planned =
+  | { person: Applicant; kind: "new"; date: string; timeSlot: string }
+  | { person: Applicant; kind: "booked"; existing: Interview }
+  | { person: Applicant; kind: "full" }
+
+function BulkBookingForm({
+  people,
+  onBooked,
+  onDone,
+}: {
+  people: Applicant[]
+  onBooked: (booked: Applicant[]) => void
+  onDone: () => void
+}) {
+  const { brand } = useBrand()
+  const { interviews, bookingFor, book } = useInterviews()
+  const sourceOf = React.useContext(CandidateSourceContext)
+  const jobs = liveJobsFor(brand)
+
+  const sourceFor = (person: Applicant): CandidateSource =>
+    sourceOf?.(person) ?? {
+      kind: "search",
+      label: "Search Resume",
+      href: "/database",
+    }
+  // Only a sourced person needs a posting picked; an applicant has theirs.
+  const needsJob = people.some((person) => sourceFor(person).kind !== "job")
+
+  const [calendar, setCalendar] = React.useState(CALENDAR_NAMES[0])
+  const [from, setFrom] = React.useState(DATES[0])
+  const [jobId, setJobId] = React.useState(jobs[0]?.id ?? "")
+  const [sent, setSent] = React.useState<Interview[] | null>(null)
+
+  const taken = new Set(
+    interviews
+      .filter(
+        (row) => row.status !== "completed" && row.calendarName === calendar
+      )
+      .map((row) => `${row.date}|${row.timeSlot}`)
+  )
+  const free = DATES.slice(DATES.indexOf(from))
+    .flatMap((date) => SLOTS.map((timeSlot) => ({ date, timeSlot })))
+    .filter((slot) => !taken.has(`${slot.date}|${slot.timeSlot}`))
+
+  const plan: Planned[] = people.map((person) => {
+    const existing = bookingFor(person.id)
+    if (existing) return { person, kind: "booked", existing }
+    const slot = free.shift()
+    return slot ? { person, kind: "new", ...slot } : { person, kind: "full" }
+  })
+  const booking = plan.filter(
+    (entry): entry is Extract<Planned, { kind: "new" }> => entry.kind === "new"
+  )
+  const full = plan.filter((entry) => entry.kind === "full").length
+  const already = plan.filter((entry) => entry.kind === "booked").length
+
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault()
+    if (booking.length === 0) return
+
+    const made = booking.flatMap(({ person, date, timeSlot }) => {
+      const source = sourceFor(person)
+      const job = jobs.find(
+        (option) => option.id === (source.kind === "job" ? source.jobId : jobId)
+      )
+      if (!job) return []
+      const interview: Interview = {
+        id: interviewId(job.id, person.id),
+        date,
+        timeSlot,
+        calendarName: calendar,
+        candidateId: person.id,
+        candidateName: person.name,
+        candidateTitle: `${person.title}, ${person.company}`,
+        candidateHref: candidateHref(source, person.id),
+        jobId: job.id,
+        jobTitle: job.title,
+        source,
+        status: "pending",
+        feedback: null,
+      }
+      book(interview)
+      return [interview]
+    })
+    setSent(made)
+    onBooked(
+      booking
+        .map((entry) => entry.person)
+        .filter((person) => made.some((row) => row.candidateId === person.id))
+    )
+  }
+
+  if (sent) {
+    return (
+      <>
+        <DialogHeader>
+          <div className="mb-1 flex size-10 items-center justify-center rounded-full bg-muted">
+            <CalendarCheckIcon className="size-5" />
+          </div>
+          <DialogTitle>
+            {sent.length === 1 ? "Invite sent" : `${sent.length} invites sent`}
+          </DialogTitle>
+          <DialogDescription>
+            They show as Awaiting Candidate Response until each candidate
+            accepts.
+          </DialogDescription>
+        </DialogHeader>
+
+        <PlanList
+          rows={sent.map((row) => ({
+            key: row.id,
+            name: row.candidateName,
+            detail: `${whenOf(row)} · ${row.calendarName}`,
+          }))}
+        />
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            nativeButton={false}
+            render={<Link to="/interviews?status=pending" />}
+          >
+            View in Interviews
+          </Button>
+          <Button onClick={onDone}>Done</Button>
+        </DialogFooter>
+      </>
+    )
+  }
+
+  return (
+    <form onSubmit={submit} className="flex flex-col gap-4">
+      <DialogHeader>
+        <DialogTitle>
+          Set up{" "}
+          {people.length === 1 ? "an interview" : `${people.length} interviews`}
+        </DialogTitle>
+        <DialogDescription>
+          Each person gets the next free slot in one calendar, in the order you
+          ticked them. Nothing is sent until you press Send.
+        </DialogDescription>
+      </DialogHeader>
+
+      <div className="grid grid-cols-2 gap-3">
+        {needsJob && (
+          <Field label="Job for people from a search" className="col-span-2">
+            <Choice
+              label="Job"
+              value={jobId}
+              onChange={setJobId}
+              options={jobs.map((option) => ({
+                value: option.id,
+                label: option.title,
+              }))}
+            />
+          </Field>
+        )}
+        <Field label="Calendar">
+          <Choice
+            label="Calendar"
+            value={calendar}
+            onChange={setCalendar}
+            options={CALENDAR_NAMES}
+          />
+        </Field>
+        <Field label="From">
+          <Choice
+            label="From"
+            value={from}
+            onChange={setFrom}
+            options={DATES}
+          />
+        </Field>
+      </div>
+
+      <PlanList
+        rows={plan.map((entry) => ({
+          key: entry.person.id,
+          name: entry.person.name,
+          detail:
+            entry.kind === "new"
+              ? `${entry.date.replace(/ \d{4}$/, "")}, ${entry.timeSlot}`
+              : entry.kind === "booked"
+                ? `Skipped — already booked ${whenOf(entry.existing)}`
+                : `Skipped — no free slot left in ${calendar}`,
+          muted: entry.kind !== "new",
+        }))}
+      />
+
+      {full > 0 && (
+        <p
+          role="alert"
+          className="flex items-start gap-2 text-sm text-destructive"
+        >
+          <TriangleAlertIcon className="mt-0.5 size-4 shrink-0" />
+          {calendar} runs out of slots for{" "}
+          {full === 1 ? "one person" : `${full} people`}. Book them from another
+          calendar afterwards.
+        </p>
+      )}
+
+      <DialogFooter>
+        <DialogClose render={<Button variant="outline" />}>Cancel</DialogClose>
+        <Button type="submit" disabled={booking.length === 0}>
+          {booking.length === 0
+            ? "Nobody to invite"
+            : `Send ${booking.length === 1 ? "invite" : `${booking.length} invites`}`}
+        </Button>
+      </DialogFooter>
+      {already > 0 && booking.length === 0 && (
+        <p className="text-right text-xs text-muted-foreground">
+          Everybody ticked already has a slot.
+        </p>
+      )}
+    </form>
+  )
+}
+
+/** Who gets which slot — the plan before sending, and what was sent after. */
+function PlanList({
+  rows,
+}: {
+  rows: { key: string; name: string; detail: string; muted?: boolean }[]
+}) {
+  return (
+    <ul className="flex max-h-64 flex-col divide-y overflow-y-auto rounded-xl bg-muted/50 text-sm">
+      {rows.map((row) => (
+        <li
+          key={row.key}
+          className="flex items-baseline justify-between gap-3 px-3 py-2"
+        >
+          <span className={row.muted ? "text-muted-foreground" : undefined}>
+            {row.name}
+          </span>
+          <span
+            className={
+              row.muted
+                ? "text-right text-xs text-muted-foreground"
+                : "text-right text-xs tabular-nums"
+            }
+          >
+            {row.detail}
+          </span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 /** Who is being booked — an `Applicant`, or a row on /interviews. */
 type BookingCandidate = {
   id: string

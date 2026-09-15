@@ -69,7 +69,10 @@ import { useMessages } from "@/components/messages-provider"
 import { NewListDialog, SaveToList } from "@/components/save-to-list"
 import { useSavedLists } from "@/components/saved-lists-provider"
 import { firstMessageTo } from "@/lib/messages"
-import { ScheduleInterview } from "@/components/schedule-interview"
+import {
+  BulkScheduleDialog,
+  ScheduleInterview,
+} from "@/components/schedule-interview"
 import { aboutCandidate, compareCandidates } from "@/lib/athena"
 import {
   CandidateSourceContext,
@@ -1006,6 +1009,7 @@ function BulkMore({
   const { fillDrafts } = useMessages()
   const sourceFor = React.useContext(CandidateSourceContext)
   const [naming, setNaming] = React.useState(false)
+  const [scheduling, setScheduling] = React.useState(false)
   // Held while the dialog is open: the selection is cleared on save, and the
   // dialog must still know who it is filing.
   const [filing, setFiling] = React.useState<Applicant[]>([])
@@ -1089,6 +1093,12 @@ function BulkMore({
             </DropdownMenuSubContent>
           </DropdownMenuSub>
 
+          <DropdownMenuItem onClick={() => setScheduling(true)}>
+            <CalendarPlusIcon />
+            Set up{" "}
+            {picked.length === 1 ? "interview" : `${picked.length} interviews`}
+          </DropdownMenuItem>
+
           <DropdownMenuItem onClick={messageAll}>
             <MailIcon />
             Message {picked.length}
@@ -1101,6 +1111,18 @@ function BulkMore({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {/* Outside the menu, like the list dialog. The selection is kept while
+          it is open and cleared only if invites went out — cancelling leaves
+          the ticks where they were. */}
+      <BulkScheduleDialog
+        people={picked}
+        open={scheduling}
+        onClose={(booked) => {
+          setScheduling(false)
+          if (booked) onDone()
+        }}
+      />
 
       <NewListDialog
         open={naming}

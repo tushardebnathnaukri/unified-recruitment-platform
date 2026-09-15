@@ -118,6 +118,12 @@ export const DATES = [
   "22 Sep 2026",
 ]
 
+/**
+ * The bookable days that fall in the current week — today is Tuesday 15 Sep
+ * 2026, so the week runs to Saturday the 19th and the 22nd is next week.
+ */
+export const THIS_WEEK = DATES.filter((date) => parseInt(date, 10) <= 19)
+
 /** What a panel writes, for the completed slots the mock starts with. */
 const FEEDBACK_NOTES = [
   "Clear on the numbers and honest about what did not work. Would want a second round on stakeholder management.",
