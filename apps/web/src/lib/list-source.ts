@@ -4,7 +4,7 @@ import { LAST_VISIT, type ResponseBucket } from "@/lib/applicants"
 
 /**
  * Where the people on a candidate list came from: they applied to a posting,
- * or a database search found them.
+ * a database search found them, or the recruiter saved them to My Lists.
  *
  * IT CHANGES WORDS, NOT SHAPES. The response manager and the database results
  * are the same screen — tabs by decision, the same cards, table and split
@@ -20,7 +20,7 @@ import { LAST_VISIT, type ResponseBucket } from "@/lib/applicants"
  * prop through each of them would be plumbing for a sentence. The default is
  * `posting`, so every screen that predates the database needs no provider.
  */
-export type ListSource = "posting" | "search"
+export type ListSource = "posting" | "search" | "saved"
 
 type ListCopy = {
   /** The verb in front of `appliedAgo`, on the card, the table and the panel. */
@@ -117,6 +117,45 @@ const COPY: Record<ListSource, ListCopy> = {
       all: {
         title: "Nobody matches",
         body: "Nobody on the database matches this search. Loosen a filter, or rewrite it.",
+      },
+    },
+  },
+  // My Lists. People the recruiter kept, so the "when" is when they kept them
+  // and there is nothing asked for to match against.
+  saved: {
+    arrived: "Saved",
+    arrivedColumn: "Saved",
+    newSince: "Saved since your last visit",
+    noSkillsMatched: "No skills to match — a list asks for none",
+    askedFor: "this list asks for",
+    noRequirementsMet: "A list has no requirements",
+    remove: "Remove from this list",
+    searchLabel: "Search your lists",
+    filterTitle: "Filter saved candidates",
+    empty: {
+      undecided: {
+        title: "Nobody undecided",
+        body: "Everybody you saved has a decision on them.",
+      },
+      maybe: {
+        title: "Nothing in Maybe",
+        body: "Nobody you saved is a maybe.",
+      },
+      shortlisted: {
+        title: "Nothing in Shortlisted",
+        body: "Nobody you saved is shortlisted.",
+      },
+      contacted: {
+        title: "Nothing in Contacted",
+        body: "You have not reached out to anybody you saved.",
+      },
+      rejected: {
+        title: "Nothing in Not a fit",
+        body: "Nobody you saved has been ruled out.",
+      },
+      all: {
+        title: "Nobody here yet",
+        body: "Either this list is empty, or nobody in it matches the search or filter. People you save from Jobs or Search Resume land here.",
       },
     },
   },

@@ -13,8 +13,6 @@ import {
   DatabaseIcon,
   LayoutDashboardIcon,
   LogOutIcon,
-  MailIcon,
-  PlusCircleIcon,
   SearchIcon,
   SendIcon,
   Settings2Icon,
@@ -234,13 +232,13 @@ function UserMenu() {
           <SidebarMenuButton size="lg" className="aria-expanded:bg-muted" />
         }
       >
-        <Avatar className="size-8 rounded-lg">
-          <AvatarFallback className="rounded-lg">PR</AvatarFallback>
+        <Avatar size="lg">
+          <AvatarFallback>AY</AvatarFallback>
         </Avatar>
         <div className="grid flex-1 text-left text-sm leading-tight">
-          <span className="truncate font-medium">Priya Raman</span>
+          <span className="truncate font-medium">Anurag Yadav</span>
           <span className="truncate text-xs text-muted-foreground">
-            priya@example.com
+            anurag.yadav@infoedge.com
           </span>
         </div>
         <ChevronsUpDownIcon className="ml-auto size-4" />
@@ -407,26 +405,6 @@ function Shell({
         <SidebarContent>
           <SidebarGroup>
             <SidebarGroupContent className="flex flex-col gap-2">
-              <SidebarMenu>
-                <SidebarMenuItem className="flex items-center gap-2">
-                  <SidebarMenuButton
-                    tooltip="Create Project"
-                    className="min-w-8 bg-primary text-primary-foreground duration-200 ease-linear hover:bg-primary/90 hover:text-primary-foreground active:bg-primary/90 active:text-primary-foreground"
-                  >
-                    <PlusCircleIcon />
-                    <span>Create Project</span>
-                  </SidebarMenuButton>
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    className="size-8 group-data-[collapsible=icon]:opacity-0"
-                  >
-                    <MailIcon />
-                    <span className="sr-only">Inbox</span>
-                  </Button>
-                </SidebarMenuItem>
-              </SidebarMenu>
-
               <SidebarMenu>
                 {NAV.map((item) => (
                   <SidebarMenuItem key={item.label}>

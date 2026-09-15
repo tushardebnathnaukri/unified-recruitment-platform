@@ -23,7 +23,8 @@ export type Message = {
 }
 
 /**
- * Stand-in portraits, as inline SVG data URIs.
+ * Stand-in portraits, as inline SVG data URIs — now only for a thread with no
+ * generated photo in `lib/avatars.ts`, which the dock tries first.
  *
  * VENDORED, NOT HOTLINKED — the same call the brand wordmark makes. Pointing
  * `AvatarImage` at pravatar or dicebear would give more convincing faces, but

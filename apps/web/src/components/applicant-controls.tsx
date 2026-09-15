@@ -13,6 +13,7 @@ import {
   Avatar,
   AvatarBadge,
   AvatarFallback,
+  AvatarImage,
 } from "@workspace/ui/components/avatar"
 import { Badge } from "@workspace/ui/components/badge"
 import {
@@ -147,11 +148,13 @@ export function ApplicantStatusBadge({ status }: { status: ApplicantStatus }) {
 }
 
 /**
- * A candidate's initials, with the "new" dot on the top-right corner.
+ * A candidate's photo, or their initials when they have none (about one in
+ * five — see `Applicant.photo`), with the "new" dot on the top-right corner.
  *
- * Initials, not a photograph. A recruiter screening on a face is the failure
- * mode this product should not encourage; the avatar is here to anchor a row,
- * not to show anybody.
+ * This used to be initials only, on the argument that a face invites screening
+ * on looks. The design team chose photos, to match what a real pool looks like
+ * — so the mix of people with and without one is deliberate, and the card must
+ * read just as well either way.
  *
  * THE DOT MEANS NEW — applied since the last visit and still undecided (see
  * `isNew`) — wherever an avatar is shown: the card, the split view's list and
@@ -164,11 +167,13 @@ export function ApplicantStatusBadge({ status }: { status: ApplicantStatus }) {
  */
 export function ApplicantAvatar({
   name,
+  photo,
   fresh,
   className,
   badgeClassName,
 }: {
   name: string
+  photo?: string
   /** Applied since the last visit and still undecided. */
   fresh: boolean
   className?: string
@@ -176,6 +181,7 @@ export function ApplicantAvatar({
 }) {
   return (
     <Avatar className={cn("shrink-0", className)}>
+      {photo && <AvatarImage src={photo} alt="" />}
       <AvatarFallback>{initials(name)}</AvatarFallback>
       {fresh && (
         <AvatarBadge

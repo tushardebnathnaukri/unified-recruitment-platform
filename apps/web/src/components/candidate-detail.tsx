@@ -7,6 +7,7 @@ import { SectionHeader } from "@workspace/ui/components/section-header"
 import { Separator } from "@workspace/ui/components/separator"
 import {
   BriefcaseIcon,
+  CalendarCheckIcon,
   CalendarPlusIcon,
   GraduationCapIcon,
   MailIcon,
@@ -14,6 +15,8 @@ import {
 } from "lucide-react"
 import * as React from "react"
 
+import { ScheduleInterview } from "@/components/schedule-interview"
+import { whenOf } from "@/lib/interviews"
 import { useListCopy } from "@/lib/list-source"
 
 /**
@@ -145,10 +148,22 @@ function AtAGlance({
         </Button>
       )}
 
-      <Button variant="outline" size="sm">
-        <CalendarPlusIcon data-icon="inline-start" />
-        Set up interview
-      </Button>
+      <ScheduleInterview applicant={applicant}>
+        {(interview) =>
+          interview.booking ? (
+            // The booking is the fact worth showing; rescheduling is the click.
+            <Button variant="outline" size="sm" onClick={interview.open}>
+              <CalendarCheckIcon data-icon="inline-start" />
+              Interview {whenOf(interview.booking)}
+            </Button>
+          ) : (
+            <Button variant="outline" size="sm" onClick={interview.open}>
+              <CalendarPlusIcon data-icon="inline-start" />
+              Set up interview
+            </Button>
+          )
+        }
+      </ScheduleInterview>
     </Card>
   )
 }

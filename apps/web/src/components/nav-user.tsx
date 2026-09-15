@@ -27,13 +27,14 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@workspace/ui/components/sidebar"
+import { photoFor } from "@/lib/avatars"
 import { SECONDARY_ITEMS } from "@/lib/nav"
 
 /** Mock recruiter. There is no auth in this prototype. */
 const USER = {
-  name: "Priya Raman",
-  email: "priya@example.com",
-  avatar: "",
+  name: "Anurag Yadav",
+  email: "anurag.yadav@infoedge.com",
+  avatar: photoFor("Anurag Yadav"),
 }
 
 function initials(name: string) {
@@ -74,11 +75,9 @@ export function NavUser() {
               <SidebarMenuButton size="lg" className="aria-expanded:bg-muted" />
             }
           >
-            <Avatar className="size-8 rounded-lg">
+            <Avatar size="lg">
               <AvatarImage src={USER.avatar} alt={USER.name} />
-              <AvatarFallback className="rounded-lg">
-                {initials(USER.name)}
-              </AvatarFallback>
+              <AvatarFallback>{initials(USER.name)}</AvatarFallback>
             </Avatar>
             <div className="grid flex-1 text-left text-sm leading-tight">
               <span className="truncate font-medium">{USER.name}</span>
@@ -100,11 +99,9 @@ export function NavUser() {
             <DropdownMenuGroup>
               <DropdownMenuLabel className="p-0 font-normal">
                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                  <Avatar className="size-8 rounded-lg">
+                  <Avatar className="size-8">
                     <AvatarImage src={USER.avatar} alt={USER.name} />
-                    <AvatarFallback className="rounded-lg">
-                      {initials(USER.name)}
-                    </AvatarFallback>
+                    <AvatarFallback>{initials(USER.name)}</AvatarFallback>
                   </Avatar>
                   <div className="grid flex-1 text-left text-sm leading-tight">
                     <span className="truncate font-medium">{USER.name}</span>

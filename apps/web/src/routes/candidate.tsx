@@ -7,7 +7,11 @@ import {
   UserRoundIcon,
 } from "lucide-react"
 
-import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar"
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@workspace/ui/components/avatar"
 import { useBrand } from "@workspace/ui/components/brand-provider"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -25,6 +29,7 @@ import {
 import { useDecisions } from "@/components/decisions-provider"
 import { CandidateDetail } from "@/components/candidate-detail"
 import { CandidateSkeleton } from "@/components/skeletons"
+import { CandidateSourceContext, jobSource } from "@/lib/candidate-source"
 import {
   applicantsFor,
   requiredSkillsFor,
@@ -83,14 +88,17 @@ function Profile({
   onDecide: (id: string, status: ApplicantStatus) => void
 }) {
   return (
-    <div className="flex flex-col gap-5 px-4 lg:px-6">
-      <Header job={job} applicant={applicant} onDecide={onDecide} />
+    // They applied to this job, so that is what an interview here is for.
+    <CandidateSourceContext value={(person) => jobSource(job, person.id)}>
+      <div className="flex flex-col gap-5 px-4 lg:px-6">
+        <Header job={job} applicant={applicant} onDecide={onDecide} />
 
-      <CandidateDetail
-        applicant={applicant}
-        required={requiredSkillsFor(job)}
-      />
-    </div>
+        <CandidateDetail
+          applicant={applicant}
+          required={requiredSkillsFor(job)}
+        />
+      </div>
+    </CandidateSourceContext>
   )
 }
 
@@ -126,10 +134,9 @@ function Header({
 
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-start gap-3">
-          {/* Initials, not a photograph — the same call the card makes, and
-              for the same reason: screening on a face is the failure mode this
-              screen should not encourage. */}
+          {/* The card's avatar, without the "new" dot. */}
           <Avatar className="size-12 shrink-0">
+            {applicant.photo && <AvatarImage src={applicant.photo} alt="" />}
             <AvatarFallback>{initials(applicant.name)}</AvatarFallback>
           </Avatar>
 

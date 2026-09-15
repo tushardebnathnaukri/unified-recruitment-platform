@@ -1,3 +1,4 @@
+import { candidatePhoto } from "@/lib/avatars"
 import type { Job } from "@/lib/jobs"
 
 /**
@@ -56,6 +57,8 @@ export type Applicant = {
   company: string
   location: string
   experienceYears: number
+  /** A generated portrait (`lib/avatars.ts`); missing for about one in five. */
+  photo?: string
   /** Current pay, in lakh per annum — how this market states it. */
   currentCtcLakh: number
   /** Notice period in days. 0 means available immediately. */
@@ -590,6 +593,11 @@ export function applicantsFor(
     const jitter = seededRandom(seedFrom(`${job.id}-a${index + 1}-match`))()
     const fits = [...skills].filter((skill) => required.includes(skill)).length
 
+    // About one in five has no photo, as on any real pool. Its own stream
+    // too, for the same reason as `jitter`.
+    const hasPhoto =
+      seededRandom(seedFrom(`${job.id}-a${index + 1}-photo`))() < 0.8
+
     return {
       id: `${job.id}-a${index + 1}`,
       name,
@@ -597,6 +605,7 @@ export function applicantsFor(
       company,
       location: options.location ?? pick(LOCATIONS),
       experienceYears,
+      photo: hasPhoto ? candidatePhoto(name, experienceYears) : undefined,
       // Roughly five lakh a year of experience, plus a spread wide enough that
       // two people with the same experience are not on the same number.
       currentCtcLakh: Math.round(experienceYears * 5 + 6 + random() * 22),

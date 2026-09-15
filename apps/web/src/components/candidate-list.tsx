@@ -2,6 +2,7 @@ import * as React from "react"
 import type { LucideIcon } from "lucide-react"
 import { useSearchParams } from "react-router"
 import {
+  CalendarCheckIcon,
   CalendarPlusIcon,
   ChevronDownIcon,
   DownloadIcon,
@@ -53,6 +54,12 @@ import { CandidateCv } from "@/components/candidate-cv"
 import { CandidatePanel } from "@/components/candidate-panel"
 import { CandidateDetail } from "@/components/candidate-detail"
 import { useDecisions } from "@/components/decisions-provider"
+import { SaveToList } from "@/components/save-to-list"
+import { ScheduleInterview } from "@/components/schedule-interview"
+import {
+  CandidateSourceContext,
+  type CandidateSource,
+} from "@/lib/candidate-source"
 import { Meta, MetaItem } from "@workspace/ui/components/meta"
 import {
   RadioGroup,
@@ -214,6 +221,8 @@ export function CandidateList({
   sidebar,
   toolbar,
   verdicts,
+  annotate,
+  candidateSource,
 }: {
   /** Everybody on the list, before this session's decisions are laid over. */
   people: Applicant[]
@@ -260,22 +269,37 @@ export function CandidateList({
    * a posting has no criteria, only the skills it asks for.
    */
   verdicts?: (applicant: Applicant) => Verdict[]
+  /**
+   * `results` only: a last block on each card, above its actions, for what the
+   * caller knows about a person that the list does not — on My Lists, where
+   * they were saved from and the recruiter's note.
+   */
+  annotate?: (applicant: Applicant) => React.ReactNode
+  /**
+   * How the people on this screen came in — the posting, or the search. What
+   * a save records as "saved from", and what an interview is booked against.
+   * My Lists passes none: everybody on it already carries their own.
+   */
+  candidateSource?: (applicant: Applicant) => CandidateSource
 }) {
   return (
-    <ListSourceContext value={source}>
-      <CandidateListBody
-        generated={generated}
-        requiredSkills={requiredSkills}
-        header={header}
-        empty={empty}
-        defaultSort={defaultSort}
-        searchKey={searchKey}
-        layout={layout}
-        sidebar={sidebar}
-        toolbar={toolbar}
-        verdicts={verdicts}
-      />
-    </ListSourceContext>
+    <CandidateSourceContext value={candidateSource}>
+      <ListSourceContext value={source}>
+        <CandidateListBody
+          generated={generated}
+          requiredSkills={requiredSkills}
+          header={header}
+          empty={empty}
+          defaultSort={defaultSort}
+          searchKey={searchKey}
+          layout={layout}
+          sidebar={sidebar}
+          toolbar={toolbar}
+          verdicts={verdicts}
+          annotate={annotate}
+        />
+      </ListSourceContext>
+    </CandidateSourceContext>
   )
 }
 
@@ -290,6 +314,7 @@ function CandidateListBody({
   sidebar,
   toolbar,
   verdicts,
+  annotate,
 }: {
   generated: Applicant[]
   requiredSkills: string[]
@@ -301,6 +326,7 @@ function CandidateListBody({
   sidebar: React.ReactNode
   toolbar: React.ReactNode
   verdicts?: (applicant: Applicant) => Verdict[]
+  annotate?: (applicant: Applicant) => React.ReactNode
 }) {
   const [searchParams, setSearchParams] = useSearchParams()
   const bucketParam = searchParams.get("bucket")
@@ -552,6 +578,7 @@ function CandidateListBody({
                 progress={null}
                 view="cards"
                 verdicts={verdicts}
+                annotate={annotate}
                 requiredSkills={requiredSkills}
                 selectedId={selectedId}
                 onSelect={(id) => setParams({ candidate: id })}
@@ -580,27 +607,38 @@ function CandidateListBody({
               Sitting the tabs inside the list column said the opposite: that
               the filters were a peer of the tabs rather than something applied
               underneath them. */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <TabsList className="max-w-full overflow-x-auto">
-              {BUCKETS.map((bucket) => (
-                <TabsTrigger key={bucket.value} value={bucket.value}>
-                  {bucket.label}
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {counts[bucket.value]}
-                  </span>
-                </TabsTrigger>
-              ))}
-            </TabsList>
+          {/* THE TABS AND THE PILLS STICK AS ONE BLOCK. Two separately sticky
+              rows would need the second offset by the first's height, and the
+              gap between them would let cards show through once stuck.
+              `sticky top-0`, not offset by `--header-height`: `SiteHeader` is
+              a plain flow element, not pinned, so by the time this block would
+              overlap it the header has already scrolled past. `bg-card` is
+              load-bearing once stuck, and the negative margin bleeds it across
+              `CandidateList`'s own `px-4 lg:px-6` gutter so the cards' rings
+              are covered edge to edge. `z-20`, not `z-10`: `AvatarBadge` is
+              `z-10` and later in the DOM, so a tie puts the new dot on top. */}
+          <div className="sticky top-0 z-20 -mx-4 flex flex-col gap-4 border-b border-border bg-card px-4 py-2 lg:-mx-6 lg:px-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <TabsList className="max-w-full overflow-x-auto">
+                {BUCKETS.map((bucket) => (
+                  <TabsTrigger key={bucket.value} value={bucket.value}>
+                    {bucket.label}
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {counts[bucket.value]}
+                    </span>
+                  </TabsTrigger>
+                ))}
+              </TabsList>
 
-            <ViewSwitcher
-              view={view}
-              onChange={(next) =>
-                setParams({ view: next === "cards" ? null : next })
-              }
-            />
-          </div>
+              <ViewSwitcher
+                view={view}
+                onChange={(next) =>
+                  setParams({ view: next === "cards" ? null : next })
+                }
+              />
+            </div>
 
-          {/* The panel that narrows the list, then the list, side by side above
+            {/* The panel that narrows the list, then the list, side by side above
               896px of CONTENT width — a container query, not a viewport one,
               because the thing that has to fit both is the content column, and
               it changes width when the nav sidebar collapses.
@@ -616,7 +654,8 @@ function CandidateListBody({
               It is OUTSIDE the tab panels, not repeated in each: five copies of
               one search box is five things a screen reader has to tell apart,
               and the query would reset every time you changed tab. */}
-          <FilterBar {...filterProps} />
+            <FilterBar {...filterProps} />
+          </div>
 
           <div className="flex flex-col">
             <div className="flex min-w-0 flex-1 flex-col">
@@ -714,6 +753,7 @@ function ApplicantList({
   onOpenProfile,
   onDecide,
   verdicts,
+  annotate,
 }: {
   applicants: Applicant[]
   bucket: { value: ResponseBucket; label: string }
@@ -728,6 +768,7 @@ function ApplicantList({
   onOpenProfile: (id: string) => void
   onDecide: (id: string, status: ApplicantStatus) => void
   verdicts?: (applicant: Applicant) => Verdict[]
+  annotate?: (applicant: Applicant) => React.ReactNode
 }) {
   const [visible, setVisible] = React.useState(PAGE_SIZE)
   const copy = useListCopy()
@@ -821,6 +862,7 @@ function ApplicantList({
                     applicant={applicant}
                     requiredSkills={requiredSkills}
                     verdicts={verdicts?.(applicant)}
+                    annotation={annotate?.(applicant)}
                     onDecide={onDecide}
                     onOpenProfile={onOpenProfile}
                   />
@@ -940,6 +982,7 @@ function ApplicantCard({
   applicant,
   requiredSkills,
   verdicts,
+  annotation,
   onDecide,
   onOpenProfile,
 }: {
@@ -947,6 +990,8 @@ function ApplicantCard({
   requiredSkills: string[]
   /** One line of evidence per criterion, in rank order. Search results only. */
   verdicts?: Verdict[]
+  /** The caller's own block, after the evidence — see `annotate`. */
+  annotation?: React.ReactNode
   onDecide: (id: string, status: ApplicantStatus) => void
   onOpenProfile: (id: string) => void
 }) {
@@ -966,6 +1011,7 @@ function ApplicantCard({
         <div className="flex min-w-0 items-start gap-3">
           <ApplicantAvatar
             name={applicant.name}
+            photo={applicant.photo}
             fresh={isNew(applicant)}
             className="size-12"
           />
@@ -1023,6 +1069,8 @@ function ApplicantCard({
       {verdicts && verdicts.length > 0 && (
         <CriteriaEvidence verdicts={verdicts} />
       )}
+
+      {annotation}
 
       <CardActions
         applicant={applicant}
@@ -1565,68 +1613,84 @@ function ApplicantActions({
   const copy = useListCopy()
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="rounded-full text-muted-foreground"
-            aria-label={`More actions for ${applicant.name}`}
-          />
-        }
-      >
-        <EllipsisIcon />
-      </DropdownMenuTrigger>
+    // Around the whole menu, not inside it: a menu's items unmount when it
+    // closes, and the dialog one of them opens has to outlive that.
+    <ScheduleInterview applicant={applicant}>
+      {(interview) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="rounded-full text-muted-foreground"
+                aria-label={`More actions for ${applicant.name}`}
+              />
+            }
+          >
+            <EllipsisIcon />
+          </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" className="min-w-52">
-        {/* The card's two icon buttons, spelled out, for the widths where the
+          <DropdownMenuContent align="end" className="min-w-52">
+            {/* The card's two icon buttons, spelled out, for the widths where the
             footer has no room for them. `md:hidden` is the exact inverse of
             what hides them there, so they are in one place or the other and
             never both. */}
-        <DropdownMenuGroup className="md:hidden">
-          <DropdownMenuItem onClick={() => onDecide(applicant.id, "contacted")}>
-            <MailIcon />
-            Message
-          </DropdownMenuItem>
-          <DropdownMenuItem>
-            <CalendarPlusIcon />
-            Set up interview
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
+            <DropdownMenuGroup className="md:hidden">
+              <DropdownMenuItem
+                onClick={() => onDecide(applicant.id, "contacted")}
+              >
+                <MailIcon />
+                Message
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={interview.open}>
+                {interview.booking ? (
+                  <CalendarCheckIcon />
+                ) : (
+                  <CalendarPlusIcon />
+                )}
+                {interview.booking
+                  ? "Reschedule interview"
+                  : "Set up interview"}
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
 
-        <DropdownMenuSeparator className="md:hidden" />
+            <DropdownMenuSeparator className="md:hidden" />
 
-        <DropdownMenuGroup>
-          <DropdownMenuItem>
-            <DownloadIcon />
-            Download CV
-          </DropdownMenuItem>
-          {/* Calling is reaching out, so it moves the row the way Message
+            <DropdownMenuGroup>
+              <DropdownMenuItem>
+                <DownloadIcon />
+                Download CV
+              </DropdownMenuItem>
+              {/* Calling is reaching out, so it moves the row the way Message
               does — it is in here rather than on the card only because it is
               the rarer of the two. */}
-          <DropdownMenuItem onClick={() => onDecide(applicant.id, "contacted")}>
-            <PhoneIcon />
-            Call
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
+              <DropdownMenuItem
+                onClick={() => onDecide(applicant.id, "contacted")}
+              >
+                <PhoneIcon />
+                Call
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
 
-        <DropdownMenuSeparator />
+            <DropdownMenuSeparator />
 
-        <DropdownMenuGroup>
-          {/* The end of the funnel, and the only thing in here worth an accent
+            <DropdownMenuGroup>
+              {/* The end of the funnel, and the only thing in here worth an accent
               — everything above it is a step, this one is the outcome. */}
-          <DropdownMenuItem className="text-primary focus:text-primary">
-            <TrophyIcon />
-            Mark as hired
-          </DropdownMenuItem>
-          <DropdownMenuItem variant="destructive">
-            <Trash2Icon />
-            {copy.remove}
-          </DropdownMenuItem>
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+              <DropdownMenuItem className="text-primary focus:text-primary">
+                <TrophyIcon />
+                Mark as hired
+              </DropdownMenuItem>
+              <DropdownMenuItem variant="destructive">
+                <Trash2Icon />
+                {copy.remove}
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </ScheduleInterview>
   )
 }
 
@@ -2032,6 +2096,11 @@ function CardActions({
           half: without it they refuse to wrap and force the break every
           time. */}
       <div className="flex shrink-0 items-center gap-2">
+        {/* LABELLED, AND KEPT AT EVERY WIDTH. It is a menu, so it cannot fold
+            into the overflow menu the way the two icons below do, and its
+            label is its state — "Saved" is the only place a card says so. */}
+        <SaveToList applicant={applicant} />
+
         {/* GONE UNDER 768px, WHERE THEY REAPPEAR IN THE OVERFLOW MENU. On a
             phone the footer is the width of the card, and four controls plus a
             revealed email on that width is a row that wraps into a shape
@@ -2052,9 +2121,17 @@ function CardActions({
             <MailIcon />
           </IconAction>
 
-          <IconAction label="Set up interview">
-            <CalendarPlusIcon />
-          </IconAction>
+          <ScheduleInterview applicant={applicant}>
+            {(interview) => (
+              <IconAction label={interview.label} onClick={interview.open}>
+                {interview.booking ? (
+                  <CalendarCheckIcon />
+                ) : (
+                  <CalendarPlusIcon />
+                )}
+              </IconAction>
+            )}
+          </ScheduleInterview>
         </div>
 
         {/* LAST, WHICH IS THE PROMINENT END OF A RIGHT-ALIGNED ROW. Opening
@@ -2188,6 +2265,7 @@ function SplitView({
                 {/* The card's header, so the same size as the card's avatar. */}
                 <ApplicantAvatar
                   name={selected.name}
+                  photo={selected.photo}
                   fresh={isNew(selected)}
                   className="size-12"
                 />
@@ -2210,6 +2288,7 @@ function SplitView({
 
               <div className="flex items-center gap-2">
                 <DecisionGroup applicant={selected} onDecide={onDecide} />
+                <SaveToList applicant={selected} />
                 <Button
                   variant="outline"
                   size="sm"
@@ -2284,6 +2363,7 @@ function SplitRow({
           when selected or hovered rather than the card's. */}
       <ApplicantAvatar
         name={applicant.name}
+        photo={applicant.photo}
         fresh={isNew(applicant)}
         className="size-10"
         badgeClassName={
@@ -2416,6 +2496,8 @@ function FilterBar(
 
   return (
     <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
+      {/* Not sticky itself — it rides inside the tab row's sticky block, which
+          owns the background, border and bleed. */}
       <div className="flex flex-wrap items-center gap-2">
         {/* SEARCH IS AN ICON. Shrinking it to a glyph is only safe because the
             field it stands for is one click away in both modes — a popover on

@@ -1,6 +1,7 @@
 import * as React from "react"
 import type { ReactNode } from "react"
 import {
+  CalendarCheckIcon,
   CalendarPlusIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
@@ -35,6 +36,8 @@ import {
   DecisionGroup,
 } from "@/components/applicant-controls"
 import { CandidateDetail } from "@/components/candidate-detail"
+import { SaveToList } from "@/components/save-to-list"
+import { ScheduleInterview } from "@/components/schedule-interview"
 import { isNew, type Applicant, type ApplicantStatus } from "@/lib/applicants"
 import { useListCopy } from "@/lib/list-source"
 
@@ -120,11 +123,10 @@ export function CandidatePanel({
           >
             <SheetHeader className="p-5 pb-4">
               <div className="flex min-w-0 items-start gap-3">
-                {/* Initials, not a photograph — the same call the card and the
-                    page both make, for the same reason. The sheet is
-                    `popover`, so the dot's cut-out is too. */}
+                {/* The sheet is `popover`, so the dot's cut-out is too. */}
                 <ApplicantAvatar
                   name={applicant.name}
+                  photo={applicant.photo}
                   fresh={isNew(applicant)}
                   className="size-11"
                   badgeClassName="ring-popover"
@@ -161,9 +163,22 @@ export function CandidatePanel({
                       <PhoneIcon />
                     </CircleAction>
 
-                    <CircleAction label="Set up interview">
-                      <CalendarPlusIcon />
-                    </CircleAction>
+                    <ScheduleInterview applicant={applicant}>
+                      {(interview) => (
+                        <CircleAction
+                          label={interview.label}
+                          onClick={interview.open}
+                        >
+                          {interview.booking ? (
+                            <CalendarCheckIcon />
+                          ) : (
+                            <CalendarPlusIcon />
+                          )}
+                        </CircleAction>
+                      )}
+                    </ScheduleInterview>
+
+                    <SaveToList applicant={applicant} variant="icon" />
 
                     {/* Filled, because it is the one of the three a recruiter
                         actually came here to do — and the only one that moves

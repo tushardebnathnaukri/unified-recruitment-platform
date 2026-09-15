@@ -10,6 +10,7 @@ import { JobsPage } from "@/routes/jobs"
 import { LegacyDashboardPage } from "@/routes/legacy-dashboard"
 import { InsightsPage } from "@/routes/insights"
 import { InterviewsPage } from "@/routes/interviews"
+import { ListsPage } from "@/routes/lists"
 import { PlaceholderPage } from "@/routes/placeholder"
 import { PlaygroundPage } from "@/routes/playground"
 import { SettingsPage } from "@/routes/settings"
@@ -62,11 +63,14 @@ export function App() {
             element={<CandidatePage />}
           />
           <Route path="database" element={<DatabasePage />} />
-          <Route
-            path="my-candidates"
-            element={<PlaceholderPage title="My Lists" />}
-          />
+          {/* The recruiter's own database: people kept from Jobs, Search
+            Resume and Interviews, filed in lists. */}
+          <Route path="my-candidates" element={<ListsPage />} />
           <Route path="interviews" element={<InterviewsPage />} />
+          <Route
+            path="credits"
+            element={<PlaceholderPage title="Credits" />}
+          />
           <Route path="insights" element={<InsightsPage />} />
           <Route path="search" element={<PlaceholderPage title="Search" />} />
 

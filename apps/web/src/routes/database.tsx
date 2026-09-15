@@ -15,7 +15,6 @@ import {
   EmptyTitle,
 } from "@workspace/ui/components/empty"
 import { Kbd, KbdGroup } from "@workspace/ui/components/kbd"
-import { ListCard } from "@workspace/ui/components/list-card"
 import { Meta, MetaItem } from "@workspace/ui/components/meta"
 import { SectionHeader } from "@workspace/ui/components/section-header"
 import { Switch } from "@workspace/ui/components/switch"
@@ -47,6 +46,7 @@ import {
   type SearchResults,
 } from "@/lib/database"
 import { matchesFilters } from "@/lib/applicants"
+import type { CandidateSource } from "@/lib/candidate-source"
 import {
   defaultCriteria,
   scoreFor,
@@ -334,11 +334,11 @@ function RecentSearches() {
         description="Run one again to see who has joined since"
       />
 
-      <ListCard>
+      <div role="list" className="flex flex-col gap-3">
         {recentSearchesFor(brand).map((search) => (
           <SearchRow key={search.id} search={search} />
         ))}
-      </ListCard>
+      </div>
     </section>
   )
 }
@@ -514,6 +514,13 @@ function SearchResultsPage({
     [juicebox, params, scored, count]
   )
 
+  /** Everybody saved from here is saved from this search, re-runnable. */
+  const candidateSource = (): CandidateSource => ({
+    kind: "search",
+    label: headlineFor(query, mode),
+    href: searchHref({ query, mode, boolean }),
+  })
+
   const panel = {
     profiles: results.people,
     params,
@@ -531,6 +538,7 @@ function SearchResultsPage({
         defaultSort="match"
         searchKey="find"
         layout="results"
+        candidateSource={candidateSource}
         verdicts={(applicant) => verdicts.get(applicant.id) ?? []}
         toolbar={
           <JuiceboxToolbar
@@ -568,6 +576,7 @@ function SearchResultsPage({
       defaultSort="match"
       searchKey="find"
       layout="results"
+      candidateSource={candidateSource}
       sidebar={<RefinePanel {...panel} />}
       toolbar={<ResultsToolbar {...panel} defaultSort="match" />}
       header={

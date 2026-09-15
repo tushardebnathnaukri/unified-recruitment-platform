@@ -21,6 +21,7 @@ import { Meta, MetaItem } from "@workspace/ui/components/meta"
 import { useBrand } from "@workspace/ui/components/brand-provider"
 import { CandidateList } from "@/components/candidate-list"
 import { applicantsFor, requiredSkillsFor } from "@/lib/applicants"
+import { jobSource } from "@/lib/candidate-source"
 import { jobsFor, type Job } from "@/lib/jobs"
 
 /**
@@ -72,6 +73,7 @@ function ResponseManager({ job }: { job: Job }) {
       requiredSkills={requiredSkills}
       header={<JobHeader job={job} />}
       empty={<NoResponsesYet job={job} />}
+      candidateSource={(applicant) => jobSource(job, applicant.id)}
     />
   )
 }

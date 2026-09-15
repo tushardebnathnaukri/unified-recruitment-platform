@@ -153,8 +153,9 @@ framework mode. Import from `react-router` (`react-router-dom` is a deprecated s
 `src/App.tsx`, pages in `src/routes/`.
 
 Designed so far: `/dashboard`, `/jobs` (four status tabs), `/jobs/:jobId` — the response manager,
-the biggest surface in here — `/jobs/:jobId/applicants/:applicantId`, `/insights`, and `/database`
-(search box, recent searches, results). Still `PlaceholderPage`: `/jobs/new`, `/search`,
+the biggest surface in here — `/jobs/:jobId/applicants/:applicantId`, `/insights`, `/database`
+(search box, recent searches, results), `/interviews` and `/my-candidates` (My Lists). Still
+`PlaceholderPage`: `/jobs/new`, `/credits`, `/search`,
 `/projects/new`. `/reference/dashboard` is a hardcoded replica of the live iimjobs dashboard, kept
 for side-by-side comparison and deliberately outside the design system — see the note at the top of
 `legacy-dashboard.tsx`.
@@ -229,7 +230,17 @@ Arrival is a separate fact: `newSinceVisit`, against a constant `LAST_VISIT` (on
 accounts). The page opens on **To review** — everybody undecided — as two runs, "New since …" then
 "Earlier", and the sort (Most recent / Best match) applies *inside* each run, never across. A
 decision removes the card at once, with an undo bar. The avatar's dot means new AND undecided
-(`isNew`). Jobs carry `newSinceVisit`, not `unread`, and that is what "N new" means on the Jobs list
+(`isNew`).
+
+**Avatars are generated photos, and one candidate in five has none on purpose** — a real pool is a
+mix, so the card must read either way. `apps/web/scripts/generate-avatars.mjs` (Gemini, key in
+`GEMINI_API_KEY`) writes made-up faces into `src/assets/avatars/`: named fixture people by full
+name, and candidates as a pool of three per first name, the age band picked from experience by
+`candidatePhoto` in `lib/avatars.ts`. The pool mixes studio, natural-light and phone-quality shots
+deliberately. Adding a first name to `applicants.ts` means adding it to the script and re-running
+it; a missing file just falls back to initials.
+
+Jobs carry `newSinceVisit`, not `unread`, and that is what "N new" means on the Jobs list
 and the Dashboard.
 
 **The Dashboard's requirement box only searches** (`/database?q=`). Projects are meant to file
@@ -238,6 +249,49 @@ themselves by role rather than be created, and two pieces from shapes that were 
 a role would land in) and `requirementParts` in `lib/requirement.ts` (which of location, title,
 experience, industry and skills a description covers). Do not delete them as dead code without
 asking. Word-list autocomplete on the box was built and removed.
+
+**A candidate comes in through exactly two doors: Jobs (they applied) and Search Resume (a search
+found them)** — `CandidateSource` in `lib/candidate-source.ts`. Everything else is downstream and
+records which door, rather than being a door itself: **Interviews are driven from Jobs and Search
+Resume** (each row is booked against a posting and says "Applied" or "Sourced from <search>", the
+candidate linking to their applicant page or to their profile over the search), and My Lists'
+"Saved from" has the same two values. Screens say which door their people came through by providing
+`CandidateSourceContext` — `CandidateList`'s `candidateSource` prop, or the candidate page's job.
+
+**"Set up interview" books a slot** (`ScheduleInterview`, a render-prop around whatever trigger —
+the card icon, the overflow item, the panel, the candidate page). An applicant's job is fixed; a
+sourced person picks one of the live postings. It warns on a calendar clash, lands as Awaiting
+Candidate Response, and booking again reschedules (one interview per person per posting). State is
+`InterviewsProvider`, the same seeded-plus-overlay shape as the other providers, and /interviews
+reads it. **Booking moves the person to Contacted only when the dialog closes**: on a queue the
+decision takes the card away, and the dialog lives inside the card. The overflow item's dialog sits
+around the whole menu for the same reason — menu items unmount when the menu closes.
+
+On /interviews, **Reschedule** opens the same form (`RescheduleDialog`) and **Cancel interview**
+asks first, then takes the slot off (`cancel` in `InterviewsProvider`). Both dialogs are held by the
+page, not the row: rescheduling makes a slot Awaiting Candidate Response, which filters its row out
+of the table while the confirmation is still showing. Completed rows have no actions.
+
+**Add feedback** (`FeedbackDialog`) is a four-way recommendation — Strong hire / Hire / No hire /
+Strong no hire, no middle — plus notes, and **submitting marks the interview Completed**: feedback
+is only ever about one that happened. A written verdict shows as a badge that opens the notes; an
+invite still Awaiting Candidate Response takes none. It deliberately does not move the candidate's
+decision on the posting. `Interview.feedback` is `InterviewFeedback | null`.
+
+**My Lists (`/my-candidates`) is the recruiter's personal database** — people kept from Jobs and
+Search Resume, within one product. A person is saved once and filed in one or more
+named lists; "All saved" is the pool and a list is a view onto it. Each keeps where they were saved
+from, as a link back. It is a pool, not a queue: `CandidateList` with `layout="results"`,
+`source="saved"`, the lists as the sticky column, and the card's last block (`annotate`) carrying
+the saved-from link, the other lists and the recruiter's note. `?list=`, `?from=`, `?find=`. Data
+is `lib/lists.ts`, dealt from the same generators as the screens the people came from.
+
+**Saving is `SaveToList`** — a menu of the lists, ticked where the person already is, on every card
+and in the split view and profile panel of both the response manager and Search Resume's results.
+Ticking files, unticking the last list unsaves. State is `SavedListsProvider` (in `main.tsx`, an
+overlay over the seeded pile like `DecisionsProvider`, per brand, reset on reload). Where somebody
+was saved from comes from `CandidateList`'s `savedFrom` prop through `SavedFromContext`; My Lists
+passes none, because everybody there already has one.
 
 **`/insights` is the market; the Dashboard is you.** Insights answers "what does this role pay,
 where are the people, is demand rising" and reads the same for whoever searches it — it is modelled
@@ -400,11 +454,19 @@ A closed dropdown is not designable, and Figma has no hover or focus, so where a
 exists on `:focus` — a highlighted menu row, a select item — it is shown on one row so the treatment
 is visible at all.
 
-The **Compositions** layer is mirrored too — Candidate profile, Dashboard, Insights, Post a job
-form, Jobs list, Response manager and Settings row — assembled from instances rather than redrawn, so a change to Input or Chip lands in the screens. Icons in the
+The **Compositions** layer is mirrored too — Candidate profile, Dashboard, Database, Insights, Post a
+job form, Jobs list, Response manager and Settings row — assembled from instances rather than redrawn, so a change to Input or Chip lands in the screens. Icons in the
 compositions are placeholders; swap in real instances rather than adding an icon variant. A frame
 cannot hold a description or `documentationLinks`, so each composition carries its Storybook URL as
 an on-canvas caption instead.
+
+**Database is five frames on one page**, one per story that is a screen or an overlay: the search
+page, results under Juicebox, results under the Refine panel, and the two dialogs drawn open. Its
+`figma-map.json` entry points at the **page** (`144:2`), not a frame, because its Docs page covers all
+five. The result cards are clones of the Response manager's ApplicantCard plus a `CriteriaEvidence`
+block, and the recent searches extend the Dashboard's list — so a change to either card shape has
+two frames to follow. The ✓ / – in the evidence chips stand in for the app's thumbs-up and dash
+icons.
 
 **Avatar has a `badge` variant — `none` / `bottom-right` / `top-right`** — rather than a boolean,
 because Figma cannot move a layer inside an instance. `bottom-right` is `AvatarBadge`'s default in

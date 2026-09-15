@@ -27,6 +27,7 @@ import { useBrand } from "@workspace/ui/components/brand-provider"
 import { BRANDS } from "@workspace/ui/lib/brands"
 import { cn } from "@workspace/ui/lib/utils"
 import { useAthena } from "@/components/athena-provider"
+import { photoFor } from "@/lib/avatars"
 import {
   ASSISTANT_ID,
   ASSISTANT_OPENING,
@@ -225,9 +226,10 @@ export function MessageDock() {
           initials={activeConversation?.initials}
           photo={
             activeConversation
-              ? placeholderPhoto(
+              ? (photoFor(activeConversation.name) ??
+                placeholderPhoto(
                   CONVERSATIONS.findIndex((c) => c.id === activeConversation.id)
-                )
+                ))
               : undefined
           }
           online={activeConversation?.online}
@@ -507,9 +509,12 @@ function ThreadList({
               conversation={conversation}
               // Keyed off the position in the full roster, not in `matches`,
               // so a candidate keeps the same portrait while you search.
-              photo={placeholderPhoto(
-                CONVERSATIONS.findIndex((c) => c.id === conversation.id)
-              )}
+              photo={
+                photoFor(conversation.name) ??
+                placeholderPhoto(
+                  CONVERSATIONS.findIndex((c) => c.id === conversation.id)
+                )
+              }
               preview={lastOf(threads[conversation.id])}
               unread={unread[conversation.id] ?? 0}
               onOpen={() => onOpenThread(conversation.id)}
