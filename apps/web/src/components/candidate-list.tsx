@@ -53,6 +53,7 @@ import {
 import { CandidateCv } from "@/components/candidate-cv"
 import { CandidatePanel } from "@/components/candidate-panel"
 import { CandidateDetail } from "@/components/candidate-detail"
+import { useAthena } from "@/components/athena-provider"
 import { useDecisions } from "@/components/decisions-provider"
 import { SaveToList } from "@/components/save-to-list"
 import { ScheduleInterview } from "@/components/schedule-interview"
@@ -1783,6 +1784,8 @@ function ApplicantActions({
 
 function useCollapseNavBelow(minWidth: number) {
   const { open, setOpen } = useSidebar()
+  // Giving the nav back goes through Athena, who may be using the room.
+  const { restoreNav } = useAthena()
 
   /**
    * Both of these are refs so the effect below can depend on `minWidth` alone.
@@ -1797,10 +1800,12 @@ function useCollapseNavBelow(minWidth: number) {
    */
   const openRef = React.useRef(open)
   const setOpenRef = React.useRef(setOpen)
+  const restoreNavRef = React.useRef(restoreNav)
   React.useEffect(() => {
     openRef.current = open
     setOpenRef.current = setOpen
-  }, [open, setOpen])
+    restoreNavRef.current = restoreNav
+  }, [open, setOpen, restoreNav])
 
   const collapsedByUs = React.useRef(false)
 
@@ -1815,7 +1820,7 @@ function useCollapseNavBelow(minWidth: number) {
         }
       } else if (collapsedByUs.current) {
         collapsedByUs.current = false
-        setOpenRef.current(true)
+        restoreNavRef.current()
       }
     }
 
@@ -1827,7 +1832,7 @@ function useCollapseNavBelow(minWidth: number) {
       // Give it back on the way out: the next screen does not need the room.
       if (collapsedByUs.current) {
         collapsedByUs.current = false
-        setOpenRef.current(true)
+        restoreNavRef.current()
       }
     }
   }, [minWidth])

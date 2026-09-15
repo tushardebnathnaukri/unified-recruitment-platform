@@ -1,19 +1,34 @@
 import * as React from "react"
+import { useLocation } from "react-router"
 import { SendIcon, SparklesIcon, XIcon } from "lucide-react"
 
+import { useBrand } from "@workspace/ui/components/brand-provider"
 import { Button } from "@workspace/ui/components/button"
 import { Textarea } from "@workspace/ui/components/textarea"
+import type { Brand } from "@workspace/ui/lib/brands"
 import { cn } from "@workspace/ui/lib/utils"
+import { AthenaBlock } from "@/components/athena-blocks"
 import { useAthena } from "@/components/athena-provider"
+import { CANNOT_ANSWER, type Opener, type Reply } from "@/lib/athena"
+import { titleForPath } from "@/lib/nav"
 
 /**
  * Athena, the copilot pane — the third column of the shell.
  *
- * TODO(design): WHAT GOES IN HERE IS NOT DECIDED. This is the conversation
- * shape and nothing else: a thread, a composer, and openers. It answers with a
- * stub that says so rather than a plausible-sounding reply, because a fake
- * answer in a design review gets read as a real capability and the first
- * question anybody asks of this pane will be "can it actually do that".
+ * SHE ANSWERS WHAT THE PAGE CAN COMPUTE, AND SAYS SO ABOUT THE REST. Each page
+ * registers the questions it can answer (`useAthenaContext`), and the answers
+ * are worked out from the data on screen at the moment they are asked — see
+ * `lib/athena.ts`. A question typed in her own box gets a reply that says it
+ * cannot be answered yet, because a plausible made-up answer in a design review
+ * gets read as a real capability.
+ *
+ * ONE THREAD PER PRODUCT, NOT ONE PER PAGE. It survives navigation the way the
+ * half-typed question does, and a divider marks each move, so the thread still
+ * reads after you have moved on. Switching product swaps the thread: iimjobs'
+ * candidates have no business in a hirist conversation, and their Shortlist
+ * buttons would be acting on people the other product does not have. Switching
+ * back brings the first thread back, the way `SavedListsProvider` keeps each
+ * product's lists.
  *
  * A PANE, NOT AN OVERLAY. A copilot you consult about what is on screen cannot
  * be the thing covering it, so above `md` this takes its own column beside the
@@ -22,28 +37,85 @@ import { useAthena } from "@/components/athena-provider"
  * the same idea on a phone.
  */
 export function AthenaPane() {
-  const { open, setOpen } = useAthena()
-  const [messages, setMessages] = React.useState<Message[]>([])
+  const { open, setOpen, context } = useAthena()
+  const { pathname } = useLocation()
+  const { brand } = useBrand()
+  const [threads, setThreads] = React.useState<
+    Partial<Record<Brand, Message[]>>
+  >({})
   const [draft, setDraft] = React.useState("")
+  // Which product's thread is waiting on a reply — a reply belongs to the
+  // thread it was asked in, even if the product changes before it lands.
+  const [thinkingIn, setThinkingIn] = React.useState<Brand | null>(null)
+  const messages = threads[brand] ?? []
+  const thinking = thinkingIn === brand
   const threadRef = React.useRef<HTMLDivElement>(null)
 
-  const send = (text: string) => {
-    const value = text.trim()
-    if (!value) return
+  // Pending replies, cleared on unmount so a reply cannot land on a dead pane.
+  const timers = React.useRef<ReturnType<typeof setTimeout>[]>([])
+  React.useEffect(
+    () => () => {
+      timers.current.forEach(clearTimeout)
+    },
+    []
+  )
+
+  const label = context?.label ?? titleForPath(pathname)
+  const openers = context?.openers ?? []
+
+  /**
+   * Answer now, show it shortly. The answer is computed at the moment of asking
+   * — a decision taken during the pause must not leak into it — and the pause
+   * is only there so a reply is seen arriving rather than already being there.
+   */
+  const ask = (prompt: string, opener?: Opener) => {
+    const value = prompt.trim()
+    if (!value || thinkingIn) return
     setDraft("")
-    setMessages((current) => [
-      ...current,
-      { id: `u${current.length}`, from: "you", text: value },
-      { id: `a${current.length}`, from: "athena", text: STUB_REPLY },
-    ])
+    const asked = brand
+
+    const match =
+      opener ?? openers.find((candidate) => candidate.prompt === value)
+    const reply: Reply = match
+      ? match.answer()
+      : { about: label, blocks: [CANNOT_ANSWER] }
+
+    const append = (message: Message) =>
+      setThreads((current) => ({
+        ...current,
+        [asked]: [...(current[asked] ?? []), message],
+      }))
+
+    append({
+      id: `u${messages.length}`,
+      from: "you",
+      text: value,
+      where: label,
+    })
+    setThinkingIn(asked)
+    timers.current.push(
+      setTimeout(() => {
+        append({
+          id: `a${messages.length + 1}`,
+          from: "athena",
+          reply,
+          where: label,
+        })
+        setThinkingIn(null)
+      }, 600)
+    )
   }
 
   // Newest message into view. Layout effect rather than effect: after paint the
   // thread has already been seen in its old position, which reads as a jump.
+  // Keyed on the length, not the array: an empty thread is a fresh `[]` every
+  // render, and scrolling on every render would yank a reader back down. And on
+  // `open`, because closing unmounts the thread and reopening would otherwise
+  // land on its first message.
   React.useLayoutEffect(() => {
     const thread = threadRef.current
     if (thread) thread.scrollTop = thread.scrollHeight
-  }, [messages])
+  }, [open, messages.length, thinking, brand, label])
 
   if (!open) return null
 
@@ -74,33 +146,83 @@ export function AthenaPane() {
         </Button>
       </header>
 
+      {/* WHAT SHE CAN SEE, stated rather than implied. "She can see the page"
+          is only a promise if the pane says which page it thinks that is. */}
+      <div className="flex shrink-0 items-baseline gap-1.5 border-b px-4 py-2 text-xs">
+        <span className="shrink-0 text-muted-foreground">Looking at</span>
+        <span className="max-w-3/5 min-w-0 shrink-0 truncate font-medium">
+          {label}
+        </span>
+        {context?.detail && (
+          // The detail gives way before the name does: "Nish… · Principal
+          // Engineer, Platform Infrastructure" was the wrong half to keep.
+          <span className="min-w-0 truncate text-muted-foreground">
+            · {context.detail}
+          </span>
+        )}
+      </div>
+
       <div ref={threadRef} className="min-h-0 flex-1 overflow-y-auto p-4">
         {messages.length === 0 ? (
-          <Opener onPick={send} />
+          <Welcome openers={openers} onPick={ask} />
         ) : (
           <div className="flex flex-col gap-4">
-            {messages.map((message) => (
-              <Bubble key={message.id} message={message} />
+            {messages.map((message, index) => (
+              <React.Fragment key={message.id}>
+                {index > 0 && message.where !== messages[index - 1].where && (
+                  <MovedTo label={message.where} />
+                )}
+                <Turn message={message} />
+              </React.Fragment>
             ))}
+            {thinking && <Thinking />}
+            {/* The move you just made, before anything is asked on the new
+                page — derived, not stored, so walking through five pages
+                without asking leaves one divider rather than five, and coming
+                back leaves none. */}
+            {!thinking && label !== messages.at(-1)?.where && (
+              <MovedTo label={label} />
+            )}
           </div>
         )}
       </div>
 
-      <div className="shrink-0 border-t p-3">
+      <div className="flex shrink-0 flex-col gap-2 border-t p-3">
+        {/* The page's questions stay to hand once the thread has started, so
+            asking the next one is not a trip back up. WRAPPED, NOT A SCROLLING
+            ROW: a row scrolled sideways drew a scrollbar under the chips on any
+            system without overlay scrollbars and hid the third question past
+            the pane's edge, where nobody finds it. */}
+        {messages.length > 0 && openers.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {openers.map((opener) => (
+              <button
+                key={opener.prompt}
+                type="button"
+                disabled={thinkingIn !== null}
+                onClick={() => ask(opener.prompt, opener)}
+                className="max-w-full truncate rounded-full border border-border px-2.5 py-1 text-xs transition-colors hover:bg-muted disabled:opacity-50"
+              >
+                {opener.prompt}
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex items-end gap-2 rounded-2xl border border-input bg-input/30 p-2 focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50">
           <Textarea
             rows={1}
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             aria-label="Ask Athena"
-            placeholder="Ask about this page, a candidate, a role…"
+            placeholder="Ask about this page…"
             className="min-h-9 resize-none border-0 bg-transparent p-1 shadow-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
             onKeyDown={(event) => {
               // Enter sends and Shift+Enter breaks the line — the convention
               // every chat has, and the same as the dashboard's requirement box.
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault()
-                send(draft)
+                ask(draft)
               }
             }}
           />
@@ -109,8 +231,8 @@ export function AthenaPane() {
             size="icon-sm"
             className="shrink-0 rounded-full"
             aria-label="Send"
-            disabled={draft.trim() === ""}
-            onClick={() => send(draft)}
+            disabled={draft.trim() === "" || thinkingIn !== null}
+            onClick={() => ask(draft)}
           >
             <SendIcon />
           </Button>
@@ -120,41 +242,63 @@ export function AthenaPane() {
   )
 }
 
-type Message = { id: string; from: "you" | "athena"; text: string }
+/** `where` is the page's label when it was asked, which is what dividers compare. */
+type Message =
+  | { id: string; from: "you"; text: string; where: string }
+  | { id: string; from: "athena"; reply: Reply; where: string }
 
-const STUB_REPLY =
-  "I'm not wired up yet — this pane is here so we can design the conversation before deciding what I should be able to do."
+/**
+ * A move between pages, drawn in the thread. It says what the questions below
+ * it are about, so the replies above it — and their still-live buttons — read
+ * as belonging to where they were asked.
+ */
+function MovedTo({ label }: { label: string }) {
+  return (
+    <div
+      role="separator"
+      aria-label={`Moved to ${label}`}
+      className="flex items-center gap-2 text-[10px] font-medium tracking-[0.07em] text-muted-foreground uppercase"
+    >
+      <span className="h-px flex-1 bg-border" />
+      <span className="max-w-[70%] truncate">Moved to {label}</span>
+      <span className="h-px flex-1 bg-border" />
+    </div>
+  )
+}
 
-/** Openers, so the first thing in an empty pane is not a blank box. */
-const OPENERS = [
-  "Who are the strongest five on this posting?",
-  "Draft a message to the shortlisted candidates",
-  "Why is this role taking longer than the last one?",
-]
-
-function Opener({ onPick }: { onPick: (text: string) => void }) {
+/** The empty pane: the page's questions, so the first thing is not a blank box. */
+function Welcome({
+  openers,
+  onPick,
+}: {
+  openers: Opener[]
+  onPick: (prompt: string, opener: Opener) => void
+}) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-col gap-1">
         <p className="text-sm font-medium">Ask Athena</p>
         <p className="text-sm leading-relaxed text-muted-foreground">
-          She can see the page you are on, so questions about it do not need
-          setting up.
+          {openers.length > 0
+            ? "She works from what is on this page, so these need no setting up."
+            : "Nothing to suggest on this page yet. The Dashboard, a job's responses and a candidate's page have questions she can answer."}
         </p>
       </div>
 
-      <div className="flex flex-col gap-2">
-        {OPENERS.map((opener) => (
-          <button
-            key={opener}
-            type="button"
-            onClick={() => onPick(opener)}
-            className="rounded-xl border border-border px-3 py-2.5 text-left text-sm leading-relaxed transition-colors hover:bg-muted"
-          >
-            {opener}
-          </button>
-        ))}
-      </div>
+      {openers.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {openers.map((opener) => (
+            <button
+              key={opener.prompt}
+              type="button"
+              onClick={() => onPick(opener.prompt, opener)}
+              className="rounded-xl border border-border px-3 py-2.5 text-left text-sm leading-relaxed transition-colors hover:bg-muted"
+            >
+              {opener.prompt}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -164,7 +308,7 @@ function Opener({ onPick }: { onPick: (text: string) => void }) {
  * way every assistant that reached this shape ended up doing — a wall of paired
  * bubbles halves the reading width for the half of the thread that is longest.
  */
-function Bubble({ message }: { message: Message }) {
+function Turn({ message }: { message: Message }) {
   if (message.from === "you") {
     return (
       <div className="flex justify-end">
@@ -178,9 +322,28 @@ function Bubble({ message }: { message: Message }) {
   return (
     <div className="flex gap-2">
       <SparklesIcon className="mt-0.5 size-4 shrink-0 text-primary" />
-      <p className="min-w-0 flex-1 text-sm leading-relaxed text-muted-foreground">
-        {message.text}
-      </p>
+      <div className="flex min-w-0 flex-1 flex-col gap-3 text-sm leading-relaxed text-muted-foreground">
+        {/* Only when the answer is about something other than the page it was
+            asked on — Messages, asked from the Dashboard. The divider already
+            says the page. */}
+        {message.reply.about !== message.where && (
+          <span className="text-[10px] font-medium tracking-[0.07em] uppercase">
+            On {message.reply.about}
+          </span>
+        )}
+        {message.reply.blocks.map((block, index) => (
+          <AthenaBlock key={index} block={block} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function Thinking() {
+  return (
+    <div className="flex items-center gap-2" aria-live="polite">
+      <SparklesIcon className="size-4 shrink-0 animate-pulse text-primary" />
+      <span className="text-sm text-muted-foreground">Working it out…</span>
     </div>
   )
 }

@@ -315,6 +315,44 @@ over it — and it is `sticky` + `h-svh` rather than a plain flex child, because
 document instead of the bottom of the screen. Below `md` it covers the page and the message dock
 hides. The trigger is in `SiteHeader` and only opens; the pane carries its own close.
 
+**Athena answers what the page can compute, and nothing else.** A page calls `useAthenaContext`
+(in `athena-provider.tsx`) with a label, a detail and its **openers**. Each opener is a prompt plus
+an `answer()` run at the moment it is asked, against the page's current data. The answers are built
+in `lib/athena.ts` from the same mock data and `DecisionsProvider` overlay the screen reads, so "the
+strongest five" are Best match's top five, and shortlisting from the pane moves the tab count
+behind it. Free text gets `CANNOT_ANSWER`, never a plausible invention. Replies are **blocks**
+(`athena-blocks.tsx`): text, candidate rows with Shortlist/Maybe, a **proposal** (a batch decision
+that does nothing until Apply, and has Undo), link rows (to a route or to a dock thread), and a
+**draft**. The job page, the candidate page and the Dashboard register contexts so far. Every other
+page shows only the "Looking at" line.
+
+**Check that an answer can actually appear before designing it.** The mock pools never deal anybody
+all of a posting's four required skills; three of four is the ceiling. So "shortlist the full
+matches" could never produce its proposal, and the job page's batch question is "clear out people
+with none of the skills" instead. Ask the generators (`applicantsFor`, `requiredSkillsFor`) for the
+distribution first.
+
+**Athena writes messages; she never sends them.** The dock's state is `MessagesProvider`
+(`components/messages-provider.tsx`, mounted in `AppShell`), so Athena can read the live threads
+("which threads are waiting" drops somebody the moment you reply) and fill drafts. A draft card puts
+text into each recipient's composer and opens the dock. The recruiter sends it from the thread, and
+the list row says "Draft:" until they do. A thread started for an applicant carries `applicantId`,
+and its first send moves them to Contacted, as the candidate page's Message button does. The body may
+say `{first name}`, filled in per recipient, so one draft serves a shortlist. The dock's composer is
+a textarea because a draft is read before it is sent.
+
+**The nav has two borrowers.** `CandidateList` collapses it below 1400px, and Athena collapses it for
+her pane. Handing it back goes through `restoreNav` on the Athena provider, which defers while she
+is open. Restoring directly used to throw the nav open beside her when you left a job page.
+
+**The thread survives navigation, and there is one per product.** Each message records `where` it
+was asked (the page's label), and the "Moved to …" dividers are derived from that at render time
+rather than stored. Walking through several pages without asking leaves one divider, and coming
+back leaves none. Old answers keep their live buttons. Switching brand swaps to that product's
+thread and switching back restores it, because the other product's candidates are not people this
+one has. **There is one copilot**: the Messages dock's
+sparkle button opens Athena, and the dock's old assistant thread with its canned replies is gone.
+
 Nav lives in `src/lib/nav.ts`, not in the sidebar component: `SiteHeader` needs it for the page
 title, and `react-refresh/only-export-components` is on in `apps/web`. `NAV_ITEMS` renders through
 `NavMain`, `SECONDARY_ITEMS` through `NavSecondary`. Every routed item is its own component

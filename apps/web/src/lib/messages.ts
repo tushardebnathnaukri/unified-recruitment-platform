@@ -62,6 +62,14 @@ export type Conversation = {
   lastAt: string
   /** A green dot on the avatar. Cosmetic — there is no presence here. */
   online?: boolean
+  /**
+   * Set on a thread started with an applicant from a posting (Athena's drafts).
+   * The fixture threads are not tied to a generated applicant, so they have
+   * none — and sending in them decides nothing.
+   */
+  applicantId?: string
+  /** The applicant's own photo. Fixture threads look theirs up by name. */
+  photo?: string
   messages: Message[]
 }
 
@@ -194,43 +202,4 @@ export const CONVERSATIONS: Conversation[] = [
       },
     ],
   },
-]
-
-/**
- * The assistant thread.
- *
- * It has no `name` of its own because the name is the active brand's — see
- * `message-dock.tsx`. Everything else about it is a conversation like any
- * other, which is the point: the recruiter should not have to go somewhere
- * different to ask a question about the pipeline they are already looking at.
- */
-export const ASSISTANT_ID = "assistant"
-
-export const ASSISTANT_OPENING: Message[] = [
-  {
-    id: "a1",
-    author: "them",
-    body: "I can see your six live postings and everyone who has applied to them. Ask me who to shortlist, what a thread is waiting on, or why a posting is not pulling applications.",
-    at: "09:00",
-  },
-]
-
-/** Starters, so the empty assistant thread is not a blank box. */
-export const ASSISTANT_PROMPTS = [
-  "Who should I shortlist first?",
-  "Which threads are waiting on me?",
-  "Why is VP Finance getting so few applicants?",
-]
-
-/**
- * Canned replies, taken in order. A rotation rather than one answer, so
- * clicking through the starters in a review does not produce the same
- * paragraph three times — and deliberately not keyed to the question, because
- * a fake matcher that gets it wrong is worse than an obvious script.
- */
-export const ASSISTANT_REPLIES = [
-  "Ananya Krishnan, on Platform Infrastructure. She is the only applicant with a migration at that scale, she has replied twice, and she has offered Thursday and Friday — the thread is waiting on you, not her.",
-  "Two: Ananya Krishnan sent times on Thursday and Friday, and Rohit Mehta followed up this morning and has had nothing back for six days.",
-  "It is a 15–20 year requirement in Mumbai posted eleven days ago, and 12 applicants is about right for that band. Widening the location or dropping the floor to 12 years would move it more than a repost would.",
-  "Head of Category has been live four days with no applications yet. Postings in that band usually take a week before the first one lands, so it is early rather than wrong.",
 ]

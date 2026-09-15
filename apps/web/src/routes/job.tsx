@@ -19,9 +19,21 @@ import {
 } from "@workspace/ui/components/empty"
 import { Meta, MetaItem } from "@workspace/ui/components/meta"
 import { useBrand } from "@workspace/ui/components/brand-provider"
+import { useAthenaContext } from "@/components/athena-provider"
 import { CandidateList } from "@/components/candidate-list"
-import { applicantsFor, requiredSkillsFor } from "@/lib/applicants"
-import { jobSource } from "@/lib/candidate-source"
+import { useDecisions } from "@/components/decisions-provider"
+import {
+  applicantsFor,
+  requiredSkillsFor,
+  type Applicant,
+} from "@/lib/applicants"
+import {
+  clearNoSkillMatches,
+  draftToShortlisted,
+  strongestToReview,
+  summariseResponses,
+} from "@/lib/athena"
+import { candidateHref, jobSource } from "@/lib/candidate-source"
 import { jobsFor, type Job } from "@/lib/jobs"
 
 /**
@@ -66,6 +78,7 @@ export function JobDetailPage() {
 function ResponseManager({ job }: { job: Job }) {
   const people = React.useMemo(() => applicantsFor(job), [job])
   const requiredSkills = React.useMemo(() => requiredSkillsFor(job), [job])
+  useAthenaOnPosting(job, people, requiredSkills)
 
   return (
     <CandidateList
@@ -76,6 +89,54 @@ function ResponseManager({ job }: { job: Job }) {
       candidateSource={(applicant) => jobSource(job, applicant.id)}
     />
   )
+}
+
+/**
+ * What Athena can answer about this posting. The people handed to her carry
+ * this session's decisions, the same overlay `CandidateList` reads, so her
+ * "still to review" and the To review tab are one number.
+ */
+function useAthenaOnPosting(
+  job: Job,
+  generated: Applicant[],
+  requiredSkills: string[]
+) {
+  const { decided } = useDecisions()
+  const people = generated.map(decided)
+  const toReview = people.filter(
+    (person) => person.status === "undecided"
+  ).length
+
+  const posting = {
+    job,
+    people,
+    requiredSkills,
+    hrefFor: (person: Applicant) =>
+      candidateHref(jobSource(job, person.id), person.id),
+  }
+
+  useAthenaContext({
+    label: job.title,
+    detail: people.length > 0 ? `${toReview} to review` : undefined,
+    openers: [
+      {
+        prompt: "Who are the strongest five still to review?",
+        answer: () => strongestToReview(posting),
+      },
+      {
+        prompt: "Clear out people with none of the skills",
+        answer: () => clearNoSkillMatches(posting),
+      },
+      {
+        prompt: "Summarise the responses",
+        answer: () => summariseResponses(posting),
+      },
+      {
+        prompt: "Draft a message to the shortlisted",
+        answer: () => draftToShortlisted(posting),
+      },
+    ],
+  })
 }
 
 /**

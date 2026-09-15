@@ -26,10 +26,21 @@ import {
   ApplicantStatusBadge,
   DecisionGroup,
 } from "@/components/applicant-controls"
+import { useAthenaContext } from "@/components/athena-provider"
 import { useDecisions } from "@/components/decisions-provider"
 import { CandidateDetail } from "@/components/candidate-detail"
 import { CandidateSkeleton } from "@/components/skeletons"
-import { CandidateSourceContext, jobSource } from "@/lib/candidate-source"
+import {
+  careerSummary,
+  draftToCandidate,
+  matchOnPosting,
+  similarToReview,
+} from "@/lib/athena"
+import {
+  CandidateSourceContext,
+  candidateHref,
+  jobSource,
+} from "@/lib/candidate-source"
 import {
   applicantsFor,
   requiredSkillsFor,
@@ -87,6 +98,8 @@ function Profile({
   applicant: Applicant
   onDecide: (id: string, status: ApplicantStatus) => void
 }) {
+  useAthenaOnApplication(job, applicant)
+
   return (
     // They applied to this job, so that is what an interview here is for.
     <CandidateSourceContext value={(person) => jobSource(job, person.id)}>
@@ -100,6 +113,48 @@ function Profile({
       </div>
     </CandidateSourceContext>
   )
+}
+
+/**
+ * What Athena can answer about this person. Everybody else on the posting
+ * comes along, with decisions laid over, because "how do they rank" and "who
+ * else is like them" are questions about the rest of the list.
+ */
+function useAthenaOnApplication(job: Job, person: Applicant) {
+  const { decided } = useDecisions()
+  const people = React.useMemo(() => applicantsFor(job), [job]).map(decided)
+
+  const application = {
+    job,
+    people,
+    person,
+    requiredSkills: requiredSkillsFor(job),
+    hrefFor: (other: Applicant) =>
+      candidateHref(jobSource(job, other.id), other.id),
+  }
+
+  useAthenaContext({
+    label: person.name,
+    detail: job.title,
+    openers: [
+      {
+        prompt: "How do they match this posting?",
+        answer: () => matchOnPosting(application),
+      },
+      {
+        prompt: "Summarise their career",
+        answer: () => careerSummary(application),
+      },
+      {
+        prompt: "Who else still to review is like them?",
+        answer: () => similarToReview(application),
+      },
+      {
+        prompt: "Draft a message to them",
+        answer: () => draftToCandidate(application),
+      },
+    ],
+  })
 }
 
 /**

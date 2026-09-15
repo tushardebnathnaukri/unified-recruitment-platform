@@ -7,8 +7,12 @@ import { SectionHeader } from "@workspace/ui/components/section-header"
 import { StatCard, StatGrid } from "@workspace/ui/components/stat-card"
 
 import { useBrand } from "@workspace/ui/components/brand-provider"
+import { useAthenaContext } from "@/components/athena-provider"
 import { AuroraBand } from "@/components/aurora-band"
+import { useMessages } from "@/components/messages-provider"
+import { postingsNeedingDecisions, threadsWaiting } from "@/lib/athena"
 import { activeJobsFor, newSinceVisitFor, statsFor } from "@/lib/dashboard"
+import { liveJobsFor } from "@/lib/jobs"
 import { recentSearchesFor } from "@/lib/database"
 import { LiveRow } from "@/routes/jobs"
 import { SearchRow } from "@/components/search-row"
@@ -48,6 +52,23 @@ export function DashboardPage() {
   // The tiles and the job list are the active product's, not a shared set.
   const { brand } = useBrand()
   const loading = usePageLoading()
+
+  // The Watcher's page: what is waiting on you, across postings and threads.
+  const { conversations, threads } = useMessages()
+  useAthenaContext({
+    label: "Dashboard",
+    detail: `${liveJobsFor(brand).length} live postings`,
+    openers: [
+      {
+        prompt: "Which postings need a decision from me?",
+        answer: () => postingsNeedingDecisions(liveJobsFor(brand)),
+      },
+      {
+        prompt: "Which threads are waiting on me?",
+        answer: () => threadsWaiting(conversations, threads),
+      },
+    ],
+  })
 
   return (
     // `-mt-4 md:-mt-6` cancels the shell's top padding so the band can run edge

@@ -5,6 +5,7 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { AthenaPane } from "@/components/athena-pane"
 import { AthenaProvider } from "@/components/athena-provider"
 import { MessageDock } from "@/components/message-dock"
+import { MessagesProvider } from "@/components/messages-provider"
 import { SiteHeader } from "@/components/site-header"
 import { titleForPath } from "@/lib/nav"
 
@@ -29,36 +30,41 @@ export function AppShell() {
       {/* Inside SidebarProvider because opening Athena collapses the nav, and
           the provider is where the nav's state lives. */}
       <AthenaProvider>
-        <AppSidebar variant="inset" />
+        {/* The dock's threads, shared with Athena — she reads who is waiting
+            and writes drafts into them. Here rather than in `main.tsx` because
+            nothing outside the shell has a dock to talk to. */}
+        <MessagesProvider>
+          <AppSidebar variant="inset" />
 
-        <SidebarInset>
-          <SiteHeader title={titleForPath(pathname)} />
+          <SidebarInset>
+            <SiteHeader title={titleForPath(pathname)} />
 
-          {/* `@container/main` lets pages respond to the content column rather
+            {/* `@container/main` lets pages respond to the content column rather
               than the viewport, which is what actually changes when the sidebar
               collapses — and now also when Athena takes a column. Pages own
               their own gutters via `px-4 lg:px-6`. */}
-          <div className="flex flex-1 flex-col">
-            <div className="@container/main flex flex-1 flex-col gap-2">
-              <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-                <Outlet />
+            <div className="flex flex-1 flex-col">
+              <div className="@container/main flex flex-1 flex-col gap-2">
+                <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
+                  <Outlet />
+                </div>
               </div>
             </div>
-          </div>
-        </SidebarInset>
+          </SidebarInset>
 
-        {/* The third column, and a sibling of the content rather than a child
+          {/* The third column, and a sibling of the content rather than a child
             of it: it sits BESIDE the page, not over it. Mounted here rather
             than per page so a half-typed question survives navigation. */}
-        <AthenaPane />
+          <AthenaPane />
 
-        {/* Outside SidebarInset because it is `fixed` to the viewport corner
+          {/* Outside SidebarInset because it is `fixed` to the viewport corner
             and should not shift when the sidebar collapses. Inside
             AthenaProvider because it does have to shift for Athena — the
             copilot takes the corner the dock was sitting in. Mounted here
             rather than per page so a half-written message survives
             navigation. */}
-        <MessageDock />
+          <MessageDock />
+        </MessagesProvider>
       </AthenaProvider>
     </SidebarProvider>
   )

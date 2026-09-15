@@ -16,23 +16,18 @@ import {
   AvatarImage,
 } from "@workspace/ui/components/avatar"
 import { Button } from "@workspace/ui/components/button"
-import { Chip } from "@workspace/ui/components/chip"
 import { Input } from "@workspace/ui/components/input"
+import { Textarea } from "@workspace/ui/components/textarea"
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@workspace/ui/components/tooltip"
-import { useBrand } from "@workspace/ui/components/brand-provider"
-import { BRANDS } from "@workspace/ui/lib/brands"
 import { cn } from "@workspace/ui/lib/utils"
 import { useAthena } from "@/components/athena-provider"
+import { useMessages } from "@/components/messages-provider"
 import { photoFor } from "@/lib/avatars"
 import {
-  ASSISTANT_ID,
-  ASSISTANT_OPENING,
-  ASSISTANT_PROMPTS,
-  ASSISTANT_REPLIES,
   CONVERSATIONS,
   placeholderPhoto,
   type Conversation,
@@ -58,109 +53,26 @@ import {
  *
  * The dock is mounted in `AppShell`, so it is available on every route and
  * survives navigation — a conversation you are half-way through should not
- * close because you clicked into the jobs table behind it.
+ * close because you clicked into the jobs table behind it. Its state is
+ * `MessagesProvider`'s, because Athena reads the threads and writes drafts.
  */
 export function MessageDock() {
   const anchor = useDockAnchor()
-  const [open, setOpen] = React.useState(false)
-  // `null` is the list; an id is that thread. One piece of state rather than a
-  // separate "view" flag, because the two can never disagree this way.
-  const [activeId, setActiveId] = React.useState<string | null>(null)
-
-  const { brand } = useBrand()
-  // The assistant is named after the active brand rather than hardcoded to
-  // "iimjobs". Reading the label out of the roster is what keeps this a
-  // one-design-system component: on hirist it is the hirist assistant, and a
-  // third brand needs no edit here. Not a branch on `brand` — a lookup.
-  const assistantName = `${
-    BRANDS.find((entry) => entry.id === brand)?.label ?? brand
-  } Assistant`
-
-  // Threads are state because the composer appends to them. Seeded from the
-  // fixtures once; there is no backend in this prototype.
-  const [threads, setThreads] = React.useState<Record<string, Message[]>>(
-    () => ({
-      [ASSISTANT_ID]: ASSISTANT_OPENING,
-      ...Object.fromEntries(CONVERSATIONS.map((c) => [c.id, c.messages])),
-    })
-  )
-
-  const [unread, setUnread] = React.useState<Record<string, number>>(() =>
-    Object.fromEntries(CONVERSATIONS.map((c) => [c.id, c.unread]))
-  )
+  const {
+    conversations,
+    threads,
+    unread,
+    open,
+    activeId,
+    setOpen,
+    openThread,
+    closeThread,
+    send,
+  } = useMessages()
 
   const [query, setQuery] = React.useState("")
-  const [typing, setTyping] = React.useState(false)
-
-  // Every pending assistant reply, so unmounting mid-"typing" does not fire a
-  // setState on a dead component.
-  const timers = React.useRef<ReturnType<typeof setTimeout>[]>([])
-  React.useEffect(
-    () => () => {
-      timers.current.forEach(clearTimeout)
-    },
-    []
-  )
 
   const totalUnread = Object.values(unread).reduce((sum, n) => sum + n, 0)
-
-  const openThread = (id: string) => {
-    setActiveId(id)
-    // Opening is what marks read, which is why the count lives here and not in
-    // the fixtures.
-    setUnread((previous) => ({ ...previous, [id]: 0 }))
-  }
-
-  const send = (id: string, body: string) => {
-    const text = body.trim()
-    if (!text) return
-
-    const now = new Date().toLocaleTimeString("en-IN", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    })
-
-    setThreads((previous) => ({
-      ...previous,
-      [id]: [
-        ...previous[id],
-        { id: `${id}-${Date.now()}`, author: "you", body: text, at: now },
-      ],
-    }))
-
-    // Only the assistant answers. A candidate replying on a timer would be
-    // pretending the prototype has people in it.
-    if (id !== ASSISTANT_ID) return
-
-    setTyping(true)
-    timers.current.push(
-      setTimeout(() => {
-        setThreads((previous) => {
-          const thread = previous[ASSISTANT_ID]
-          // Count how many replies have already been given so the rotation
-          // advances without a separate counter to keep in sync.
-          const answered = thread.filter((m) => m.author === "them").length - 1
-          const reply =
-            ASSISTANT_REPLIES[answered % ASSISTANT_REPLIES.length] ?? ""
-
-          return {
-            ...previous,
-            [ASSISTANT_ID]: [
-              ...thread,
-              {
-                id: `a-${Date.now()}`,
-                author: "them",
-                body: reply,
-                at: now,
-              },
-            ],
-          }
-        })
-        setTyping(false)
-      }, 1100)
-    )
-  }
 
   // Escape closes the thread first, then the panel — the same back-out order
   // the header's arrow gives, so the key and the button never disagree.
@@ -170,13 +82,13 @@ export function MessageDock() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return
       event.stopPropagation()
-      if (activeId) setActiveId(null)
+      if (activeId) closeThread()
       else setOpen(false)
     }
 
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
-  }, [open, activeId])
+  }, [open, activeId, closeThread, setOpen])
 
   if (!open) {
     return (
@@ -184,13 +96,13 @@ export function MessageDock() {
         unread={totalUnread}
         onOpen={() => {
           setOpen(true)
-          setActiveId(null)
+          closeThread()
         }}
       />
     )
   }
 
-  const activeConversation = CONVERSATIONS.find((c) => c.id === activeId)
+  const activeConversation = conversations.find((c) => c.id === activeId)
 
   return (
     // `h-[min(...)]` rather than a fixed height so the composer stays on
@@ -210,41 +122,21 @@ export function MessageDock() {
         "flex h-[min(36rem,calc(100vh-2rem))] w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-foreground/15 bg-card text-card-foreground shadow-[0_16px_48px_-12px_rgb(0_0_0/0.4)] sm:w-[26rem] dark:border-foreground/20 dark:shadow-[0_16px_48px_-12px_rgb(0_0_0/0.8)]"
       )}
     >
-      {activeId ? (
+      {activeConversation ? (
         <Thread
-          title={
-            activeId === ASSISTANT_ID ? assistantName : activeConversation!.name
-          }
-          subtitle={
-            activeId === ASSISTANT_ID
-              ? typing
-                ? "Typing…"
-                : "Answers from your pipeline"
-              : activeConversation!.role
-          }
-          isAssistant={activeId === ASSISTANT_ID}
-          initials={activeConversation?.initials}
-          photo={
-            activeConversation
-              ? (photoFor(activeConversation.name) ??
-                placeholderPhoto(
-                  CONVERSATIONS.findIndex((c) => c.id === activeConversation.id)
-                ))
-              : undefined
-          }
-          online={activeConversation?.online}
-          messages={threads[activeId]}
-          typing={activeId === ASSISTANT_ID && typing}
-          prompts={activeId === ASSISTANT_ID ? ASSISTANT_PROMPTS : undefined}
-          onBack={() => setActiveId(null)}
+          id={activeConversation.id}
+          title={activeConversation.name}
+          subtitle={activeConversation.role}
+          initials={activeConversation.initials}
+          photo={photoOf(activeConversation)}
+          online={activeConversation.online}
+          messages={threads[activeConversation.id] ?? []}
+          onBack={closeThread}
           onClose={() => setOpen(false)}
-          onSend={(body) => send(activeId, body)}
+          onSend={(body) => send(activeConversation.id, body)}
         />
       ) : (
         <ThreadList
-          assistantName={assistantName}
-          threads={threads}
-          unread={unread}
           query={query}
           onQueryChange={setQuery}
           onOpenThread={openThread}
@@ -257,6 +149,26 @@ export function MessageDock() {
 
 function lastOf(messages: Message[] | undefined) {
   return messages?.[messages.length - 1]
+}
+
+/**
+ * A thread's portrait: the applicant's own photo for a thread Athena started,
+ * the generated one by name for a fixture, and a silhouette keyed off the
+ * fixture's position when a fixture has neither — so a person keeps one face.
+ */
+function photoOf(conversation: Conversation) {
+  // An applicant without a photo gets their initials, the way their card does
+  // — not a fixture's silhouette, which would give a dozen people one face.
+  if (conversation.applicantId) return conversation.photo
+  return (
+    photoFor(conversation.name) ??
+    placeholderPhoto(
+      Math.max(
+        0,
+        CONVERSATIONS.findIndex((c) => c.id === conversation.id)
+      )
+    )
+  )
 }
 
 /**
@@ -347,44 +259,40 @@ function PanelHeader({
 }
 
 /**
- * The AI action, sitting beside the close button.
+ * The AI action, sitting beside the close button. It opens Athena.
  *
  * A BUTTON, NOT THE MARK IT REPLACED. It was a decorative avatar next to the
  * "Messages" title, which is a worse use of the header's most valuable corner:
  * the assistant is something you *do*, and the top-right is where this panel's
  * controls live.
  *
- * It earns its place most in the thread view, where the pinned assistant row
- * is off screen — mid-conversation with a candidate is exactly when you want
- * to ask who else to line up, and without this that costs a trip back to the
- * list. It is hidden while the assistant thread is already open.
+ * ONE COPILOT. This used to open an assistant thread of the dock's own, with
+ * canned replies and a brand-named persona, while Athena sat in the shell with
+ * none. It is the same question asked from a different corner, so it goes to
+ * the same place — and Athena's pane moves the dock aside rather than covering
+ * it, so the thread you came from stays in view.
  *
  * Filled `bg-primary` rather than a tint: it is the one thing in this header
- * that is not a plain utility control, and it matches the assistant's avatar
- * in the list so the two are recognisably the same thing.
+ * that is not a plain utility control.
  */
-function AssistantButton({
-  assistantName,
-  onOpen,
-}: {
-  assistantName: string
-  onOpen: () => void
-}) {
+function AssistantButton() {
+  const { setOpen } = useAthena()
+
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <Button
             size="icon-sm"
-            onClick={onOpen}
-            aria-label={`Ask ${assistantName}`}
+            onClick={() => setOpen(true)}
+            aria-label="Ask Athena"
             className="rounded-full"
           />
         }
       >
         <SparklesIcon />
       </TooltipTrigger>
-      <TooltipContent>Ask {assistantName}</TooltipContent>
+      <TooltipContent>Ask Athena</TooltipContent>
     </Tooltip>
   )
 }
@@ -416,45 +324,20 @@ function CallButton({ name }: { name: string }) {
   )
 }
 
-/**
- * The brand-accented mark that distinguishes the assistant from a person.
- *
- * `size-8` matches the default `Avatar`, because the only place this is used
- * now is the thread header, opposite a candidate's portrait. It was `size-10`
- * to line up with the pinned list row, and that row is gone.
- */
-function AssistantAvatar({ className }: { className?: string }) {
-  return (
-    <span
-      className={cn(
-        "flex size-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground",
-        className
-      )}
-    >
-      <SparklesIcon className="size-4" />
-    </span>
-  )
-}
-
 function ThreadList({
-  assistantName,
-  threads,
-  unread,
   query,
   onQueryChange,
   onOpenThread,
   onClose,
 }: {
-  assistantName: string
-  threads: Record<string, Message[]>
-  unread: Record<string, number>
   query: string
   onQueryChange: (value: string) => void
   onOpenThread: (id: string) => void
   onClose: () => void
 }) {
+  const { conversations, threads, unread, drafts, lastAtFor } = useMessages()
   const needle = query.trim().toLowerCase()
-  const matches = CONVERSATIONS.filter(
+  const matches = conversations.filter(
     (conversation) =>
       needle === "" ||
       conversation.name.toLowerCase().includes(needle) ||
@@ -463,19 +346,11 @@ function ThreadList({
 
   return (
     <>
-      <PanelHeader
-        onClose={onClose}
-        actions={
-          <AssistantButton
-            assistantName={assistantName}
-            onOpen={() => onOpenThread(ASSISTANT_ID)}
-          />
-        }
-      >
+      <PanelHeader onClose={onClose} actions={<AssistantButton />}>
         <div className="flex min-w-0 flex-col">
           <p className="text-sm font-medium">Messages</p>
           <p className="text-xs text-muted-foreground">
-            {CONVERSATIONS.length} candidates
+            {conversations.length} candidates
           </p>
         </div>
       </PanelHeader>
@@ -507,15 +382,10 @@ function ThreadList({
             <ThreadListRow
               key={conversation.id}
               conversation={conversation}
-              // Keyed off the position in the full roster, not in `matches`,
-              // so a candidate keeps the same portrait while you search.
-              photo={
-                photoFor(conversation.name) ??
-                placeholderPhoto(
-                  CONVERSATIONS.findIndex((c) => c.id === conversation.id)
-                )
-              }
+              photo={photoOf(conversation)}
               preview={lastOf(threads[conversation.id])}
+              draft={drafts[conversation.id]}
+              lastAt={lastAtFor(conversation)}
               unread={unread[conversation.id] ?? 0}
               onOpen={() => onOpenThread(conversation.id)}
             />
@@ -551,12 +421,17 @@ function ThreadListRow({
   conversation,
   photo,
   preview,
+  draft,
+  lastAt,
   unread,
   onOpen,
 }: {
   conversation: Conversation
-  photo: string
+  photo: string | undefined
   preview: Message | undefined
+  /** Unsent text in this thread's composer, which the row says it holds. */
+  draft: string | undefined
+  lastAt: string
   unread: number
   onOpen: () => void
 }) {
@@ -593,10 +468,21 @@ function ThreadListRow({
             unread > 0 ? "text-foreground" : "text-muted-foreground"
           )}
         >
-          {preview?.author === "you" && (
-            <span className="text-muted-foreground">You: </span>
+          {/* A waiting draft outranks the last message — it is the thing you
+              came back to this thread to do. WhatsApp's own rule. */}
+          {draft?.trim() ? (
+            <>
+              <span className="font-medium text-primary">Draft: </span>
+              {draft}
+            </>
+          ) : (
+            <>
+              {preview?.author === "you" && (
+                <span className="text-muted-foreground">You: </span>
+              )}
+              {preview?.body}
+            </>
           )}
-          {preview?.body}
         </p>
       </div>
 
@@ -610,7 +496,7 @@ function ThreadListRow({
             unread > 0 ? "font-medium text-primary" : "text-muted-foreground"
           )}
         >
-          {conversation.lastAt}
+          {lastAt}
         </span>
         {unread > 0 && (
           <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground tabular-nums">
@@ -623,41 +509,41 @@ function ThreadListRow({
 }
 
 function Thread({
+  id,
   title,
   subtitle,
-  isAssistant,
   initials,
   photo,
   online,
   messages,
-  typing,
-  prompts,
   onBack,
   onClose,
   onSend,
 }: {
+  /** The thread's id, which is where its draft is kept. */
+  id: string
   title: string
   subtitle: string
-  isAssistant: boolean
-  initials?: string
-  photo?: string
+  initials: string
+  photo: string | undefined
   online?: boolean
   messages: Message[]
-  typing: boolean
-  prompts?: readonly string[]
   onBack: () => void
   onClose: () => void
   onSend: (body: string) => void
 }) {
-  const [draft, setDraft] = React.useState("")
+  // The composer's text lives in the provider, so a draft Athena wrote is here
+  // when the thread opens and one you typed survives closing the dock.
+  const { drafts, setDraft: setThreadDraft } = useMessages()
+  const draft = drafts[id] ?? ""
+  const setDraft = (body: string) => setThreadDraft(id, body)
   const scroller = React.useRef<HTMLDivElement>(null)
 
-  // Pin to the newest message on open and on every append, including the
-  // assistant's reply arriving a second later.
+  // Pin to the newest message on open and on every append.
   React.useEffect(() => {
     const node = scroller.current
     if (node) node.scrollTop = node.scrollHeight
-  }, [messages.length, typing])
+  }, [messages.length])
 
   const submit = (body: string) => {
     onSend(body)
@@ -668,10 +554,9 @@ function Thread({
     <>
       <PanelHeader
         onClose={onClose}
-        // A person's thread gets a call button here; the assistant's gets
-        // nothing. The AI button belongs on the list, which is the one place
-        // where going to the assistant is not where you already are.
-        actions={isAssistant ? undefined : <CallButton name={title} />}
+        // A person's thread gets a call button here. The AI button belongs on
+        // the list, which keeps this header to the person you are talking to.
+        actions={<CallButton name={title} />}
       >
         <Button
           variant="ghost"
@@ -683,15 +568,11 @@ function Thread({
           <ArrowLeftIcon />
         </Button>
 
-        {isAssistant ? (
-          <AssistantAvatar />
-        ) : (
-          <Avatar>
-            <AvatarImage src={photo} alt="" />
-            <AvatarFallback>{initials}</AvatarFallback>
-            {online && <AvatarBadge className="bg-success" />}
-          </Avatar>
-        )}
+        <Avatar>
+          <AvatarImage src={photo} alt="" />
+          <AvatarFallback>{initials}</AvatarFallback>
+          {online && <AvatarBadge className="bg-success" />}
+        </Avatar>
 
         <div className="flex min-w-0 flex-col gap-0.5">
           <p className="truncate text-sm font-medium">{title}</p>
@@ -715,30 +596,6 @@ function Thread({
         {messages.map((message) => (
           <Bubble key={message.id} message={message} />
         ))}
-
-        {typing && (
-          <div className="flex items-center gap-1 self-start rounded-2xl rounded-bl-md border border-border bg-card px-3 py-2.5">
-            {[0, 150, 300].map((delay) => (
-              <span
-                key={delay}
-                className="size-1.5 animate-bounce rounded-full bg-muted-foreground/60"
-                style={{ animationDelay: `${delay}ms` }}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Starters, and only while the assistant thread is still just its
-            opening line — once there is a conversation they are in the way. */}
-        {prompts && messages.length === 1 && (
-          <div className="mt-1 flex flex-wrap gap-1.5">
-            {prompts.map((prompt) => (
-              <Chip key={prompt} onClick={() => submit(prompt)}>
-                {prompt}
-              </Chip>
-            ))}
-          </div>
-        )}
       </div>
 
       <form
@@ -746,20 +603,21 @@ function Thread({
           event.preventDefault()
           submit(draft)
         }}
-        className="flex shrink-0 items-center gap-2 border-t border-border bg-muted px-4 py-3.5"
+        className="flex shrink-0 items-end gap-2 border-t border-border bg-muted px-4 py-3.5"
       >
-        <Input
+        {/* A TEXTAREA NOW. The single-line input was fine for "Thursday
+            works", and useless for reading a three-sentence draft Athena wrote
+            before sending it — the whole point of a draft is that it is read
+            first. `field-sizing-content` grows it with the text, up to a cap. */}
+        <Textarea
+          rows={1}
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          placeholder={isAssistant ? "Ask about your pipeline" : "Message"}
+          placeholder="Message"
           aria-label={`Message ${title}`}
-          className="h-9 bg-background text-sm dark:bg-background"
-          // Enter sends, wired explicitly rather than left to the browser's
-          // implicit form submission. `preventDefault` means the two cannot
-          // both fire, so this is belt-and-braces rather than a double send.
-          // Shift+Enter is let through in case the composer ever becomes a
-          // textarea — a recruiter writing three sentences to a candidate is
-          // the likely next iteration of this box.
+          className="field-sizing-content max-h-40 min-h-9 resize-none bg-background py-2 text-sm dark:bg-background"
+          // Enter sends and Shift+Enter breaks the line, wired explicitly
+          // rather than left to the form: a textarea does not submit on Enter.
           onKeyDown={(event) => {
             if (event.key !== "Enter" || event.shiftKey) return
             event.preventDefault()
