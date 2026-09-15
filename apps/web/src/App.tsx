@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from "react-router"
 
 import { AppShell } from "@/components/app-shell"
 import { BrandUrlSync } from "@/components/brand-url-sync"
+import { ScrollToTop } from "@/components/scroll-to-top"
 import { DashboardPage } from "@/routes/dashboard"
 import { JobDetailPage } from "@/routes/job"
 import { CandidatePage } from "@/routes/candidate"
@@ -35,6 +36,9 @@ export function App() {
           and it must not be remounted by navigation or it would re-apply the
           param on every page change. */}
       <BrandUrlSync />
+      {/* Same placement for the same reason: it watches the path across every
+          route, so it must outlive them. */}
+      <ScrollToTop />
 
       <Routes>
         <Route element={<AppShell />}>
