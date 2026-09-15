@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { Fragment, type ReactNode } from "react"
 import { DownloadIcon, ExternalLinkIcon, LockIcon } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
@@ -23,9 +23,28 @@ import type { Applicant } from "@/lib/applicants"
  * duplicated here, because two controls for one disclosure is two places to get
  * it wrong.
  */
-export function CandidateCv({ applicant }: { applicant: Applicant }) {
+export function CandidateCv({
+  applicant,
+  required = [],
+}: {
+  applicant: Applicant
+  /** What the posting or search asked for. The ones this person has are
+   *  highlighted wherever they appear on the page. */
+  required?: string[]
+}) {
   const filename = `${applicant.name.toLowerCase().replace(/\s+/g, "-")}-cv.pdf`
   const roles = applicant.positions.length
+  // Only what they actually match: highlighting an asked-for skill they do not
+  // list would be marking the page for something it does not say.
+  const matched = applicant.skills.filter((skill) => required.includes(skill))
+  const mark = (text: string) => <Highlight text={text} terms={matched} />
+  const summary =
+    `${applicant.experienceYears} years across ${roles} ` +
+    `${roles === 1 ? "role" : "roles"}, currently ${applicant.title} at ` +
+    `${applicant.company}. Based in ${applicant.location}` +
+    (applicant.noticeDays === 0
+      ? ", available immediately."
+      : `, ${applicant.noticeDays} days' notice.`)
 
   return (
     <div className="flex flex-col gap-3">
@@ -61,7 +80,7 @@ export function CandidateCv({ applicant }: { applicant: Applicant }) {
               {applicant.name}
             </h3>
             <p className="text-sm text-[#4a4a4a]">
-              {applicant.title} · {applicant.company}
+              {mark(`${applicant.title} · ${applicant.company}`)}
             </p>
 
             <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#6a6a6a]">
@@ -81,13 +100,7 @@ export function CandidateCv({ applicant }: { applicant: Applicant }) {
 
           <CvSection title="Summary">
             <p className="text-sm leading-relaxed text-[#3a3a3a]">
-              {applicant.experienceYears} years across {roles}{" "}
-              {roles === 1 ? "role" : "roles"}, currently {applicant.title} at{" "}
-              {applicant.company}. Based in {applicant.location}
-              {applicant.noticeDays === 0
-                ? ", available immediately"
-                : `, ${applicant.noticeDays} days' notice`}
-              .
+              {mark(summary)}
             </p>
           </CvSection>
 
@@ -99,12 +112,16 @@ export function CandidateCv({ applicant }: { applicant: Applicant }) {
                   className="flex flex-col gap-0.5"
                 >
                   <div className="flex flex-wrap items-baseline justify-between gap-x-4">
-                    <span className="text-sm font-semibold">{role.title}</span>
+                    <span className="text-sm font-semibold">
+                      {mark(role.title)}
+                    </span>
                     <span className="text-xs text-[#6a6a6a] tabular-nums">
                       {role.from}–{role.to ?? "Present"}
                     </span>
                   </div>
-                  <span className="text-sm text-[#4a4a4a]">{role.company}</span>
+                  <span className="text-sm text-[#4a4a4a]">
+                    {mark(role.company)}
+                  </span>
                 </li>
               ))}
             </ol>
@@ -126,12 +143,53 @@ export function CandidateCv({ applicant }: { applicant: Applicant }) {
 
           <CvSection title="Skills">
             <p className="text-sm leading-relaxed text-[#3a3a3a]">
-              {applicant.skills.join(" · ")}
+              {/* Compared whole, not searched as text: "Sales" asked for is
+                  not a match for a listed "Channel sales". */}
+              {applicant.skills.map((skill, index) => (
+                <Fragment key={skill}>
+                  {index > 0 && " · "}
+                  {matched.includes(skill) ? <Mark>{skill}</Mark> : skill}
+                </Fragment>
+              ))}
             </p>
           </CvSection>
         </article>
       </div>
     </div>
+  )
+}
+
+/**
+ * A highlighter stroke, as if the recruiter had marked the printout.
+ *
+ * Yellow and hardcoded, like the page's white: it is ink on the document, not
+ * part of the interface, and a brand-coloured highlight would read as a link
+ * or a control on a page that has neither.
+ */
+function Mark({ children }: { children: ReactNode }) {
+  return (
+    <mark className="rounded-[2px] bg-[#fde68a] px-0.5 text-inherit">
+      {children}
+    </mark>
+  )
+}
+
+/**
+ * Marks every whole-word occurrence of any term in running text, case
+ * insensitively. Longest terms first, so "Key accounts" wins over a shorter
+ * term inside it.
+ */
+function Highlight({ text, terms }: { text: string; terms: string[] }) {
+  if (terms.length === 0) return text
+
+  const escaped = [...terms]
+    .sort((a, b) => b.length - a.length)
+    .map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+  const pattern = new RegExp(`(?<!\\w)(${escaped.join("|")})(?!\\w)`, "gi")
+
+  return text.split(pattern).map((part, index) =>
+    // split with one capture group alternates plain, match, plain…
+    index % 2 === 1 ? <Mark key={index}>{part}</Mark> : part
   )
 }
 

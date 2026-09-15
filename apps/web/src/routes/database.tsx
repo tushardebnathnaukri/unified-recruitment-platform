@@ -26,6 +26,7 @@ import {
 import { BRANDS } from "@workspace/ui/lib/brands"
 import { cn } from "@workspace/ui/lib/utils"
 
+import { AuroraBand } from "@/components/aurora-band"
 import { CandidateList } from "@/components/candidate-list"
 import {
   RefinePanel,
@@ -134,42 +135,57 @@ export function DatabasePage() {
   const label = BRANDS.find((entry) => entry.id === brand)?.label ?? brand
 
   return (
-    <div className="mx-auto flex w-full max-w-3xl flex-col gap-10 px-4 pb-12 lg:px-6 @3xl/main:pt-8">
-      <div className="flex flex-col gap-4">
-        {/* The page title is in SiteHeader, so this is a prompt, not an h1. */}
-        <div className="flex flex-col items-center gap-1 text-center">
+    // `-mt-4 md:-mt-6` cancels the shell's top padding so the band runs edge to
+    // edge under the header — the Dashboard's and Insights' hero, and the same
+    // reason: this is a page that opens by asking what you want. Only the
+    // compose state gets it; the results are a list to work through, and a
+    // band above them would push the first card below the fold.
+    <div className="-mt-4 flex flex-col md:-mt-6">
+      <AuroraBand className="pt-10 pb-20">
+        {/* The page title is in SiteHeader, so this is a prompt, not an h1. On
+            the band, so both lines take the on-primary colour rather than the
+            page's foreground pair. */}
+        <div className="mx-auto flex max-w-3xl flex-col items-center gap-1 px-4 text-center text-primary-foreground lg:px-6">
           <p className="text-2xl font-semibold tracking-tight text-balance">
             Who are you looking for?
           </p>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-sm">
             Search everyone on {label} — not only the people who applied.
           </p>
         </div>
+      </AuroraBand>
 
-        <SearchBox
-          mode={mode}
-          boolean={boolean}
-          value={draft}
-          placeholder={placeholderFor(brand, mode, boolean)}
-          onChange={setDraft}
-          onBooleanChange={(next) => configure({ mode, boolean: next })}
-          onSubmit={run}
-        />
-
-        <div className="flex flex-col items-center gap-2">
-          <ModePicker
+      {/* `relative` is load-bearing, as on the Dashboard: the band above is a
+          positioned element, so without it the band paints over this column
+          and swallows the box that overlaps back into it. `-mt-12` against the
+          band's `pb-20` puts the seam through the box rather than under it. */}
+      <div className="relative mx-auto -mt-12 flex w-full max-w-3xl flex-col gap-10 px-4 pb-12 lg:px-6">
+        <div className="flex flex-col gap-4">
+          <SearchBox
             mode={mode}
-            onChange={(next) => configure({ mode: next, boolean })}
+            boolean={boolean}
+            value={draft}
+            placeholder={placeholderFor(brand, mode, boolean)}
+            onChange={setDraft}
+            onBooleanChange={(next) => configure({ mode, boolean: next })}
+            onSubmit={run}
           />
-          {/* Replaces the live page's BETA badges with what the mode does,
-              which is the thing a recruiter needs to pick one. */}
-          <p className="text-center text-xs text-muted-foreground">
-            {modeFor(mode).hint}
-          </p>
-        </div>
-      </div>
 
-      <RecentSearches />
+          <div className="flex flex-col items-center gap-2">
+            <ModePicker
+              mode={mode}
+              onChange={(next) => configure({ mode: next, boolean })}
+            />
+            {/* Replaces the live page's BETA badges with what the mode does,
+                which is the thing a recruiter needs to pick one. */}
+            <p className="text-center text-xs text-muted-foreground">
+              {modeFor(mode).hint}
+            </p>
+          </div>
+        </div>
+
+        <RecentSearches />
+      </div>
     </div>
   )
 }

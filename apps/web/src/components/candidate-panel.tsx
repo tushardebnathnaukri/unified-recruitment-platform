@@ -123,12 +123,14 @@ export function CandidatePanel({
           >
             <SheetHeader className="p-5 pb-4">
               <div className="flex min-w-0 items-start gap-3">
-                {/* The sheet is `popover`, so the dot's cut-out is too. */}
+                {/* The sheet is `popover`, so the dot's cut-out is too. The
+                    fallback's initials are sized up with it — one candidate in
+                    five has no photo, and text-sm is lost in a 64px circle. */}
                 <ApplicantAvatar
                   name={applicant.name}
                   photo={applicant.photo}
                   fresh={isNew(applicant)}
-                  className="size-11"
+                  className="size-16 [&_[data-slot=avatar-fallback]]:text-lg"
                   badgeClassName="ring-popover"
                 />
 
@@ -214,7 +216,7 @@ export function CandidatePanel({
 
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
               <TabsContent value="cv">
-                <CandidateCv applicant={applicant} />
+                <CandidateCv applicant={applicant} required={requiredSkills} />
               </TabsContent>
 
               <TabsContent value="profile">

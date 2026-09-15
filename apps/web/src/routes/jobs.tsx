@@ -48,7 +48,9 @@ import {
   type PendingJob,
   type RejectedJob,
 } from "@/lib/jobs"
+import { AuroraBand } from "@/components/aurora-band"
 import { JobListSkeleton } from "@/components/skeletons"
+import { newSinceVisitFor } from "@/lib/dashboard"
 import { usePageLoading } from "@/lib/use-page-loading"
 
 /**
@@ -82,86 +84,107 @@ export function JobsPage() {
   const { brand } = useBrand()
   const statuses = jobStatusesFor(brand)
   const loading = usePageLoading()
+  const live = statuses.find((status) => status.value === "live")?.jobs ?? []
+  const fresh = newSinceVisitFor(brand)
 
   return (
-    <div className="flex flex-col gap-4 px-4 lg:px-6">
-      <Tabs
-        className="gap-4"
-        value={active}
-        onValueChange={(value) => {
-          // Live is the default, so it stays a bare /jobs — the tidiest URL is
-          // the one a recruiter lands on without choosing anything.
-          const next = String(value)
-          setSearchParams(next === "live" ? {} : { status: next }, {
-            replace: true,
-          })
-        }}
-      >
-        {/* The create action rides on the tab row rather than sitting above it.
+    // `-mt-4 md:-mt-6` cancels the shell's top padding so the band runs edge to
+    // edge under the header, the same hero as the Dashboard and Search Resume.
+    <div className="-mt-4 flex flex-col md:-mt-6">
+      {/* No overlap into the list below, unlike the Dashboard's cards: the
+          first thing under the band is the tab strip, and a muted pill track
+          half on the aurora reads as a mistake rather than a layer. The text is
+          left-aligned, which is where the band's scrim darkens. */}
+      <AuroraBand className="py-8">
+        <div className="flex flex-col gap-1 px-4 text-primary-foreground lg:px-6">
+          {/* The page title is in SiteHeader, so this is a summary, not an h1. */}
+          <p className="text-xl font-semibold">Your job postings</p>
+          <p className="text-sm">
+            {live.length} live, and {fresh} new applicants since your last
+            visit.
+          </p>
+        </div>
+      </AuroraBand>
+
+      <div className="flex flex-col gap-4 px-4 pt-4 md:pt-6 lg:px-6">
+        <Tabs
+          className="gap-4"
+          value={active}
+          onValueChange={(value) => {
+            // Live is the default, so it stays a bare /jobs — the tidiest URL is
+            // the one a recruiter lands on without choosing anything.
+            const next = String(value)
+            setSearchParams(next === "live" ? {} : { status: next }, {
+              replace: true,
+            })
+          }}
+        >
+          {/* The create action rides on the tab row rather than sitting above it.
             It is the only thing on this page that is not the list, and giving
             it its own band would push the list a whole row further down for a
             single button. */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <TabsList className="max-w-full overflow-x-auto">
-            {statuses.map((status) => (
-              <TabsTrigger key={status.value} value={status.value}>
-                {status.label}
-                {/* The count is the reason the tabs are worth having. It stays
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <TabsList className="max-w-full overflow-x-auto">
+              {statuses.map((status) => (
+                <TabsTrigger key={status.value} value={status.value}>
+                  {status.label}
+                  {/* The count is the reason the tabs are worth having. It stays
                     grey on the active tab too — you are already looking at the
                     list it counts, so it has nothing left to tell you there. */}
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {status.jobs.length}
-                </span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {status.jobs.length}
+                  </span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
 
-          {/* `nativeButton={false}` because this renders as an anchor — Base UI
+            {/* `nativeButton={false}` because this renders as an anchor — Base UI
               warns otherwise, and the warning is right: a link with button
               semantics loses the middle-click and copy-link a recruiter
               expects from something that navigates. */}
-          <Button
-            size="sm"
-            nativeButton={false}
-            render={<Link to="/jobs/new" />}
-          >
-            <PlusIcon data-icon="inline-start" />
-            Post a job
-          </Button>
-        </div>
+            <Button
+              size="sm"
+              nativeButton={false}
+              render={<Link to="/jobs/new" />}
+            >
+              <PlusIcon data-icon="inline-start" />
+              Post a job
+            </Button>
+          </div>
 
-        {statuses.map((status) => (
-          <TabsContent key={status.value} value={status.value}>
-            {loading ? (
-              // Rows to match what is coming, not what is there: the other
-              // product has its own number of postings in this state.
-              <JobListSkeleton rows={Math.max(status.jobs.length, 3)} />
-            ) : status.jobs.length > 0 ? (
-              // A card each, not one card of hairline-divided rows. `ListCard`
-              // is the right shape for a dashboard panel where the list is the
-              // content of one card; here the list IS the page, and a job is a
-              // thing you act on rather than a line in a table.
-              <div role="list" className="flex flex-col gap-3">
-                {status.jobs.map((job) => (
-                  <JobRow key={job.id} job={job} />
-                ))}
-              </div>
-            ) : (
-              <Empty className="rounded-2xl border border-dashed">
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <status.icon />
-                  </EmptyMedia>
-                  <EmptyTitle>{status.empty.title}</EmptyTitle>
-                  <EmptyDescription>
-                    {status.empty.description}
-                  </EmptyDescription>
-                </EmptyHeader>
-              </Empty>
-            )}
-          </TabsContent>
-        ))}
-      </Tabs>
+          {statuses.map((status) => (
+            <TabsContent key={status.value} value={status.value}>
+              {loading ? (
+                // Rows to match what is coming, not what is there: the other
+                // product has its own number of postings in this state.
+                <JobListSkeleton rows={Math.max(status.jobs.length, 3)} />
+              ) : status.jobs.length > 0 ? (
+                // A card each, not one card of hairline-divided rows. `ListCard`
+                // is the right shape for a dashboard panel where the list is the
+                // content of one card; here the list IS the page, and a job is a
+                // thing you act on rather than a line in a table.
+                <div role="list" className="flex flex-col gap-3">
+                  {status.jobs.map((job) => (
+                    <JobRow key={job.id} job={job} />
+                  ))}
+                </div>
+              ) : (
+                <Empty className="rounded-2xl border border-dashed">
+                  <EmptyHeader>
+                    <EmptyMedia variant="icon">
+                      <status.icon />
+                    </EmptyMedia>
+                    <EmptyTitle>{status.empty.title}</EmptyTitle>
+                    <EmptyDescription>
+                      {status.empty.description}
+                    </EmptyDescription>
+                  </EmptyHeader>
+                </Empty>
+              )}
+            </TabsContent>
+          ))}
+        </Tabs>
+      </div>
     </div>
   )
 }

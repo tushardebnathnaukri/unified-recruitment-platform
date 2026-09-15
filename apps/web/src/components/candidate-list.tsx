@@ -340,9 +340,13 @@ function CandidateListBody({
   // Normalised against the real list rather than a two-way check — a third
   // view arrived and the `=== "table" ? … : "cards"` version silently ate it.
   const viewParam = searchParams.get("view")
-  // Results are cards and nothing else, whatever `?view=` says.
+  // Results are cards and nothing else, whatever `?view=` says — and so is a
+  // phone: a nine-column table and a two-pane split have no layout at that
+  // width. The param is left in the URL rather than cleared, so a link opened
+  // on a phone still shows the table when it is opened again on a desktop.
+  const isMobile = useIsMobile()
   const view: View =
-    !results && VIEWS.some((option) => option.value === viewParam)
+    !results && !isMobile && VIEWS.some((option) => option.value === viewParam)
       ? (viewParam as View)
       : "cards"
   const sort = searchParams.get("sort") ?? defaultSort
@@ -467,9 +471,13 @@ function CandidateListBody({
   const selectedId = searchParams.get("candidate")
   // Which of the pane's two documents is open. In the query string with
   // everything else this screen holds, so "look at his CV" is a link — and
-  // deliberately NOT reset when the selection changes: picking CV once and
-  // arrowing down the list is how you compare CVs.
-  const doc = searchParams.get("doc") === "cv" ? "cv" : "profile"
+  // deliberately NOT reset when the selection changes: picking a document
+  // once and arrowing down the list is how you compare people.
+  //
+  // CV is the default, as it is in the profile panel: it is what a recruiter
+  // reads first, and the profile is the second look. So the param records
+  // Profile, and `?doc=cv` from an older link still lands on the CV.
+  const doc = searchParams.get("doc") === "profile" ? "profile" : "cv"
   // Who the profile panel is showing. In the query string like the rest of
   // this screen, so a panel someone is looking at is a link they can send.
   const profileId = searchParams.get("profile")
@@ -584,7 +592,7 @@ function CandidateListBody({
                 onSelect={(id) => setParams({ candidate: id })}
                 doc={doc}
                 onDocChange={(next) =>
-                  setParams({ doc: next === "profile" ? null : next })
+                  setParams({ doc: next === "cv" ? null : next })
                 }
                 onOpenProfile={openProfile}
                 onDecide={decideWithUndo}
@@ -630,12 +638,14 @@ function CandidateListBody({
                 ))}
               </TabsList>
 
-              <ViewSwitcher
-                view={view}
-                onChange={(next) =>
-                  setParams({ view: next === "cards" ? null : next })
-                }
-              />
+              {!isMobile && (
+                <ViewSwitcher
+                  view={view}
+                  onChange={(next) =>
+                    setParams({ view: next === "cards" ? null : next })
+                  }
+                />
+              )}
             </div>
 
             {/* The panel that narrows the list, then the list, side by side above
@@ -674,7 +684,7 @@ function CandidateListBody({
                       onSelect={(id) => setParams({ candidate: id })}
                       doc={doc}
                       onDocChange={(next) =>
-                        setParams({ doc: next === "profile" ? null : next })
+                        setParams({ doc: next === "cv" ? null : next })
                       }
                       onOpenProfile={openProfile}
                       onDecide={decideWithUndo}
@@ -849,7 +859,12 @@ function ApplicantList({
           onDecide={onDecide}
         />
       ) : view === "table" ? (
-        <ApplicantTable sections={sectionsOf(shown)} onDecide={onDecide} />
+        <ApplicantTable
+          sections={sectionsOf(shown)}
+          requiredSkills={requiredSkills}
+          onDecide={onDecide}
+          onOpenProfile={onOpenProfile}
+        />
       ) : (
         sectionsOf(shown).map((section) => (
           <React.Fragment key={section.key}>
@@ -1387,6 +1402,28 @@ function SkillsBucket({
   )
 }
 
+/** A table row's matched skills — the accent badges, or a dash for none. */
+function MatchedSkills({ skills }: { skills: string[] }) {
+  if (skills.length === 0) {
+    return (
+      <span className="text-muted-foreground">
+        <span aria-hidden>—</span>
+        <span className="sr-only">None</span>
+      </span>
+    )
+  }
+
+  return (
+    <div className="flex max-w-64 flex-wrap gap-1">
+      {skills.map((skill) => (
+        <Badge key={skill} variant="success" className="font-normal">
+          {skill}
+        </Badge>
+      ))}
+    </div>
+  )
+}
+
 function AvailabilityBucket({ applicant }: { applicant: Applicant }) {
   return (
     <span className="text-muted-foreground">
@@ -1459,12 +1496,32 @@ function ViewSwitcher({
  */
 function ApplicantTable({
   sections,
+  requiredSkills,
   onDecide,
+  onOpenProfile,
 }: {
   sections: Section[]
+  requiredSkills: string[]
   onDecide: (id: string, status: ApplicantStatus) => void
+  onOpenProfile: (id: string) => void
 }) {
   const copy = useListCopy()
+
+  // A click anywhere on a row opens the profile, except on the things in it
+  // that do something else. Two traps: React bubbles events out of PORTALS
+  // along the component tree, so a click inside a dialog or menu opened from
+  // the row's actions would reach this handler too — the `contains` check
+  // drops those, because a portal is not inside the row in the DOM. And a
+  // drag to copy a name ends in a click; leaving that alone is the difference
+  // between a table you can read and one that fights you.
+  const onRowClick = (event: React.MouseEvent<HTMLElement>, id: string) => {
+    const target = event.target as Element
+    if (!event.currentTarget.contains(target)) return
+    if (target.closest("button, a, input, [role=menuitem], [data-row-actions]"))
+      return
+    if (window.getSelection()?.toString()) return
+    onOpenProfile(id)
+  }
 
   return (
     <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10">
@@ -1472,6 +1529,7 @@ function ApplicantTable({
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead>Candidate</TableHead>
+            <TableHead>Matched skills</TableHead>
             <TableHead>Location</TableHead>
             <TableHead className="text-right">Exp</TableHead>
             <TableHead className="text-right">Current</TableHead>
@@ -1495,35 +1553,49 @@ function ApplicantTable({
                   rather than two tables that line up by coincidence. */}
               {section.heading && (
                 <TableRow className="bg-muted/40 hover:bg-muted/40">
-                  <TableCell colSpan={7} className="py-2 whitespace-normal">
+                  <TableCell colSpan={8} className="py-2 whitespace-normal">
                     {section.heading}
                   </TableCell>
                 </TableRow>
               )}
               {section.rows.map((applicant) => (
-                <TableRow key={applicant.id} className="group/row">
+                <TableRow
+                  key={applicant.id}
+                  className="group/row cursor-pointer"
+                  onClick={(event) => onRowClick(event, applicant.id)}
+                >
                   {/* Who they are and where they are now, as one cell: the role is
                   how a recruiter tells two names apart, and as its own column it
                   was the widest thing on the table.
 
-                  New is a dot, not a badge — the inbox convention, and on a
-                  table where the first rows are all new a column of filled
-                  pills was the loudest thing on it. Every row reserves the
-                  dot's slot so the names line up whether it is there or not;
-                  the other statuses keep their badges, because those are
-                  decisions and a dot cannot say which one. */}
+                  The photo is here as on the cards and the split list, so a
+                  face is recognisable whichever view it was first seen in.
+
+                  New is the avatar's dot, not a badge — the inbox convention,
+                  and on a table where the first rows are all new a column of
+                  filled pills was the loudest thing on it. The other statuses
+                  keep their badges, because those are decisions and a dot
+                  cannot say which one. */}
                   <TableCell>
-                    <div className="flex items-start gap-2">
-                      <span
-                        aria-hidden
-                        className={cn(
-                          "mt-1.5 size-2 shrink-0 rounded-full",
-                          isNew(applicant) ? "bg-primary" : "invisible"
-                        )}
+                    <div className="flex items-center gap-3">
+                      <ApplicantAvatar
+                        name={applicant.name}
+                        photo={applicant.photo}
+                        fresh={isNew(applicant)}
+                        className="size-9"
                       />
                       <div className="flex flex-col gap-0.5">
                         <div className="flex items-center gap-2">
-                          <span className="font-medium">{applicant.name}</span>
+                          {/* The row's click is mouse-only, so the name is the
+                              same action as a real button — the keyboard and
+                              screen-reader way in. */}
+                          <button
+                            type="button"
+                            onClick={() => onOpenProfile(applicant.id)}
+                            className="rounded-sm text-left font-medium outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                          >
+                            {applicant.name}
+                          </button>
                           {isNew(applicant) ? (
                             <span className="sr-only">New</span>
                           ) : (
@@ -1535,6 +1607,18 @@ function ApplicantTable({
                         </span>
                       </div>
                     </div>
+                  </TableCell>
+                  {/* Only the matches, unlike the card's skills bucket: a row
+                      has no room for the skills nobody asked for, and the
+                      column is here to answer "do they have what the job
+                      needs". Wraps inside a capped width so one long list
+                      cannot push the numbers off the side. */}
+                  <TableCell className="min-w-40 whitespace-normal">
+                    <MatchedSkills
+                      skills={applicant.skills.filter((skill) =>
+                        requiredSkills.includes(skill)
+                      )}
+                    />
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {applicant.location}
@@ -1555,7 +1639,10 @@ function ApplicantTable({
                   <TableCell className="text-muted-foreground">
                     {applicant.appliedAgo}
                   </TableCell>
-                  <TableCell className="sticky right-0 border-l border-border bg-card py-1 group-hover/row:bg-muted/50">
+                  <TableCell
+                    data-row-actions
+                    className="sticky right-0 cursor-default border-l border-border bg-card py-1 group-hover/row:bg-muted/50"
+                  >
                     <RowActions
                       applicant={applicant}
                       onDecide={onDecide}
@@ -2308,12 +2395,13 @@ function SplitView({
               className="gap-4"
               value={doc}
               onValueChange={(value) =>
-                onDocChange(String(value) === "cv" ? "cv" : "profile")
+                onDocChange(String(value) === "profile" ? "profile" : "cv")
               }
             >
+              {/* CV first, in the same order as the profile panel's tabs. */}
               <TabsList>
-                <TabsTrigger value="profile">Profile</TabsTrigger>
                 <TabsTrigger value="cv">CV</TabsTrigger>
+                <TabsTrigger value="profile">Profile</TabsTrigger>
               </TabsList>
 
               <TabsContent value="profile">
@@ -2325,7 +2413,7 @@ function SplitView({
               </TabsContent>
 
               <TabsContent value="cv">
-                <CandidateCv applicant={selected} />
+                <CandidateCv applicant={selected} required={requiredSkills} />
               </TabsContent>
             </Tabs>
           </div>
