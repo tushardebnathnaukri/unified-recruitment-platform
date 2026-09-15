@@ -26,8 +26,9 @@ import { SettingsPage } from "@/routes/settings"
  * product: Settings is the brand and theme switcher this prototype is steered
  * with, and Playground is the design system's own showcase.
  *
- * The earlier attempt is not lost — it is on `feat/design-system-foundation`,
- * two commits deep, if a screen is worth pulling back.
+ * The earlier attempt is not lost — it is commit `e545c30` in master's history
+ * (it was the `feat/design-system-foundation` branch), if a screen is worth
+ * pulling back.
  */
 export function App() {
   return (
