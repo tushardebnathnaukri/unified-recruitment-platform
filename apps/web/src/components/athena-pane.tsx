@@ -144,7 +144,7 @@ export function AthenaPane() {
         // a long page instead of the bottom of the screen. The nav solves the
         // same problem with `fixed h-svh` plus a spacer to hold its width;
         // sticky needs no spacer, because it stays in the flex row.
-        "md:sticky md:inset-auto md:top-2 md:z-auto md:m-2 md:ml-0 md:h-[calc(100svh-1rem)] md:w-(--athena-width) md:shrink-0 md:rounded-xl md:shadow-sm"
+        "md:sticky md:inset-auto md:top-0 md:z-auto md:h-svh md:w-(--athena-width) md:shrink-0 md:border-l"
       )}
     >
       <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b px-4">

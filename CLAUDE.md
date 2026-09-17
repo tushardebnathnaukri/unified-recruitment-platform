@@ -28,6 +28,11 @@ binding`, the lockfile lost rolldown's optional deps ([npm bug](https://github.c
 `grep -c '"node_modules/@rolldown/binding-' package-lock.json` should report 14. If it reports 0,
 `rm -rf node_modules package-lock.json && npm install`. Never hand-add one platform's binding.
 
+**The preview pane runs the app on :5174, not :5173.** Another local project's dev server
+(`~/bud`, an electron-vite app) holds 5173, so the `web` entry in `.claude/launch.json` passes
+`--port 5174 --strictPort`. `npm run dev` from a terminal still asks for 5173 and moves to the next
+free port if it is taken, so check which port it printed before you curl it.
+
 ## Verifying a change
 
 No test runner. `typecheck` also catches less than you'd expect — path aliases resolve to
@@ -106,7 +111,12 @@ technology, iimjobs is management and senior non-tech.
 Selectors are `:root[data-brand="x"]:not(.dark)` / `:root[data-brand="x"].dark`, which **assume
 `data-brand` and the theme class sit on the same element** — keep both on `<html>`.
 
-Palettes: **iimjobs is real** (Tailwind's emerald ramp verbatim — 600/50 light, 500/950 dark).
+**The greys are Tailwind's mist ramp, not zinc.** Every neutral in `:root` and `.dark` (background,
+foreground, muted, border, ring, sidebar, the chart neutrals) is the mist step at the same number
+the zinc it replaced was, so the light/dark structure did not move. White and the translucent-white
+borders in dark are unchanged. The cross-sell banner's fixed text and border greys are mist too.
+
+Palettes: **iimjobs is real** (Tailwind's emerald ramp verbatim — 700/50 light, 600/950 dark).
 **hirist is still a placeholder** orange; see the `TODO(design)` in `globals.css`.
 
 ## Styling
@@ -128,7 +138,7 @@ The neutrals are theme-scoped because the card is white in one theme and near-bl
 They did not used to be — one set of five values was reused verbatim in `.dark`, so the ramp ran one
 way and `--chart-1` measured **1.48:1** on a light card while `--chart-5` measured **1.19:1** on a
 dark one. Every value now clears the 3:1 WCAG 1.4.11 asks of a graphical object in its own theme;
-zinc-500 is the pivot and holds in both. The figures are in `chart.stories.tsx` and on the Figma
+mist-500 is the pivot and holds in both. The figures are in `chart.stories.tsx` and on the Figma
 **Chart** page.
 
 **recharts animates a series in from zero via `requestAnimationFrame`.** Anywhere rAF does not tick
@@ -179,7 +189,15 @@ a natural-language search. The results' search-within box is `?find=`, because `
 posting-shaped stand-in: the recent row's `matches` is the count and its `newSince` is who carries
 the new dot. Search results pass `layout="results"` — a ranked list, not a queue: no decision tabs
 (a decision is a badge, not a move), cards only, and the caller's own `sidebar` and `toolbar`. The
-job page is `layout="queue"` and keeps its three filters as pills.
+job page is `layout="queue"` and keeps its three filters as pills — except in the **cards view at
+`@4xl/main`**, where they become `FilterRail`: a fixed white column flush against the nav and the tab
+block, as tall as the screen below that block and sticky there, with the "Filters" heading and
+search pinned and the collapsible sections scrolling inside it. Radios, because each filter holds one
+value, and beside each option how many people it would leave. The tab block's height is measured
+through a callback ref, which is what `top` and the column's height come from. Above the cards,
+`AppliedFilters` shows Insights' applied bar: "N of M match", a removable chip per filter (search,
+experience, notice, location — not sort) and Clear all. It shows only beside the rail, and only when
+something is on.
 
 **The database has two filter designs, picked on /settings** ("Database filters", via
 `useFilterVariant` in `lib/filter-variant.ts` — localStorage, no provider). **Juicebox** (the
@@ -300,12 +318,20 @@ funnel, time to fill, reply rate, which channel the hires came from — lives on
 because a recruiter reads "analytics" as the second question and there is nowhere else to ask it.
 The nav item was renamed rather than one page trying to be both.
 
-`AppShell` is the layout route: `SidebarProvider` → `AppSidebar variant="inset"` + `SidebarInset`
+`AppShell` is the layout route: `SidebarProvider` → `AppSidebar variant="sidebar"` + `SidebarInset`
 + `AthenaPane` → `SiteHeader` + `<Outlet />`. Shell dimensions (`--sidebar-width`,
 `--header-height`, `--athena-width`) are set as inline CSS variables on `SidebarProvider` so the
 header, sidebar, copilot pane and message dock read the same numbers; the structure follows
 shadcn's `dashboard-01` block. Pages own their gutters (`px-4 lg:px-6`) — the shell only supplies
-vertical rhythm.
+vertical rhythm. The shell is flush, not `inset`: no margin or rounded card around the content,
+with the nav's right border and the header's bottom border dividing the three regions. Athena's
+pane matches (`top-0 h-svh border-l`), so a change back to `inset` has to change both. The nav is white (`--sidebar`) and the content
+column is Tailwind's mist-50 (`bg-canvas` on `SidebarInset`), except the header, which paints its own
+`bg-background` so the top bar stays white. Object screens continue that white: `CandidateList` wraps its
+`header` in an edge-to-edge `bg-background` band (merged into the white sticky tab toolbar on a
+queue, ending in its own `border-b` on results and empty queues), and the candidate page wraps its
+`Header` the same way. The negative margins assume the header is the first thing on the page. `--canvas` is its own token rather
+than a new `--background`, because chips, active tabs and switches use `bg-background` to stand out.
 
 **Athena is the third column.** `AthenaProvider` sits inside `SidebarProvider` because opening the
 copilot collapses the nav (and restores whatever it was doing on close), which means it needs
@@ -516,7 +542,13 @@ in `sidebar.stories.tsx` as `Components/Sidebar → App shell`, `→ Collapsed t
 `→ App shell with Athena open`, because it is what the Sidebar component looks like in situ. Check there before adding a screen that shows the nav.
 
 The dashboard route in `apps/web` and "Compositions → Dashboard" are the same tree; a change to a
-row's *shape* belongs in the pattern, a change to its *content* in the app.
+row's *shape* belongs in the pattern, a change to its *content* in the app. Below the stat tiles,
+Live jobs and Recent searches share a row (`@5xl/main:grid-cols-2`) and stack under it.
+
+**Storybook and Figma are synced in batches, not per change.** When an app change affects a story
+or a Figma frame, add an entry to `DESIGN-SYNC.md` at the repo root: the app file, the story, the
+Figma node from `figma-map.json`, and a checkbox for each. Leave Storybook and Figma alone until
+the batch is asked for, then remove the entries it completes.
 
 `packages/ui/vite.config.ts` exists **only to serve Storybook** (Tailwind plugin + alias); the
 package still ships as source. `.storybook/preview.tsx` carries three decorators that mirror the

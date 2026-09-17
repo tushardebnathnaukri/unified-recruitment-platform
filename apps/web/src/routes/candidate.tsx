@@ -104,7 +104,12 @@ function Profile({
     // They applied to this job, so that is what an interview here is for.
     <CandidateSourceContext value={(person) => jobSource(job, person.id)}>
       <div className="flex flex-col gap-5 px-4 lg:px-6">
-        <Header job={job} applicant={applicant} onDecide={onDecide} />
+        {/* A white band, edge to edge, like the header on every CandidateList
+          screen: the negative margins cancel the shell's top padding and this
+          column's gutter. */}
+        <div className="-mx-4 -mt-4 border-b bg-background px-4 py-5 md:-mt-6 lg:-mx-6 lg:px-6">
+          <Header job={job} applicant={applicant} onDecide={onDecide} />
+        </div>
 
         <CandidateDetail
           applicant={applicant}

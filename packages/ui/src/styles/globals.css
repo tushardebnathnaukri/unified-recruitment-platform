@@ -18,6 +18,7 @@
     --color-sidebar-primary: var(--sidebar-primary);
     --color-sidebar-foreground: var(--sidebar-foreground);
     --color-sidebar: var(--sidebar);
+    --color-canvas: var(--canvas);
     --color-chart-5: var(--chart-5);
     --color-chart-4: var(--chart-4);
     --color-chart-3: var(--chart-3);
@@ -55,28 +56,32 @@
 
 :root {
     --background: oklch(1 0 0);
-    --foreground: oklch(0.141 0.005 285.823);
+    /* The app shell's content column (Tailwind mist-50). Not --background,
+       which chips, active tabs and switches use to stand out. In dark it is
+       the page background, since cards already sit lighter than it. */
+    --canvas: oklch(0.987 0.002 197.1);
+    --foreground: oklch(0.148 0.004 228.8);
     --card: oklch(1 0 0);
-    --card-foreground: oklch(0.141 0.005 285.823);
+    --card-foreground: oklch(0.148 0.004 228.8);
     --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.141 0.005 285.823);
+    --popover-foreground: oklch(0.148 0.004 228.8);
     --primary: oklch(0.508 0.118 165.612);
     --primary-foreground: oklch(0.979 0.021 166.113);
-    --secondary: oklch(0.967 0.001 286.375);
-    --secondary-foreground: oklch(0.21 0.006 285.885);
-    --muted: oklch(0.967 0.001 286.375);
-    --muted-foreground: oklch(0.552 0.016 285.938);
-    --accent: oklch(0.967 0.001 286.375);
-    --accent-foreground: oklch(0.21 0.006 285.885);
+    --secondary: oklch(0.963 0.002 197.1);
+    --secondary-foreground: oklch(0.218 0.008 223.9);
+    --muted: oklch(0.963 0.002 197.1);
+    --muted-foreground: oklch(0.56 0.021 213.5);
+    --accent: oklch(0.963 0.002 197.1);
+    --accent-foreground: oklch(0.218 0.008 223.9);
     --destructive: oklch(0.577 0.245 27.325);
     /* Status semantics are SHARED, not branded — a job is "published" the same
        way on iimjobs and hirist. Deliberately not in the brand layers below:
        putting status on --primary would make the two products diverge. */
     --success: oklch(0.627 0.194 149.214); /* green-600 */
     --warning: oklch(0.666 0.179 58.318); /* amber-600 */
-    --border: oklch(0.92 0.004 286.32);
-    --input: oklch(0.92 0.004 286.32);
-    --ring: oklch(0.705 0.015 286.067);
+    --border: oklch(0.925 0.005 214.3);
+    --input: oklch(0.925 0.005 214.3);
+    --ring: oklch(0.723 0.014 214.4);
     /* Chart series. THE FIRST ONE IS THE BRAND, the rest are shared neutrals
        — see the note above the brand layers. This value is a placeholder in
        exactly the way --primary's above is: a brand layer always wins.
@@ -87,57 +92,58 @@
        one, against the 3:1 WCAG 1.4.11 asks of a graphical object. Every value
        below clears 3:1 against --card in its own theme. */
     --chart-1: oklch(0.508 0.118 165.612);
-    --chart-2: oklch(0.552 0.016 285.938); /* zinc-500 — 4.83:1 */
-    --chart-3: oklch(0.442 0.017 285.786); /* zinc-600 — 7.73:1 */
-    --chart-4: oklch(0.37 0.013 285.805); /* zinc-700 — 10.46:1 */
-    --chart-5: oklch(0.274 0.006 286.033); /* zinc-800 — 14.89:1 */
+    --chart-2: oklch(0.56 0.021 213.5); /* mist-500 — 4.61:1 */
+    --chart-3: oklch(0.45 0.017 213.2); /* mist-600 — 7.39:1 */
+    --chart-4: oklch(0.378 0.015 216); /* mist-700 — 10.04:1 */
+    --chart-5: oklch(0.275 0.011 216.9); /* mist-800 — 14.78:1 */
     --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.141 0.005 285.823);
+    --sidebar: oklch(1 0 0);
+    --sidebar-foreground: oklch(0.148 0.004 228.8);
     --sidebar-primary: oklch(0.596 0.145 163.225);
     --sidebar-primary-foreground: oklch(0.979 0.021 166.113);
-    --sidebar-accent: oklch(0.967 0.001 286.375);
-    --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
-    --sidebar-border: oklch(0.92 0.004 286.32);
-    --sidebar-ring: oklch(0.705 0.015 286.067);
+    --sidebar-accent: oklch(0.963 0.002 197.1);
+    --sidebar-accent-foreground: oklch(0.218 0.008 223.9);
+    --sidebar-border: oklch(0.925 0.005 214.3);
+    --sidebar-ring: oklch(0.723 0.014 214.4);
 }
 
 .dark {
-    --background: oklch(0.141 0.005 285.823);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.21 0.006 285.885);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.21 0.006 285.885);
-    --popover-foreground: oklch(0.985 0 0);
+    --background: oklch(0.148 0.004 228.8);
+    --canvas: oklch(0.148 0.004 228.8);
+    --foreground: oklch(0.987 0.002 197.1);
+    --card: oklch(0.218 0.008 223.9);
+    --card-foreground: oklch(0.987 0.002 197.1);
+    --popover: oklch(0.218 0.008 223.9);
+    --popover-foreground: oklch(0.987 0.002 197.1);
     --primary: oklch(0.432 0.095 166.913);
     --primary-foreground: oklch(0.979 0.021 166.113);
-    --secondary: oklch(0.274 0.006 286.033);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.274 0.006 286.033);
-    --muted-foreground: oklch(0.705 0.015 286.067);
-    --accent: oklch(0.274 0.006 286.033);
-    --accent-foreground: oklch(0.985 0 0);
+    --secondary: oklch(0.275 0.011 216.9);
+    --secondary-foreground: oklch(0.987 0.002 197.1);
+    --muted: oklch(0.275 0.011 216.9);
+    --muted-foreground: oklch(0.723 0.014 214.4);
+    --accent: oklch(0.275 0.011 216.9);
+    --accent-foreground: oklch(0.987 0.002 197.1);
     --destructive: oklch(0.704 0.191 22.216);
     --success: oklch(0.723 0.219 149.579); /* green-500 */
     --warning: oklch(0.769 0.188 70.08); /* amber-500 */
     --border: oklch(1 0 0 / 10%);
     --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.552 0.016 285.938);
+    --ring: oklch(0.56 0.021 213.5);
     /* The ramp mirrored: the card is dark here, so the neutrals climb rather
-       than fall. zinc-500 is the pivot and holds in both themes. */
+       than fall. mist-500 is the pivot and holds in both themes. */
     --chart-1: oklch(0.432 0.095 166.913);
-    --chart-2: oklch(0.552 0.016 285.938); /* zinc-500 — 3.67:1 */
-    --chart-3: oklch(0.705 0.015 286.067); /* zinc-400 — 6.74:1 */
-    --chart-4: oklch(0.871 0.006 286.286); /* zinc-300 — 11.99:1 */
-    --chart-5: oklch(0.92 0.004 286.32); /* zinc-200 — 13.98:1 */
-    --sidebar: oklch(0.21 0.006 285.885);
-    --sidebar-foreground: oklch(0.985 0 0);
+    --chart-2: oklch(0.56 0.021 213.5); /* mist-500 — 3.76:1 */
+    --chart-3: oklch(0.723 0.014 214.4); /* mist-400 — 7.11:1 */
+    --chart-4: oklch(0.872 0.007 219.6); /* mist-300 — 11.82:1 */
+    --chart-5: oklch(0.925 0.005 214.3); /* mist-200 — 13.94:1 */
+    --sidebar: oklch(0.218 0.008 223.9);
+    --sidebar-foreground: oklch(0.987 0.002 197.1);
     --sidebar-primary: oklch(0.696 0.17 162.48);
     --sidebar-primary-foreground: oklch(0.262 0.051 172.552);
-    --sidebar-accent: oklch(0.274 0.006 286.033);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --sidebar-accent: oklch(0.275 0.011 216.9);
+    --sidebar-accent-foreground: oklch(0.987 0.002 197.1);
     --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.552 0.016 285.938);
+    --sidebar-ring: oklch(0.56 0.021 213.5);
 }
 
 /* ---------------------------------------------------------------------------
@@ -173,20 +179,20 @@
  * used by the shared sidebar tokens. Dark mode lightens the accent and darkens
  * its foreground rather than reusing the light pairing. */
 :root[data-brand="iimjobs"]:not(.dark) {
-    --primary: oklch(0.596 0.145 163.225); /* emerald-600 */
+    --primary: oklch(0.508 0.118 165.612); /* emerald-700 — emerald-50 on it is 5.09:1 */
     --primary-foreground: oklch(0.979 0.021 166.113); /* emerald-50 */
-    --chart-1: oklch(0.596 0.145 163.225); /* = primary — 3.67:1 on --card */
-    --ring: oklch(0.596 0.145 163.225 / 60%);
-    --sidebar-primary: oklch(0.596 0.145 163.225);
+    --chart-1: oklch(0.508 0.118 165.612); /* = primary — 5.37:1 on --card */
+    --ring: oklch(0.508 0.118 165.612 / 60%);
+    --sidebar-primary: oklch(0.508 0.118 165.612);
     --sidebar-primary-foreground: oklch(0.979 0.021 166.113);
 }
 
 :root[data-brand="iimjobs"].dark {
-    --primary: oklch(0.696 0.17 162.48); /* emerald-500 */
+    --primary: oklch(0.596 0.145 163.225); /* emerald-600 — emerald-950 on it is 4.13:1 */
     --primary-foreground: oklch(0.262 0.051 172.552); /* emerald-950 */
-    --chart-1: oklch(0.696 0.17 162.48); /* = primary — 7.19:1 on --card */
-    --ring: oklch(0.696 0.17 162.48 / 60%);
-    --sidebar-primary: oklch(0.696 0.17 162.48);
+    --chart-1: oklch(0.596 0.145 163.225); /* = primary — 4.74:1 on --card */
+    --ring: oklch(0.596 0.145 163.225 / 60%);
+    --sidebar-primary: oklch(0.596 0.145 163.225);
     --sidebar-primary-foreground: oklch(0.262 0.051 172.552);
 }
 
@@ -202,7 +208,7 @@
 :root[data-brand="hirist"].dark {
     --primary: oklch(0.7 0.15 40);
     --primary-foreground: oklch(0.18 0.04 40);
-    --chart-1: oklch(0.7 0.15 40); /* = primary — 6.27:1 on --card */
+    --chart-1: oklch(0.7 0.15 40); /* = primary — 6.14:1 on --card */
     --ring: oklch(0.7 0.15 40 / 60%);
     --sidebar-primary: oklch(0.7 0.15 40);
     --sidebar-primary-foreground: oklch(0.18 0.04 40);

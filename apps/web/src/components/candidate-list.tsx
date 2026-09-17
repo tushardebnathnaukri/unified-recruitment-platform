@@ -9,6 +9,7 @@ import {
   BookmarkIcon,
   ListPlusIcon,
   ChevronDownIcon,
+  ChevronRightIcon,
   DownloadIcon,
   EllipsisIcon,
   EyeIcon,
@@ -18,6 +19,7 @@ import {
   PanelsTopLeftIcon,
   PhoneIcon,
   SearchIcon,
+  SlidersHorizontalIcon,
   SparklesIcon,
   Table2Icon,
   ThumbsUpIcon,
@@ -597,6 +599,23 @@ function CandidateListBody({
         location: null,
       }),
   }
+  /**
+   * The tab block is sticky at the top, so the filter rail has to stick BELOW
+   * it rather than at `top-4`, or it slides underneath once both are stuck. Its
+   * height changes with wrapping and the pill row, so it is measured.
+   */
+  const [stickyHeight, setStickyHeight] = React.useState(0)
+  // A callback ref rather than an effect, so the observer follows the node
+  // itself — through remounts and HMR — instead of whatever it was on mount.
+  const stickyRef = React.useCallback((node: HTMLDivElement | null) => {
+    if (!node) return
+    const observer = new ResizeObserver(() =>
+      setStickyHeight(node.getBoundingClientRect().height)
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
+
   const loading = usePageLoading(550)
 
   const openProfile = (id: string) => setParams({ profile: id })
@@ -695,7 +714,22 @@ function CandidateListBody({
           position={at >= 0 ? { index: at + 1, total: walkable.length } : null}
         />
 
-        {header}
+        {/* THE HEADER IS A WHITE BAND, edge to edge, under the white SiteHeader
+          and over the mist content column. The negative margins cancel the
+          shell's top padding and this column's own gutter, the way the aurora
+          bands reach the edges. On a queue it runs straight into the tab
+          toolbar (itself a white sticky band with the border), so `-mb-5`
+          cancels the gap and it draws no border of its own. Results, and a
+          queue showing its empty state, have grey under the header instead,
+          so there it ends with its own border. */}
+        <div
+          className={cn(
+            "-mx-4 -mt-4 bg-background px-4 pt-5 md:-mt-6 lg:-mx-6 lg:px-6",
+            !results && generated.length > 0 ? "-mb-5 pb-3" : "border-b pb-5"
+          )}
+        >
+          {header}
+        </div>
 
         {/* Results keep their filters on screen with nobody left under them —
           otherwise narrowing to zero would take away the controls that undo
@@ -758,7 +792,10 @@ function CandidateListBody({
               `CandidateList`'s own `px-4 lg:px-6` gutter so the cards' rings
               are covered edge to edge. `z-20`, not `z-10`: `AvatarBadge` is
               `z-10` and later in the DOM, so a tie puts the new dot on top. */}
-            <div className="sticky top-0 z-20 -mx-4 flex flex-col gap-4 border-b border-border bg-card px-4 py-2 lg:-mx-6 lg:px-6">
+            <div
+              ref={stickyRef}
+              className="sticky top-0 z-20 -mx-4 flex flex-col gap-4 border-b border-border bg-card px-4 py-2 lg:-mx-6 lg:px-6"
+            >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <TabsList className="max-w-full overflow-x-auto">
                   {BUCKETS.map((bucket) => (
@@ -786,7 +823,7 @@ function CandidateListBody({
               because the thing that has to fit both is the content column, and
               it changes width when the nav sidebar collapses.
 
-              ONE ROW OF PILLS, IN EVERY VIEW. This used to be a column beside
+              ONE ROW OF PILLS, IN EVERY VIEW — except wide cards, below. This used to be a column beside
               the cards and a row above the split view, which meant a recruiter
               changing view had to find the filters again — a smell the old
               comment here admitted to and left standing. The pills settle it:
@@ -797,11 +834,33 @@ function CandidateListBody({
               It is OUTSIDE the tab panels, not repeated in each: five copies of
               one search box is five things a screen reader has to tell apart,
               and the query would reset every time you changed tab. */}
-              <FilterBar {...filterProps} />
+              {/* THE CARDS VIEW TAKES THE FILTERS AS A RAIL, the way Insights
+                does, once the content column has room for one (@4xl). The pills
+                stay for the table and split view, which cannot spare 16rem, and
+                for cards below @4xl, where the rail is hidden. */}
+              <div className={cn(view === "cards" && "@4xl/main:hidden")}>
+                <FilterBar {...filterProps} />
+              </div>
             </div>
 
-            <div className="flex flex-col">
-              <div className="flex min-w-0 flex-1 flex-col">
+            <div
+              className={cn(
+                "flex flex-col",
+                view === "cards" &&
+                  "gap-4 @4xl/main:-mt-4 @4xl/main:flex-row @4xl/main:items-start"
+              )}
+            >
+              {view === "cards" && (
+                <FilterRail {...filterProps} people={all} top={stickyHeight} />
+              )}
+
+              <div
+                className={cn(
+                  "flex min-w-0 flex-1 flex-col",
+                  view === "cards" && "@4xl/main:pt-4"
+                )}
+              >
+                {view === "cards" && <AppliedFilters {...filterProps} />}
                 {loading ? (
                   <ApplicantListSkeleton />
                 ) : (
@@ -2999,6 +3058,307 @@ function SplitRow({
  * "Experience", so the row reads as a sentence about the list underneath it
  * instead of five labels that say nothing until each is opened.
  */
+/**
+ * The cards view's filters as a rail beside the list — the Refine card on
+ * Insights, holding the same sort, search and three filters as `FilterBar`.
+ *
+ * SAME SHAPE AS INSIGHTS: a "Refine" heading with a count of what is on and a
+ * Clear all that only exists when there is something to clear, then one
+ * collapsible section per filter. The difference is that these filters pick ONE
+ * value (the URL holds a single `exp`, `notice`, `location`), so the options are
+ * radios with "Any" at the top rather than checkboxes.
+ *
+ * THE NUMBER BESIDE AN OPTION is how many people on this posting it would leave,
+ * with the other filters held as they are — Insights' share, in the unit this
+ * screen counts in. An option that would leave nobody says 0 before you spend
+ * the click finding out.
+ */
+function FilterRail({
+  filters,
+  sort,
+  locations,
+  people,
+  top,
+  onChange,
+  onSort,
+  onClear,
+}: Omit<React.ComponentProps<typeof FilterPanel>, "layout"> & {
+  people: Applicant[]
+  /** Height of the sticky tab block the rail sticks beneath. */
+  top: number
+}) {
+  const { searchLabel } = useListCopy()
+  const [open, setOpen] = React.useState(
+    () => new Set(["sort", "exp", "notice", "location"])
+  )
+
+  const count =
+    (filters.q ? 1 : 0) +
+    (filters.exp ? 1 : 0) +
+    (filters.notice ? 1 : 0) +
+    (filters.location ? 1 : 0)
+
+  const leaves = (updates: Partial<Filters>) =>
+    people.filter((person) =>
+      matchesFilters(person, { ...filters, ...updates })
+    ).length
+
+  const sections: {
+    key: string
+    title: string
+    value: string
+    options: { value: string; label: string; count?: number }[]
+    onSelect: (value: string) => void
+  }[] = [
+    {
+      key: "sort",
+      title: "Sort by",
+      value: sort,
+      options: SORTS.map(({ value, label }) => ({ value, label })),
+      onSelect: onSort,
+    },
+    {
+      key: "exp",
+      title: "Experience",
+      value: filters.exp,
+      options: [
+        { value: "", label: "Any experience", count: leaves({ exp: "" }) },
+        ...EXPERIENCE_BANDS.map(({ value, label }) => ({
+          value,
+          label,
+          count: leaves({ exp: value }),
+        })),
+      ],
+      onSelect: (exp) => onChange({ exp }),
+    },
+    {
+      key: "notice",
+      title: "Notice period",
+      value: filters.notice,
+      options: [
+        {
+          value: "",
+          label: "Any notice period",
+          count: leaves({ notice: "" }),
+        },
+        ...NOTICE_BANDS.map(({ value, label }) => ({
+          value,
+          label,
+          count: leaves({ notice: value }),
+        })),
+      ],
+      onSelect: (notice) => onChange({ notice }),
+    },
+    {
+      key: "location",
+      title: "Location",
+      value: filters.location,
+      options: [
+        {
+          value: "",
+          label: "Any location",
+          count: leaves({ location: "" }),
+        },
+        ...locations.map((location) => ({
+          value: location,
+          label: location,
+          count: leaves({ location }),
+        })),
+      ],
+      onSelect: (location) => onChange({ location }),
+    },
+  ]
+
+  // A FIXED COLUMN, NOT A FLOATING CARD. It is flush against the nav edge and
+  // the tab block (the negative margin cancels the page gutter), exactly as
+  // tall as the screen below that block, and sticky there — so the heading and
+  // search never move and only the sections scroll, inside it.
+  return (
+    <aside
+      aria-label="Sort and filter"
+      style={{ top, height: `calc(100svh - ${top}px)` }}
+      className="hidden shrink-0 flex-col border-r bg-background @4xl/main:sticky @4xl/main:-ml-4 @4xl/main:flex @4xl/main:w-64 lg:@4xl/main:-ml-6"
+    >
+      <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b px-4">
+        <span className="flex items-center gap-2 text-sm font-medium">
+          <SlidersHorizontalIcon className="size-4" aria-hidden="true" />
+          Filters
+          {count > 0 && (
+            <Badge variant="secondary" className="px-1.5">
+              {count}
+            </Badge>
+          )}
+        </span>
+
+        {count > 0 && (
+          <Button variant="link" size="sm" className="px-0" onClick={onClear}>
+            Reset all
+          </Button>
+        )}
+      </div>
+
+      <div className="relative shrink-0 px-4 pt-3 pb-3">
+        <SearchIcon className="pointer-events-none absolute top-1/2 left-7 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={filters.q}
+          onChange={(event) => onChange({ q: event.target.value })}
+          placeholder="Search name, role or skill"
+          aria-label={searchLabel}
+          className="pl-9"
+        />
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+        {sections.map((section) => {
+          const isOpen = open.has(section.key)
+          const Chevron = isOpen ? ChevronDownIcon : ChevronRightIcon
+          const narrows = section.key !== "sort" && Boolean(section.value)
+
+          return (
+            <div key={section.key} className="border-t border-border py-3">
+              <button
+                type="button"
+                aria-expanded={isOpen}
+                onClick={() =>
+                  setOpen((current) => {
+                    const next = new Set(current)
+                    if (next.has(section.key)) next.delete(section.key)
+                    else next.add(section.key)
+                    return next
+                  })
+                }
+                className="flex w-full items-center justify-between gap-2 text-left text-sm font-medium"
+              >
+                <span className="flex items-center gap-2">
+                  {section.title}
+                  {narrows && (
+                    <Badge variant="secondary" className="px-1.5">
+                      1
+                    </Badge>
+                  )}
+                </span>
+                <Chevron
+                  className="size-4 shrink-0 opacity-50"
+                  aria-hidden="true"
+                />
+              </button>
+
+              {isOpen && (
+                <RadioGroup
+                  aria-label={section.title}
+                  className="mt-2.5 gap-2.5"
+                  value={section.value}
+                  onValueChange={(next) => section.onSelect(String(next))}
+                >
+                  {section.options.map((option) => {
+                    const id = `rail-${section.key}-${option.value || "any"}`
+
+                    return (
+                      <Label
+                        key={id}
+                        htmlFor={id}
+                        className="items-center gap-2 font-normal"
+                      >
+                        <RadioGroupItem id={id} value={option.value} />
+                        <span className="min-w-0 flex-1 truncate text-sm">
+                          {option.label}
+                        </span>
+                        {option.count !== undefined && (
+                          <span className="text-xs text-muted-foreground tabular-nums">
+                            {option.count}
+                          </span>
+                        )}
+                      </Label>
+                    )
+                  })}
+                </RadioGroup>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </aside>
+  )
+}
+
+/**
+ * What the rail is narrowing by, as chips above the cards — the Insights
+ * applied bar. Each chip removes its one filter, so undoing a filter does not
+ * mean scrolling the rail back to the section it lives in.
+ *
+ * ONLY BESIDE THE RAIL. Below @4xl the pills are showing instead, and a pill
+ * already says its value and resets from its own menu; two rows saying the
+ * same thing would be one too many. Sort is not a chip: it orders the list but
+ * leaves everybody in it.
+ */
+function AppliedFilters({
+  filters,
+  matched,
+  total,
+  onChange,
+  onClear,
+}: Omit<React.ComponentProps<typeof FilterPanel>, "layout">) {
+  const chips = [
+    filters.q && {
+      key: "q",
+      label: `“${filters.q}”`,
+      remove: () => onChange({ q: "" }),
+    },
+    filters.exp && {
+      key: "exp",
+      label:
+        EXPERIENCE_BANDS.find((band) => band.value === filters.exp)?.label ??
+        filters.exp,
+      remove: () => onChange({ exp: "" }),
+    },
+    filters.notice && {
+      key: "notice",
+      label:
+        NOTICE_BANDS.find((band) => band.value === filters.notice)?.label ??
+        filters.notice,
+      remove: () => onChange({ notice: "" }),
+    },
+    filters.location && {
+      key: "location",
+      label: filters.location,
+      remove: () => onChange({ location: "" }),
+    },
+  ].filter(Boolean) as { key: string; label: string; remove: () => void }[]
+
+  if (chips.length === 0) return null
+
+  return (
+    <div className="mb-4 hidden flex-wrap items-center gap-2 @4xl/main:flex">
+      <span className="text-sm">
+        <span className="font-medium tabular-nums">{matched}</span>{" "}
+        <span className="text-muted-foreground">of {total} match</span>
+      </span>
+
+      {chips.map((chip) => (
+        <button
+          key={chip.key}
+          type="button"
+          onClick={chip.remove}
+          className="inline-flex items-center gap-1 rounded-4xl border border-border bg-muted/40 py-1 pr-1.5 pl-2.5 text-xs transition-colors hover:bg-muted"
+        >
+          {chip.label}
+          <XIcon className="size-3 text-muted-foreground" />
+          <span className="sr-only">Remove {chip.label}</span>
+        </button>
+      ))}
+
+      <Button
+        variant="link"
+        size="sm"
+        className="h-auto px-0 text-xs"
+        onClick={onClear}
+      >
+        Clear all
+      </Button>
+    </div>
+  )
+}
+
 function FilterBar(
   // The bar takes exactly what the panel takes, because it hands the whole lot
   // straight to it — `layout` is the one thing it decides for itself.

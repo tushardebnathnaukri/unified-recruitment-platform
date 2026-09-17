@@ -34,9 +34,9 @@ export function AppShell() {
             and writes drafts into them. Here rather than in `main.tsx` because
             nothing outside the shell has a dock to talk to. */}
         <MessagesProvider>
-          <AppSidebar variant="inset" />
+          <AppSidebar variant="sidebar" />
 
-          <SidebarInset>
+          <SidebarInset className="bg-canvas">
             <SiteHeader title={titleForPath(pathname)} />
 
             {/* `@container/main` lets pages respond to the content column rather

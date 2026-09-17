@@ -64,14 +64,14 @@ decision rather than a per-chart one.
 >
 > | token | light card | dark card |
 > | --- | --- | --- |
-> | \`--chart-1\` = \`--primary\` | 3.67–4.61:1 | 6.27–7.19:1 |
-> | \`--chart-2\` zinc-500 | 4.83:1 | 3.67:1 |
-> | \`--chart-3\` zinc-600 / zinc-400 | 7.73:1 | 6.74:1 |
-> | \`--chart-4\` zinc-700 / zinc-300 | 10.46:1 | 11.99:1 |
-> | \`--chart-5\` zinc-800 / zinc-200 | 14.89:1 | 13.98:1 |
+> | \`--chart-1\` = \`--primary\` | 4.61–5.37:1 | 4.74–6.14:1 |
+> | \`--chart-2\` mist-500 | 4.61:1 | 3.76:1 |
+> | \`--chart-3\` mist-600 / mist-400 | 7.39:1 | 7.11:1 |
+> | \`--chart-4\` mist-700 / mist-300 | 10.04:1 | 11.82:1 |
+> | \`--chart-5\` mist-800 / mist-200 | 14.78:1 | 13.94:1 |
 >
-> zinc-500 is the pivot and holds in both themes. The \`--chart-1\` range is
-> iimjobs to hirist.
+> mist-500 is the pivot and holds in both themes. The \`--chart-1\` ranges run
+> hirist to iimjobs on light and iimjobs to hirist on dark.
 
 \`ChartTooltipContent\` and \`ChartLegendContent\` read their labels from the
 same config, so a series is named in one place.

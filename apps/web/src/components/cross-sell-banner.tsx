@@ -103,7 +103,7 @@ export function CrossSellBanner() {
         className="pointer-events-none absolute inset-0 size-full -scale-x-100 object-cover"
       />
 
-      <p className="relative text-base leading-snug font-medium text-neutral-900">
+      <p className="relative text-base leading-snug font-medium text-mist-900">
         {pitch.headline}
       </p>
 
@@ -115,7 +115,7 @@ export function CrossSellBanner() {
       <Button
         variant="outline"
         size="sm"
-        className="relative w-fit border-neutral-200 bg-white text-neutral-900 hover:bg-white hover:text-neutral-900"
+        className="relative w-fit border-mist-200 bg-white text-mist-900 hover:bg-white hover:text-mist-900"
         onClick={() => setBrand(other.id)}
       >
         Try {other.label}

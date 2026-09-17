@@ -508,7 +508,7 @@ Every facet is a URL param, comma separated and absent when empty — this page
 has no account behind it, so a link to it shows the recipient exactly what the
 sender was looking at.
 
-> The charts use \`--chart-1\`…\`--chart-5\`, which are a neutral zinc ramp
+> The charts use \`--chart-1\`…\`--chart-5\`, which are a neutral mist ramp
 > shared across brands and themes. See Components → Chart.
         `,
       },

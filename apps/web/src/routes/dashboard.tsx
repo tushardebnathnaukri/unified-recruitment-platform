@@ -131,8 +131,13 @@ export function DashboardPage() {
               ))}
             </StatGrid>
 
-            <ActiveJobs />
-            <RecentSearches />
+            {/* Side by side once the content column can hold two cards, stacked
+                below that. Each section is `grid-rows-[auto_1fr]`, so the two
+                headers line up across the row. */}
+            <div className="grid gap-6 @5xl/main:grid-cols-2">
+              <ActiveJobs />
+              <RecentSearches />
+            </div>
           </>
         )}
       </div>
