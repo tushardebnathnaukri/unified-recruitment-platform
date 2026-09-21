@@ -793,6 +793,17 @@ data got in without being pasted through the tool call. Those ports are in the p
 `allowedDomains`; bind the server dual-stack, because Figma resolves `localhost` to `::1` and an
 IPv4-only bind just fails.
 
+**There are no placeholder squares left in the file.** The ones named after their glyph were
+matched by name; the ~37 named only `icon` were read off the app instead — `lib/nav.ts` for the nav,
+`lib/dashboard.ts` for the stat tiles, `routes/jobs.tsx` for the row menu. Each swap keeps whatever
+colour variable the placeholder was bound to, so a muted glyph stays muted and the response
+manager's decisions come out green, amber and red.
+
+**A nested Icon instance is swappable per instance, which is the whole point.** `StatCard` has ONE
+icon slot, so every tile drew the same briefcase until each card's nested instance was pointed at
+its own variant with `swapComponent`. Anywhere one component serves rows that should not share a
+glyph, set it on the instance rather than adding a variant to the parent.
+
 **A `+` reading as "back" is worse than no glyph.** `Button (icon)` bakes a plus into its component,
 and **vector data cannot be overridden in an instance** — only `visible` and paints can. Where a
 Button instance needs a different glyph, hide its `Icon` and draw an Icon instance over it, absolutely
