@@ -81,10 +81,11 @@ export function SettingsPage() {
           <div className="flex min-w-0 flex-1 basis-64 flex-col gap-1">
             <h2 className="text-sm font-medium">Database filters</h2>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              Two ways to narrow a database search. Juicebox puts the query in a
-              pill with the filters in a dialog, ranked criteria and chips that
-              widen the pool; Refine panel is the live hirist column, every
-              filter on screen beside the results.
+              Two ways to narrow a database search. Refine panel is the live
+              hirist column, every filter on screen beside the results, drawn as
+              the response manager's own filter rail; Juicebox puts the query in
+              a pill with the filters in a dialog, ranked criteria and chips
+              that widen the pool.
             </p>
           </div>
 

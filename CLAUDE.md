@@ -274,12 +274,13 @@ derived during render rather than in an effect, the way the database's search bo
 If the rail should hold back too, that is a one-line change to where its `onChange` goes.
 
 **The database has two filter designs, picked on /settings** ("Database filters", via
-`useFilterVariant` in `lib/filter-variant.ts` — localStorage, no provider). **Juicebox** (the
-default, `components/juicebox-filters.tsx`): a Filters dialog that is edited
+`useFilterVariant` in `lib/filter-variant.ts` — localStorage, no provider). **Refine panel** (the
+default) is the live hirist column below. **Juicebox** (`components/juicebox-filters.tsx`): a
+Filters dialog that is edited
 as a draft with a live match count and applied on Save, ranked plain-English Criteria (`?crit=`)
 that decide what the cards highlight and the Best match order but remove nobody, and "Expand
 pool" chips whose `+N` is counted against the real pool (`expansions` in `lib/database-filters`).
-**Refine panel** is the live hirist column below. Both read and write the same URL keys, so a
+Both read and write the same URL keys, so a
 link keeps its filters whichever design opens it.
 
 Under Juicebox each card also carries **one evidence line per criterion** (`CriteriaEvidence` in
@@ -297,7 +298,18 @@ too.
 
 **The refine panel matches live hirist search** (`search.hirist.tech/search/…`): the same 20
 sections in the same order, declared as rows in `SECTIONS` in `lib/database-filters.ts` and drawn
-by `components/database-filters.tsx` as a sticky column (a drawer below `@4xl/main`). Every one
+by `components/database-filters.tsx` (a drawer below `@4xl/main`). **It is drawn as `FilterRail`,
+not as a card of its own** — the same fixed white column flush against the nav and the top bar, as
+tall as the screen and sticky there, "Filters" with a count and Reset all pinned at the top and
+the sections scrolling below. **The inside is the rail's too, not only the column**: sentence-case
+headings, a count beside every option (what the list would hold with it picked — which is what
+makes applying as you pick safe), radios with "Any …" for one-of-a-list, `LocationPicker` (now
+`components/location-picker.tsx`) for both locations, a heading count of one per value (search
+within included, because Reset all clears it), and `AppliedRefinements` above the cards — chips
+from `appliedFilters` in `lib/database-filters.ts`. Only the first three sections open, since twenty
+open is several screens. Narrowing a list is then one piece of furniture a recruiter learns
+once; what differs is what is in it, and twenty questions against a posting's four is a real
+difference between a search and a queue rather than one component forked. Every one
 narrows something — the fields the generator never dealt (expected pay, preferred cities,
 languages…) are dealt there off each person's id by `toProfile`. **Diversity is drawn gated, as it
 is live ("Maven Exclusive"), and the mock deals nobody a gender** — it would only be guessing from

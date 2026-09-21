@@ -31,6 +31,7 @@ import { useAthenaContext } from "@/components/athena-provider"
 import { AuroraBand } from "@/components/aurora-band"
 import { CandidateList, type TableFilters } from "@/components/candidate-list"
 import {
+  AppliedRefinements,
   RefinePanel,
   SectionControl,
   ResultsToolbar,
@@ -600,6 +601,7 @@ function SearchResultsPage({
     onUpdate: update,
     onClear: clear,
     matched: people.length,
+    count,
   }
 
   /**
@@ -702,6 +704,13 @@ function SearchResultsPage({
         toolbar={
           <div className="flex flex-col gap-3">
             <ResultsToolbar {...panel} defaultSort="match" />
+            <AppliedRefinements
+              params={params}
+              matched={people.length}
+              total={results.people.length}
+              onUpdate={update}
+              onClear={clear}
+            />
             <LookingFor skills={results.requiredSkills} />
           </div>
         }

@@ -1,9 +1,11 @@
 import * as React from "react"
 import {
   ChevronDownIcon,
+  ChevronRightIcon,
   LockIcon,
   SearchIcon,
   SlidersHorizontalIcon,
+  XIcon,
 } from "lucide-react"
 
 import { Badge } from "@workspace/ui/components/badge"
@@ -23,6 +25,10 @@ import {
 } from "@workspace/ui/components/input-group"
 import { Label } from "@workspace/ui/components/label"
 import {
+  RadioGroup,
+  RadioGroupItem,
+} from "@workspace/ui/components/radio-group"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -31,12 +37,13 @@ import {
 } from "@workspace/ui/components/select"
 import { cn } from "@workspace/ui/lib/utils"
 
+import { LocationPicker } from "@/components/location-picker"
 import { sortOptions } from "@/lib/applicants"
 import {
   LAST_SEEN,
   SECTIONS,
   TOGGLES,
-  activeFilterCount,
+  appliedFilters,
   readRange,
   writeRange,
   type ChecksSection,
@@ -46,6 +53,7 @@ import {
   type Section,
   type SelectSection,
 } from "@/lib/database-filters"
+import { useListCopy } from "@/lib/list-source"
 
 /** Write one key: a list is written as repeated params, `null` deletes it. */
 export type FilterUpdate = (
@@ -60,105 +68,175 @@ type PanelProps = {
   onUpdate: FilterUpdate
   onClear: () => void
   matched: number
+  /** How many people a whole query string would leave. */
+  count: (params: URLSearchParams) => number
 }
 
 /**
+ * How many people `key` set to `value` would leave, everything else held as it
+ * is — the number beside an option. Where there is no room for it (a table
+ * header) the controls are handed none and draw none.
+ */
+type Leaves = (key: string, value: string | string[] | null) => number
+
+function leavesFor(
+  params: URLSearchParams,
+  count: (params: URLSearchParams) => number
+): Leaves {
+  return (key, value) => {
+    const next = new URLSearchParams(params)
+    next.delete(key)
+    if (Array.isArray(value)) value.forEach((item) => next.append(key, item))
+    else if (value !== null) next.set(key, value)
+    return count(next)
+  }
+}
+
+/** Open on arrival: the three a recruiter reaches for first. */
+const OPEN_BY_DEFAULT = ["xp", "cur", "pref"]
+
+/**
  * "Refine your search": the live hirist panel's filters, top to bottom in its
- * order, in a sticky column beside the cards.
+ * order, in the column the response manager's cards view has.
  *
- * COLLAPSED BY DEFAULT, AS IT IS LIVE. Twenty open sections is a panel longer
- * than the page, so each is a disclosure and only the ones already doing
- * something open themselves — a filter that is on should be visible without
- * hunting for it. Each heading carries its own count, so the closed ones still
- * say which are narrowing the list.
+ * THE RESPONSE MANAGER'S RAIL, NOT A LOOKALIKE. The same fixed white column
+ * flush against the nav, the same headings (sentence case, a `secondary`
+ * count, a chevron that turns), the same controls for the same kinds of
+ * question — radios with "Any" for one-of-a-list, `LocationPicker` for
+ * cities — and the same count rule, one per value. So narrowing a list is a
+ * thing a recruiter learns once. What differs is what is in it: a posting
+ * asks four questions of its applicants, a search asks twenty of the database.
+ *
+ * THE NUMBER BESIDE AN OPTION is how many people the list would hold with it
+ * picked, the other filters held as they are — which is what makes applying
+ * as you pick safe. The live page has an Apply button because every change is
+ * a trip to the server; here the count is the preview a draft would be for,
+ * so an option that would leave nobody says 0 before the click is spent. On a
+ * pick-many list it is the list WITH that value added, since a second value
+ * widens rather than narrows.
  *
  * THE OPTIONS DO NOT SHRINK AS YOU FILTER. They come from everybody the search
  * found, not the people left, so ticking Pune does not make Bengaluru vanish
- * from the list you were about to tick it in.
+ * from the list you were about to tick it in — its count goes to what it is.
  *
- * APPLIED AS YOU PICK, where the live page has an Apply button on its ranges.
- * That button exists because every change is a trip to the server; here it is
- * a click that changes nothing you can see until you make it.
+ * NOT EVERY SECTION OPENS. The rail opens all five of its own; twenty open
+ * sections is a panel several screens long, so the first three open and any
+ * section already doing something opens itself. What each closed one is
+ * doing is on the applied bar above the cards (`AppliedRefinements`).
  *
- * `drawer` is the same panel without the card and the sticky column, for the
- * widths where there is no room for a column and it opens from the toolbar.
+ * `drawer` is the same panel without the column and its chrome, for the widths
+ * where there is no room beside the cards and it opens from the toolbar.
  */
 export function RefinePanel({
   layout = "column",
   ...props
 }: PanelProps & { layout?: "column" | "drawer" }) {
-  const { profiles, params, onUpdate, onClear, matched } = props
-  const count = activeFilterCount(params)
+  const { params, onUpdate, onClear, count: countOf } = props
+  const column = layout === "column"
+  const count = appliedFilters(params).length
+  const leaves = leavesFor(params, countOf)
 
+  const [open, setOpen] = React.useState(
+    () =>
+      new Set([
+        ...OPEN_BY_DEFAULT,
+        ...SECTIONS.filter((section) => countFor(section, params) > 0).map(
+          (section) => section.key
+        ),
+      ])
+  )
+  const toggle = (key: string) =>
+    setOpen((current) => {
+      const next = new Set(current)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+
+  // A FIXED COLUMN, NOT A FLOATING CARD — `FilterRail`'s own classes. Flush
+  // against the nav (the negative left margin cancels the page gutter) and
+  // against the top bar (the negative top margin cancels the shell's padding,
+  // which it can only do because this screen's header is in the bar), exactly
+  // as tall as the screen, and sticky there.
   return (
     <aside
       aria-label="Refine your search"
       className={cn(
         "flex flex-col",
-        layout === "column" &&
-          "hidden shrink-0 rounded-2xl bg-card ring-1 ring-foreground/10 @4xl/main:sticky @4xl/main:top-4 @4xl/main:flex @4xl/main:max-h-[calc(100svh-var(--header-height)---spacing(8))] @4xl/main:w-72 @4xl/main:overflow-y-auto"
+        column &&
+          "hidden shrink-0 border-r bg-background @4xl/main:sticky @4xl/main:top-0 @4xl/main:-mt-4 @4xl/main:-ml-4 @4xl/main:flex @4xl/main:h-svh @4xl/main:w-64 md:@4xl/main:-mt-6 lg:@4xl/main:-ml-6"
       )}
     >
       {/* The drawer carries the same heading and count in its own header. */}
-      {layout === "column" && (
-        <div className="flex flex-col gap-0.5 px-4 pt-4 pb-3">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-sm font-medium">Refine your search</h2>
+      {column && (
+        <div className="flex h-12 shrink-0 items-center justify-between gap-2 border-b px-4">
+          <span className="flex items-center gap-2 text-sm font-medium">
+            <SlidersHorizontalIcon className="size-4" aria-hidden="true" />
+            Filters
             {count > 0 && (
-              <Button
-                variant="link"
-                size="sm"
-                className="h-auto px-0 text-xs"
-                onClick={onClear}
-              >
-                Clear all
-              </Button>
+              <Badge variant="secondary" className="px-1.5">
+                {count}
+              </Badge>
             )}
-          </div>
-          <p className="text-xs text-muted-foreground tabular-nums">
-            {matched} of {profiles.length} profiles
-          </p>
+          </span>
+
+          {count > 0 && (
+            <Button variant="link" size="sm" className="px-0" onClick={onClear}>
+              Reset all
+            </Button>
+          )}
         </div>
       )}
 
+      {/* Only the sections scroll, the way the rail's do. The gutter is here
+        rather than on each row, so a section's rule runs the column's width
+        inside it; in the drawer the sheet already supplies one. */}
       <div
         className={cn(
-          "flex flex-col gap-2.5 py-3",
-          layout === "column" && "border-t border-border px-4"
+          "flex flex-col",
+          column && "min-h-0 flex-1 overflow-y-auto px-4 pb-4"
         )}
       >
-        {TOGGLES.map((toggle) => (
-          <Label
-            key={toggle.key}
-            className="items-start gap-2 text-sm font-normal"
-          >
-            <Checkbox
-              className="mt-0.5"
-              checked={params.get(toggle.key) === "1"}
-              onCheckedChange={(checked) =>
-                onUpdate(toggle.key, checked ? "1" : null)
-              }
-            />
-            <span className="flex flex-col gap-0.5">
-              {toggle.label}
-              {"hint" in toggle && (
-                <span className="text-xs text-muted-foreground">
-                  {toggle.hint}
+        <div className="flex flex-col gap-2.5 py-3">
+          {TOGGLES.map((toggle) => {
+            const on = params.get(toggle.key) === "1"
+            return (
+              <Label
+                key={toggle.key}
+                className="items-start gap-2 text-sm font-normal"
+              >
+                <Checkbox
+                  className="mt-0.5"
+                  checked={on}
+                  onCheckedChange={(checked) =>
+                    onUpdate(toggle.key, checked ? "1" : null)
+                  }
+                />
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  {toggle.label}
+                  {"hint" in toggle && (
+                    <span className="text-xs text-muted-foreground">
+                      {toggle.hint}
+                    </span>
+                  )}
                 </span>
-              )}
-            </span>
-          </Label>
+                <OptionCount value={leaves(toggle.key, "1")} />
+              </Label>
+            )
+          })}
+        </div>
+
+        {SECTIONS.map((section) => (
+          <FilterSection
+            key={section.key}
+            section={section}
+            open={open.has(section.key)}
+            onToggle={() => toggle(section.key)}
+            leaves={leaves}
+            {...props}
+          />
         ))}
       </div>
-
-      {SECTIONS.map((section) => (
-        <FilterSection
-          key={section.key}
-          section={section}
-          inset={layout === "column"}
-          {...props}
-        />
-      ))}
     </aside>
   )
 }
@@ -170,71 +248,143 @@ function countFor(section: Section, params: URLSearchParams) {
   return params.has(section.key) ? 1 : 0
 }
 
+/** The count beside an option, drawn as the rail draws it. */
+function OptionCount({ value }: { value?: number }) {
+  if (value === undefined) return null
+  return (
+    <span className="text-xs text-muted-foreground tabular-nums">{value}</span>
+  )
+}
+
 /**
- * One disclosure. A native `<details>`: the design system has no accordion,
- * and a disclosure that the browser already knows how to open, close and
- * announce is not worth a component until a second screen wants one.
+ * One section, in the rail's heading: a rule above, the label in medium, a
+ * `secondary` count and a faded chevron that points right when closed and
+ * down when open. Its controls are only rendered while it is open, so the
+ * counts are only worked out for sections somebody is looking at.
  */
 function FilterSection({
   section,
-  inset,
+  open,
+  onToggle,
+  leaves,
   profiles,
   params,
   onUpdate,
-}: PanelProps & { section: Section; inset: boolean }) {
+}: PanelProps & {
+  section: Section
+  open: boolean
+  onToggle: () => void
+  leaves: Leaves
+}) {
   const count = countFor(section, params)
-  const [open, setOpen] = React.useState(count > 0)
+  const Chevron = open ? ChevronDownIcon : ChevronRightIcon
+  const id = `refine-${section.key}`
 
   return (
-    <details
-      open={open}
-      onToggle={(event) => setOpen(event.currentTarget.open)}
-      className="group/section border-t border-border"
-    >
-      <summary
-        className={cn(
-          "flex cursor-pointer list-none items-center gap-2 py-2.5 text-sm transition-colors hover:bg-muted/50 focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none focus-visible:ring-inset [&::-webkit-details-marker]:hidden",
-          inset && "px-4"
-        )}
+    <div className="border-t border-border py-3">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={onToggle}
+        className="flex w-full items-center justify-between gap-2 text-left text-sm font-medium"
       >
-        <span className="min-w-0 flex-1">{section.label}</span>
-        {section.kind === "gated" && (
-          <Badge variant="secondary" className="font-normal">
-            <LockIcon data-icon="inline-start" />
-            {section.badge}
-          </Badge>
-        )}
-        {count > 0 && (
-          <Badge className="tabular-nums">
-            {count}
-            <span className="sr-only"> selected</span>
-          </Badge>
-        )}
-        <ChevronDownIcon className="size-4 shrink-0 text-muted-foreground transition-transform group-open/section:rotate-180" />
-      </summary>
+        <span className="flex min-w-0 items-center gap-2">
+          {section.label}
+          {count > 0 && (
+            <Badge variant="secondary" className="px-1.5 tabular-nums">
+              {count}
+              <span className="sr-only"> selected</span>
+            </Badge>
+          )}
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          {section.kind === "gated" && (
+            <Badge variant="secondary" className="font-normal">
+              <LockIcon data-icon="inline-start" />
+              {section.badge}
+            </Badge>
+          )}
+          <Chevron className="size-4 shrink-0 opacity-50" aria-hidden="true" />
+        </span>
+      </button>
 
-      <div className={cn("pb-3", inset && "px-4")}>
-        {section.kind === "range" && (
-          <RangeFilter section={section} params={params} onUpdate={onUpdate} />
-        )}
-        {section.kind === "checks" && (
-          <ChecksFilter
-            section={section}
-            profiles={profiles}
-            chosen={params.getAll(section.key)}
-            onChange={(values) => onUpdate(section.key, values)}
-          />
-        )}
-        {section.kind === "select" && (
-          <SelectFilter
-            section={section}
-            value={params.get(section.key) ?? ""}
-            onChange={(value) => onUpdate(section.key, value || null)}
-          />
-        )}
-        {section.kind === "gated" && <GatedFilter section={section} />}
-      </div>
-    </details>
+      {open && (
+        <div id={id} className="mt-2.5">
+          {section.kind === "gated" ? (
+            <GatedFilter section={section} />
+          ) : (
+            <SectionBody
+              section={section}
+              profiles={profiles}
+              params={params}
+              onUpdate={onUpdate}
+              leaves={leaves}
+            />
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * A section's controls, by its kind. Shared by the panel and the results
+ * table's column headers, which pass no `leaves` and so draw no counts.
+ */
+function SectionBody({
+  section,
+  profiles,
+  params,
+  onUpdate,
+  leaves,
+}: {
+  section: Exclude<Section, GatedSection>
+  profiles: Profile[]
+  params: URLSearchParams
+  onUpdate: FilterUpdate
+  leaves?: Leaves
+}) {
+  if (section.kind === "range")
+    return <RangeFilter section={section} params={params} onUpdate={onUpdate} />
+  if (section.kind === "select")
+    return (
+      <OneOfFilter
+        section={section}
+        value={params.get(section.key) ?? ""}
+        onChange={(value) => onUpdate(section.key, value || null)}
+        countFor={leaves && ((value) => leaves(section.key, value || null))}
+      />
+    )
+
+  const chosen = params.getAll(section.key)
+  const onChange = (values: string[]) => onUpdate(section.key, values)
+  // With the value added, not instead of the ones already picked.
+  const countFor =
+    leaves &&
+    ((value: string) =>
+      leaves(section.key, chosen.includes(value) ? chosen : [...chosen, value]))
+
+  if (section.picker)
+    return (
+      <LocationPicker
+        label={section.label}
+        placeholder={section.search ?? "Search locations"}
+        options={section.options(profiles)}
+        chosen={chosen}
+        onChange={onChange}
+        countFor={countFor}
+      />
+    )
+
+  return (
+    <ChecksFilter
+      section={section}
+      profiles={profiles}
+      chosen={chosen}
+      onChange={onChange}
+      countFor={countFor}
+    />
   )
 }
 
@@ -296,11 +446,13 @@ function ChecksFilter({
   profiles,
   chosen,
   onChange,
+  countFor,
 }: {
   section: ChecksSection
   profiles: Profile[]
   chosen: string[]
   onChange: (values: string[]) => void
+  countFor?: (value: string) => number
 }) {
   const [query, setQuery] = React.useState("")
   const options = React.useMemo(
@@ -313,7 +465,7 @@ function ChecksFilter({
     : options
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2.5">
       {section.hint && (
         <p className="text-xs text-muted-foreground">{section.hint}</p>
       )}
@@ -332,7 +484,7 @@ function ChecksFilter({
         </InputGroup>
       )}
 
-      <div className="-m-1 flex max-h-56 flex-col gap-2 overflow-y-auto p-1">
+      <div className="-m-1 flex max-h-56 flex-col gap-2.5 overflow-y-auto p-1">
         {shown.map((option) => (
           <Label
             key={option}
@@ -348,24 +500,14 @@ function ChecksFilter({
                 )
               }
             />
-            <span className="min-w-0 flex-1">{option}</span>
+            <span className="min-w-0 flex-1 truncate">{option}</span>
+            <OptionCount value={countFor?.(option)} />
           </Label>
         ))}
         {shown.length === 0 && (
           <p className="text-xs text-muted-foreground">Nothing matches.</p>
         )}
       </div>
-
-      {chosen.length > 0 && (
-        <Button
-          variant="link"
-          size="sm"
-          className="h-auto self-start px-0 text-xs"
-          onClick={() => onChange([])}
-        >
-          Clear
-        </Button>
-      )}
     </div>
   )
 }
@@ -373,7 +515,9 @@ function ChecksFilter({
 /**
  * One section's controls by its key, outside the panel — the results table's
  * column headers use these, so a header filter on Search Resume is the refine
- * panel's own filter rather than a second one.
+ * panel's own filter rather than a second one. No counts: a header has no
+ * room to say them, and the rule is to leave a count out rather than show it
+ * wrong.
  */
 export function SectionControl({
   sectionKey,
@@ -387,47 +531,58 @@ export function SectionControl({
   onUpdate: FilterUpdate
 }) {
   const section = SECTIONS.find((candidate) => candidate.key === sectionKey)
-  if (!section) return null
-  if (section.kind === "range")
-    return <RangeFilter section={section} params={params} onUpdate={onUpdate} />
-  if (section.kind === "checks")
-    return (
-      <ChecksFilter
-        section={section}
-        profiles={profiles}
-        chosen={params.getAll(section.key)}
-        onChange={(values) => onUpdate(section.key, values)}
-      />
-    )
-  if (section.kind === "select")
-    return (
-      <SelectFilter
-        section={section}
-        value={params.get(section.key) ?? ""}
-        onChange={(value) => onUpdate(section.key, value || null)}
-      />
-    )
-  return null
+  if (!section || section.kind === "gated") return null
+  return (
+    <SectionBody
+      section={section}
+      profiles={profiles}
+      params={params}
+      onUpdate={onUpdate}
+    />
+  )
 }
 
-function SelectFilter({
+/**
+ * One of a list, as the rail asks it: radios, with "Any …" at the top so the
+ * filter can be taken off from where it was put on.
+ */
+function OneOfFilter({
   section,
   value,
   onChange,
+  countFor,
 }: {
   section: SelectSection
   value: string
   onChange: (value: string) => void
+  countFor?: (value: string) => number
 }) {
+  const options = [{ value: "", label: section.any }, ...section.options]
+
   return (
-    <ChoiceSelect
-      label={section.label}
-      anyLabel="Any"
+    <RadioGroup
+      aria-label={section.label}
+      className="gap-2.5"
       value={value}
-      options={section.options}
-      onChange={onChange}
-      className="w-full"
-    />
+      onValueChange={(next) => onChange(String(next))}
+    >
+      {options.map((option) => {
+        const id = `refine-${section.key}-${option.value || "any"}`
+        return (
+          <Label
+            key={id}
+            htmlFor={id}
+            className="items-center gap-2 font-normal"
+          >
+            <RadioGroupItem id={id} value={option.value} />
+            <span className="min-w-0 flex-1 truncate text-sm">
+              {option.label}
+            </span>
+            <OptionCount value={countFor?.(option.value)} />
+          </Label>
+        )
+      })}
+    </RadioGroup>
   )
 }
 
@@ -518,8 +673,9 @@ export function ResultsToolbar({
   ...panel
 }: PanelProps & { defaultSort: string }) {
   const { params, onUpdate, matched, profiles } = panel
+  const { filterTitle } = useListCopy()
   const [drawerOpen, setDrawerOpen] = React.useState(false)
-  const count = activeFilterCount(params)
+  const count = appliedFilters(params).length
 
   return (
     <Drawer open={drawerOpen} onOpenChange={setDrawerOpen}>
@@ -566,11 +722,12 @@ export function ResultsToolbar({
         </div>
       </div>
 
+      {/* The response manager's drawer heading, word for word. */}
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>Refine your search</DrawerTitle>
+          <DrawerTitle>{filterTitle}</DrawerTitle>
           <DrawerDescription>
-            {matched} of {profiles.length} profiles
+            {matched} of {profiles.length} match
           </DrawerDescription>
           {count > 0 && (
             <Button
@@ -579,7 +736,7 @@ export function ResultsToolbar({
               className="h-auto self-center px-0 text-xs"
               onClick={panel.onClear}
             >
-              Clear all
+              Reset all
             </Button>
           )}
         </DrawerHeader>
@@ -588,6 +745,64 @@ export function ResultsToolbar({
         </div>
       </DrawerContent>
     </Drawer>
+  )
+}
+
+/**
+ * What the panel is narrowing by, as chips above the cards — the response
+ * manager's applied bar, the same shape and words. Each chip removes its one
+ * value, so undoing a filter does not mean finding its section in a column of
+ * twenty, most of them closed.
+ *
+ * ONLY BESIDE THE COLUMN. Below @4xl the panel is in a drawer and the Filters
+ * button carries the count, as the response manager's pills do. Sort is not a
+ * chip: it orders the list but leaves everybody in it.
+ */
+export function AppliedRefinements({
+  params,
+  matched,
+  total,
+  onUpdate,
+  onClear,
+}: {
+  params: URLSearchParams
+  matched: number
+  total: number
+  onUpdate: FilterUpdate
+  onClear: () => void
+}) {
+  const chips = appliedFilters(params)
+  if (chips.length === 0) return null
+
+  return (
+    <div className="hidden flex-wrap items-center gap-2 @4xl/main:flex">
+      <span className="text-sm">
+        <span className="font-medium tabular-nums">{matched}</span>{" "}
+        <span className="text-muted-foreground">of {total} match</span>
+      </span>
+
+      {chips.map((chip) => (
+        <button
+          key={chip.id}
+          type="button"
+          onClick={() => onUpdate(chip.key, chip.without)}
+          className="inline-flex items-center gap-1 rounded-4xl border border-border bg-muted/40 py-1 pr-1.5 pl-2.5 text-xs transition-colors hover:bg-muted"
+        >
+          {chip.label}
+          <XIcon className="size-3 text-muted-foreground" />
+          <span className="sr-only">Remove {chip.label}</span>
+        </button>
+      ))}
+
+      <Button
+        variant="link"
+        size="sm"
+        className="h-auto px-0 text-xs"
+        onClick={onClear}
+      >
+        Clear all
+      </Button>
+    </div>
   )
 }
 

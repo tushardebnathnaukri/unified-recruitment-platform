@@ -328,6 +328,11 @@ export type RangeSection = {
   values: number[]
   format: (value: number) => string
   get: (profile: Profile) => number
+  /**
+   * Its applied chip is the value alone ("9–14 yrs") rather than the label
+   * and the value — only where the unit already says what it is.
+   */
+  bare?: true
 }
 
 export type ChecksSection = {
@@ -341,12 +346,22 @@ export type ChecksSection = {
   /** Drawn from the people in the results, so no option can return nobody. */
   options: (profiles: Profile[]) => string[]
   test: (profile: Profile, chosen: string[]) => boolean
+  /**
+   * Drawn as the response manager's `LocationPicker` — a box you type a city
+   * into, a chip per city taken — rather than a list of boxes, so a location
+   * is picked the same way on both screens.
+   */
+  picker?: true
+  /** What one value's applied chip says, where the value alone is ambiguous. */
+  chip?: (value: string) => string
 }
 
 export type SelectSection = {
   kind: "select"
   key: string
   label: string
+  /** The option that takes the filter off, first in the list. */
+  any: string
   options: Option[]
   test: (profile: Profile, value: string) => boolean
 }
@@ -410,6 +425,7 @@ export const SECTIONS: Section[] = [
     kind: "range",
     key: "xp",
     label: "Experience",
+    bare: true,
     values: range(0, 31),
     format: (years) => `${years} yrs`,
     get: (profile) => profile.experienceYears,
@@ -417,16 +433,21 @@ export const SECTIONS: Section[] = [
   {
     kind: "checks",
     key: "cur",
-    label: "Current Location",
-    search: "Search current location",
+    label: "Current location",
+    search: "Search locations",
+    picker: true,
     options: (profiles) => locationOptions(profiles.map((p) => p.location)),
     test: (profile, chosen) => inLocations(profile.location, chosen),
   },
   {
     kind: "checks",
     key: "pref",
-    label: "Preferred Location",
-    search: "Search preferred location",
+    label: "Preferred location",
+    search: "Search locations",
+    picker: true,
+    // Said with its sense, because "Pune" alone reads as the current city
+    // chip that may be sitting right beside it.
+    chip: (city) => `Open to ${city}`,
     options: (profiles) => [
       ...locationOptions(
         profiles
@@ -443,7 +464,7 @@ export const SECTIONS: Section[] = [
   {
     kind: "checks",
     key: "cluster",
-    label: "Companies Cluster",
+    label: "Companies cluster",
     hint: "Clusters of companies based on a similar industry or domain",
     options: (profiles) => present(profiles.flatMap((p) => p.clusters)),
     test: (profile, chosen) => profile.clusters.some((c) => chosen.includes(c)),
@@ -464,7 +485,7 @@ export const SECTIONS: Section[] = [
   {
     kind: "checks",
     key: "fn",
-    label: "Functional Area",
+    label: "Functional area",
     search: "Search functional area",
     options: (profiles) => present(profiles.map((p) => p.functionalArea)),
     test: (profile, chosen) => chosen.includes(profile.functionalArea),
@@ -510,7 +531,7 @@ export const SECTIONS: Section[] = [
   {
     kind: "checks",
     key: "course",
-    label: "Course Type",
+    label: "Course type",
     options: (profiles) =>
       COURSE_TYPES.filter((type) =>
         profiles.some((p) => p.courseType === type)
@@ -537,7 +558,7 @@ export const SECTIONS: Section[] = [
   {
     kind: "range",
     key: "ectc",
-    label: "Expected Salary",
+    label: "Expected salary",
     values: range(1, 99),
     format: (lakh) => `₹${lakh}L`,
     get: (profile) => profile.expectedCtcLakh,
@@ -545,7 +566,8 @@ export const SECTIONS: Section[] = [
   {
     kind: "select",
     key: "np",
-    label: "Notice Period",
+    label: "Notice period",
+    any: "Any notice period",
     options: [
       notice("Immediately available", 0),
       notice("≤ 1 month", 30),
@@ -608,7 +630,8 @@ export const SECTIONS: Section[] = [
   {
     kind: "select",
     key: "permit",
-    label: "Work Permit for USA",
+    label: "Work permit for USA",
+    any: "Any work permit",
     options: WORK_PERMITS.map((permit) => ({ value: permit, label: permit })),
     test: (profile, value) => profile.workPermitUS === value,
   },
@@ -616,6 +639,7 @@ export const SECTIONS: Section[] = [
     kind: "select",
     key: "team",
     label: "Handled a team?",
+    any: "Either",
     options: [
       { value: "yes", label: "Yes" },
       { value: "no", label: "No" },
@@ -626,6 +650,7 @@ export const SECTIONS: Section[] = [
     kind: "select",
     key: "relocate",
     label: "Willing to relocate?",
+    any: "Either",
     options: [
       { value: "yes", label: "Yes" },
       { value: "no", label: "No" },
@@ -637,6 +662,7 @@ export const SECTIONS: Section[] = [
     key: "lang",
     label: "Language",
     search: "Search language",
+    chip: (language) => `Speaks ${language}`,
     options: (profiles) => present(profiles.flatMap((p) => p.languages)),
     test: (profile, chosen) =>
       profile.languages.some((l) => chosen.includes(l)),
@@ -678,6 +704,81 @@ export const EXCLUSIONS = [
 
 export function activeFilterCount(params: URLSearchParams) {
   return FILTER_KEYS.filter((key) => params.has(key)).length
+}
+
+/** One value the list is being narrowed by, and how to take it off. */
+export type AppliedFilter = {
+  id: string
+  label: string
+  key: string
+  /** What the key holds once this is gone — `null` deletes it. */
+  without: string | string[] | null
+}
+
+/** "9–14 yrs", "≥ 9 yrs", "≤ 14 yrs". */
+function rangeText(
+  section: RangeSection,
+  min: number | null,
+  max: number | null
+) {
+  if (min !== null && max !== null) return span(section, min, max)
+  return min !== null ? `≥ ${section.format(min)}` : `≤ ${section.format(max!)}`
+}
+
+/**
+ * Everything narrowing the list, one entry per VALUE — the refine panel's
+ * applied bar draws a chip for each, and its count is how many there are.
+ * The response manager's rail counts the same way: three cities are three,
+ * not one "location".
+ *
+ * The search within the results is in it, because Reset all clears it too;
+ * a count that left it out would hide a Reset that is about to erase it.
+ */
+export function appliedFilters(params: URLSearchParams): AppliedFilter[] {
+  const applied: AppliedFilter[] = []
+  const many = (key: string, value: string, label: string) => {
+    const rest = params.getAll(key).filter((other) => other !== value)
+    applied.push({
+      id: `${key}:${value}`,
+      label,
+      key,
+      without: rest.length > 0 ? rest : null,
+    })
+  }
+  const one = (key: string, label: string) =>
+    applied.push({ id: key, label, key, without: null })
+
+  const find = params.get("find")
+  if (find) one("find", `“${find}”`)
+  if (params.get("hide") === "1") one("hide", "Hide viewed")
+  if (params.get("unique") === "1") one("unique", "Unique profiles")
+  const seen = LAST_SEEN.find(
+    (option) => option.value && option.value === params.get("seen")
+  )
+  if (seen) one("seen", `Seen ${seen.label.toLowerCase()}`)
+  for (const value of params.getAll("ex")) {
+    const exclusion = EXCLUSIONS.find((option) => option.value === value)
+    if (exclusion) many("ex", value, `Excluding ${exclusion.label}`)
+  }
+
+  for (const section of SECTIONS) {
+    if (section.kind === "range" && params.has(section.key)) {
+      const { min, max } = readRange(params, section.key)
+      if (min === null && max === null) continue
+      const text = rangeText(section, min, max)
+      one(section.key, section.bare ? text : `${section.label} ${text}`)
+    } else if (section.kind === "checks") {
+      for (const value of params.getAll(section.key))
+        many(section.key, value, section.chip?.(value) ?? value)
+    } else if (section.kind === "select") {
+      const value = params.get(section.key)
+      const option = section.options.find((o) => o.value === value)
+      if (option)
+        one(section.key, `${section.label.replace(/\?$/, "")}: ${option.label}`)
+    }
+  }
+
+  return applied
 }
 
 /**

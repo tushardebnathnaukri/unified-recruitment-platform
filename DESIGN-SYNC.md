@@ -217,3 +217,53 @@ diff.
   the top rather than a sixth column — that variant does not exist in Figma.
 - [x] Storybook
 - [ ] Figma
+
+### Database: the refine panel becomes the rail, and the default
+
+- **Date:** 2026-09-21
+- **App:** `apps/web/src/components/database-filters.tsx` (`RefinePanel`,
+  `FilterSection`), `apps/web/src/lib/filter-variant.ts`,
+  `apps/web/src/routes/settings.tsx`.
+  - **Refine panel is the default design** on /settings, and is listed first in
+    the switcher. Juicebox is the alternative.
+  - The column is now the response manager's `FilterRail`, not a floating card:
+    `w-64`, `bg-background`, `border-r`, no radius and no ring, flush against
+    the nav (`-ml-4`, `lg:-ml-6`) and against the top bar (`-mt-4`,
+    `md:-mt-6`), `h-svh` and sticky at `top-0`.
+  - A pinned `h-12` header with a bottom border: a sliders icon, **Filters**, a
+    `secondary` count badge, and **Reset all** on the right — replacing
+    "Refine your search" and its Clear all. The "N of M profiles" line is
+    gone — it moved to the applied bar. The count is one per VALUE (three
+    cities are three) and includes the search-within box, as the rail's does.
+  - Only the sections scroll, inside the column, with the gutter on the
+    scroller so each section's rule is inset.
+  - Section headings take the rail's treatment: `font-medium`, `py-3`, a
+    `secondary` count badge beside the label, a faded chevron pointing right
+    when closed and down when open, no hover fill. Labels are sentence case
+    ("Current location", "Notice period"). Experience, Current location and
+    Preferred location open by default, plus any section with a value.
+  - **A count beside every option** (`text-xs` muted, tabular, right-aligned):
+    how many people the list would hold with it picked. On the two toggles,
+    every checkbox list, and the location pickers' popups.
+  - **Current and Preferred location are `LocationPicker`** — the response
+    manager's Combobox with chips (now `components/location-picker.tsx`),
+    not a checkbox list.
+  - **Notice period, Work permit, Handled a team?, Willing to relocate?** are
+    radios with an "Any notice period" / "Any work permit" / "Either" first,
+    not selects. Checkbox lists lost their per-section "Clear" link.
+  - **An applied bar above the cards** (`AppliedRefinements`), the response
+    manager's: "N of M match", a removable chip per value ("9–14 yrs",
+    "Bengaluru", "Open to Pune", "Notice period: ≤ 3 months", "Salary ≥ ₹20L"),
+    and Clear all. Only at `@4xl/main`, beside the column.
+  - The drawer below `@4xl/main` is titled "Filter results", says "N of M
+    match", and its link is "Reset all".
+- **Storybook:** `Compositions → Database` has its own `RefinePanel` copy
+  (`packages/ui/src/compositions/database.stories.tsx` ~line 1431) and a
+  `RefinePanelStory`. Redraw both as the rail, and make the refine-panel
+  results story the first one on the page since it is now the default.
+- **Figma:** the Database page (node `144:2`), the "results under the Refine
+  panel" frame and its standalone panel. Same treatment as the Response
+  manager's filter rail on node `117:3`: flush left edge, 1px `border` stroke
+  on the right, `background` fill, and a header bar with a bottom border.
+- [ ] Storybook
+- [ ] Figma
