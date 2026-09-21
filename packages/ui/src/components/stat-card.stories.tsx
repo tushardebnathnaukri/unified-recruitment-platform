@@ -73,7 +73,7 @@ export const Grid: Story = {
         <StatCard
           label="Applicants"
           value="271"
-          detail="48 you haven't opened"
+          detail="48 new since your last visit"
           icon={<UsersIcon />}
         />
         <StatCard
@@ -84,7 +84,7 @@ export const Grid: Story = {
         />
         <StatCard
           label="Posting credits"
-          value="9"
+          value="87,500"
           detail="of 25 used this quarter"
           icon={<TicketIcon />}
         />

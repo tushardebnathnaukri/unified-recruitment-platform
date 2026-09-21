@@ -51,7 +51,7 @@ const STATS = [
   },
   {
     label: "Posting credits",
-    value: "9",
+    value: "87,500",
     detail: "of 25 used this quarter",
     icon: TicketIcon,
   },
