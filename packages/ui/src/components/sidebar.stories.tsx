@@ -1,8 +1,10 @@
 import * as React from "react"
-import type { Meta, StoryObj } from "@storybook/react-vite"
+import type { Meta as StoryMeta, StoryObj } from "@storybook/react-vite"
 import {
+  ArrowLeftIcon,
   ArrowRightIcon,
   BadgeCheckIcon,
+  ClockIcon,
   BellIcon,
   BriefcaseIcon,
   ChartColumnIcon,
@@ -13,6 +15,7 @@ import {
   DatabaseIcon,
   LayoutDashboardIcon,
   LogOutIcon,
+  MapPinIcon,
   SearchIcon,
   SendIcon,
   Settings2Icon,
@@ -21,6 +24,7 @@ import {
 } from "lucide-react"
 
 import { Avatar, AvatarFallback } from "@workspace/ui/components/avatar"
+import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import {
   DropdownMenu,
@@ -31,6 +35,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@workspace/ui/components/dropdown-menu"
+import { Meta, MetaItem } from "@workspace/ui/components/meta"
 import { Separator } from "@workspace/ui/components/separator"
 import {
   Sidebar,
@@ -89,8 +94,8 @@ const meta = {
       description: {
         component: `
 shadcn's sidebar block, as the app shell uses it: \`SidebarProvider\` →
-\`Sidebar variant="inset" collapsible="icon"\` + \`SidebarInset\` + the Athena
-pane. The shell's dimensions (\`--sidebar-width\`, \`--header-height\`,
+\`Sidebar variant="sidebar" collapsible="icon"\` + \`SidebarInset\` + the
+Athena pane. The shell's dimensions (\`--sidebar-width\`, \`--header-height\`,
 \`--athena-width\`) are inline CSS variables on the provider so the header,
 sidebar and copilot pane all read the same numbers.
 
@@ -126,7 +131,7 @@ in as a gradient.
       },
     },
   },
-} satisfies Meta<typeof Sidebar>
+} satisfies StoryMeta<typeof Sidebar>
 
 export default meta
 
@@ -203,17 +208,17 @@ function CrossSellBanner() {
           not the picture. */}
       <div
         aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-gradient-to-br from-neutral-100 via-neutral-200 to-neutral-400"
+        className="pointer-events-none absolute inset-0 bg-gradient-to-br from-mist-100 via-mist-200 to-mist-400"
       />
 
-      <p className="relative text-base leading-snug font-medium text-neutral-900">
+      <p className="relative text-base leading-snug font-medium text-mist-900">
         Need to close your tech hiring?
       </p>
 
       <Button
         variant="outline"
         size="sm"
-        className="relative w-fit border-neutral-200 bg-white text-neutral-900 hover:bg-white hover:text-neutral-900"
+        className="relative w-fit border-mist-200 bg-white text-mist-900 hover:bg-white hover:text-mist-900"
       >
         Try hirist
         <ArrowRightIcon data-icon="inline-end" />
@@ -309,7 +314,7 @@ function AthenaPane({ onClose }: { onClose?: () => void }) {
   return (
     <aside
       aria-label="Athena"
-      className="fixed inset-0 z-50 flex flex-col bg-background md:sticky md:inset-auto md:top-2 md:z-auto md:m-2 md:ml-0 md:h-[calc(100svh-1rem)] md:w-(--athena-width) md:shrink-0 md:rounded-xl md:shadow-sm"
+      className="fixed inset-0 z-50 flex flex-col bg-background md:sticky md:inset-auto md:top-0 md:z-auto md:h-svh md:w-(--athena-width) md:shrink-0 md:border-l"
     >
       <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b px-4">
         <SparklesIcon className="size-4 shrink-0 text-primary" />
@@ -380,12 +385,66 @@ function AthenaPane({ onClose }: { onClose?: () => void }) {
   )
 }
 
+/**
+ * What a screen about ONE OBJECT puts in the bar instead of the route title.
+ * In the app this is `PageHeader`, a portal into a slot in `SiteHeader`, and
+ * `titleForPath` stands down while anything fills it — a posting used to read
+ * "Jobs" above a band naming the job, which is two rows to say where you are.
+ *
+ * Fitting one row inside `--header-height` costs the band's other two lines:
+ * the title is the bar's own `text-base` and truncates instead of clamping,
+ * the back button is a ghost circle rather than an outlined one, and the meta
+ * sits behind a separator that hides below `lg`.
+ */
+function JobPageHeader() {
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-2">
+      <Button
+        variant="ghost"
+        size="icon"
+        aria-label="Back to all jobs"
+        className="-ml-2 size-8 shrink-0 rounded-full"
+      >
+        <ArrowLeftIcon />
+      </Button>
+
+      <h1 className="min-w-0 truncate font-heading text-base font-medium">
+        VP Finance — Series C fintech
+      </h1>
+
+      <Badge variant="secondary" className="shrink-0">
+        Pro
+      </Badge>
+      <Badge variant="success" className="shrink-0">
+        Live
+      </Badge>
+
+      <Separator
+        orientation="vertical"
+        className="mx-1 hidden h-4 lg:block data-vertical:self-auto"
+      />
+      <Meta separator={false} className="hidden shrink-0 lg:flex">
+        <MetaItem>
+          <MapPinIcon />
+          Bengaluru
+        </MetaItem>
+        <MetaItem>
+          <ClockIcon />
+          Expires in 18 days
+        </MetaItem>
+      </Meta>
+    </div>
+  )
+}
+
 function Shell({
   defaultOpen = true,
   athena = false,
+  pageHeader = false,
 }: {
   defaultOpen?: boolean
   athena?: boolean
+  pageHeader?: boolean
 }) {
   const [athenaOpen, setAthenaOpen] = React.useState(athena)
 
@@ -400,7 +459,7 @@ function Shell({
         } as React.CSSProperties
       }
     >
-      <Sidebar variant="inset" collapsible="icon">
+      <Sidebar variant="sidebar" collapsible="icon">
         <SidebarHeader>
           <div className="flex h-10 items-center gap-1 group-data-[collapsible=icon]:justify-center">
             <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
@@ -454,8 +513,8 @@ function Shell({
         <SidebarRail />
       </Sidebar>
 
-      <SidebarInset>
-        <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b">
+      <SidebarInset className="bg-canvas">
+        <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b bg-background">
           <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">
             {/* The only trigger left in the bar is the mobile copy — above
                 768px the sidebar's own takes over. */}
@@ -466,7 +525,11 @@ function Shell({
                 className="mx-2 h-4 data-vertical:self-auto"
               />
             </div>
-            <h1 className="text-base font-medium">Dashboard</h1>
+            {pageHeader ? (
+              <JobPageHeader />
+            ) : (
+              <h1 className="text-base font-medium">Dashboard</h1>
+            )}
 
             {/* IT ONLY OPENS. While the pane is up this is gone, because the
                 pane carries its own close and two controls for one thing is
@@ -510,6 +573,18 @@ export const AppShell: Story = {
 export const Collapsed: Story = {
   name: "Collapsed to the icon rail",
   render: () => <Shell defaultOpen={false} />,
+}
+
+/**
+ * A screen about one object speaks for itself in the bar. The route title
+ * ("Jobs") steps aside and the posting's own header takes the row — back
+ * button, title, badges, then a separator and the meta. The white band that
+ * used to carry this above the tabs is gone with it, so the page's first row
+ * runs straight into the bar.
+ */
+export const WithPageHeader: Story = {
+  name: "App shell with a page header",
+  render: () => <Shell pageHeader />,
 }
 
 /**

@@ -395,7 +395,7 @@ queue on the response manager — not "unread".
   },
   decorators: [
     (Story) => (
-      <div className="@container min-h-svh bg-background">
+      <div className="@container min-h-svh bg-canvas">
         <Story />
       </div>
     ),

@@ -105,7 +105,7 @@ function Header() {
   return (
     <div className="flex flex-col gap-4">
       {/* A real link to the job's responses, not `history.back()`: this page
-          is reachable from a pasted URL and from the message dock, and "up to
+          is reachable from a pasted URL and from a message thread, and "up to
           the list I came from" has to mean the list whether or not the
           browser agrees. */}
       <Button
@@ -403,8 +403,17 @@ function CandidateDetail({ layout = "page" }: { layout?: "page" | "pane" }) {
 
 function CandidatePage() {
   return (
-    <div className="@container/main flex flex-col gap-5 px-4 lg:px-6">
-      <Header />
+    // The content column is mist; the header is a white band across it. This
+    // page keeps its band rather than moving into the top bar, because what it
+    // carries — the avatar, the decisions, Download CV and Message — is more
+    // than one row of `--header-height` can hold.
+    <div className="@container/main flex min-h-svh flex-col gap-5 bg-canvas px-4 py-5 lg:px-6">
+      {/* `-mx-4 -mt-5 lg:-mx-6` escapes the page gutter and the top padding, so
+          the band runs edge to edge under the site header, and its own
+          `border-b` is what divides it from the grey below. */}
+      <div className="-mx-4 -mt-5 border-b border-border bg-background px-4 py-5 lg:-mx-6 lg:px-6">
+        <Header />
+      </div>
       <CandidateDetail />
     </div>
   )

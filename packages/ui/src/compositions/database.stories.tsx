@@ -12,14 +12,18 @@ import {
   Building2Icon,
   CheckIcon,
   ChevronDownIcon,
+  ChevronsUpDownIcon,
   CircleHelpIcon,
   CircleXIcon,
+  Columns3Icon,
   EyeIcon,
+  EyeOffIcon,
   FactoryIcon,
   FileTextIcon,
   GraduationCapIcon,
   IndianRupeeIcon,
   LanguagesIcon,
+  LayoutListIcon,
   ListFilterIcon,
   LockIcon,
   MailIcon,
@@ -29,6 +33,7 @@ import {
   SearchIcon,
   SlidersHorizontalIcon,
   SparklesIcon,
+  Table2Icon,
   ThumbsUpIcon,
   UserRoundIcon,
   WandSparklesIcon,
@@ -45,6 +50,16 @@ import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Card } from "@workspace/ui/components/card"
 import { Checkbox } from "@workspace/ui/components/checkbox"
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@workspace/ui/components/dropdown-menu"
 import { Input } from "@workspace/ui/components/input"
 import {
   InputGroup,
@@ -56,7 +71,13 @@ import { Kbd, KbdGroup } from "@workspace/ui/components/kbd"
 import { Label } from "@workspace/ui/components/label"
 import { ListCard } from "@workspace/ui/components/list-card"
 import { Meta, MetaItem } from "@workspace/ui/components/meta"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@workspace/ui/components/popover"
 import { SectionHeader } from "@workspace/ui/components/section-header"
+import { Separator } from "@workspace/ui/components/separator"
 import {
   Select,
   SelectContent,
@@ -70,6 +91,19 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@workspace/ui/components/toggle-group"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@workspace/ui/components/table"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@workspace/ui/components/tooltip"
 import { cn } from "@workspace/ui/lib/utils"
 import { designComposition } from "@workspace/ui/lib/figma"
 
@@ -201,6 +235,10 @@ type Person = {
   title: string
   company: string
   location: string
+  /** Where they would go, their own city first. */
+  preferredLocations: string[]
+  /** Derived from the roles, the employer and the school already on the card. */
+  tags: string[]
   updatedAgo: string
   fresh: boolean
   status: "undecided" | "shortlisted"
@@ -221,6 +259,8 @@ const PEOPLE: Person[] = [
     title: "Director of Engineering",
     company: "Flipkart",
     location: "Bengaluru",
+    preferredLocations: ["Bengaluru", "Pune"],
+    tags: ["Leads a team", "E-commerce", "Top institute", "Long tenure"],
     updatedAgo: "3 hours ago",
     fresh: true,
     status: "undecided",
@@ -263,6 +303,8 @@ const PEOPLE: Person[] = [
     title: "Senior Staff Engineer",
     company: "Meesho",
     location: "Bengaluru",
+    preferredLocations: ["Bengaluru"],
+    tags: ["E-commerce", "Long tenure"],
     updatedAgo: "6 months ago",
     fresh: false,
     status: "shortlisted",
@@ -304,6 +346,8 @@ const PEOPLE: Person[] = [
     title: "Principal Engineer",
     company: "Zerodha",
     location: "Bengaluru",
+    preferredLocations: ["Bengaluru", "Hyderabad", "Anywhere"],
+    tags: ["Fintech", "One sector", "Top institute"],
     updatedAgo: "1 year ago",
     fresh: false,
     status: "undecided",
@@ -515,10 +559,30 @@ function SearchPage() {
 /* The card — the response manager's, plus the evidence lines                 */
 /* ------------------------------------------------------------------------- */
 
+/**
+ * The semantic tokens, not the brand's — tying the tick to `--primary` would
+ * make it orange on hirist, the same colour as the Maybe beside it. Only the
+ * glyph is tinted at rest, so a page of cards does not become traffic lights.
+ */
 const DECISIONS = [
-  { value: "shortlisted", label: "Shortlist", icon: CheckIcon },
-  { value: "maybe", label: "Maybe", icon: CircleHelpIcon },
-  { value: "rejected", label: "Not a fit", icon: XIcon },
+  {
+    value: "shortlisted",
+    label: "Shortlist",
+    icon: CheckIcon,
+    resting: "text-success hover:bg-success/10 hover:text-success",
+  },
+  {
+    value: "maybe",
+    label: "Maybe",
+    icon: CircleHelpIcon,
+    resting: "text-warning hover:bg-warning/10 hover:text-warning",
+  },
+  {
+    value: "rejected",
+    label: "Not a fit",
+    icon: XIcon,
+    resting: "text-destructive hover:bg-destructive/10 hover:text-destructive",
+  },
 ]
 
 function Decisions({ person }: { person: Person }) {
@@ -537,7 +601,7 @@ function Decisions({ person }: { person: Person }) {
           className={
             person.status === decision.value
               ? "bg-success/10 text-success data-[pressed]:bg-success/10"
-              : "text-muted-foreground"
+              : decision.resting
           }
         >
           <decision.icon />
@@ -597,6 +661,53 @@ function Evidence({ verdicts }: { verdicts: Verdict[] }) {
   )
 }
 
+/** How many tags a card draws before the rest become a count. */
+const TAGS_SHOWN = 3
+
+function TagsBucket({ tags }: { tags: string[] }) {
+  const shown = tags.slice(0, TAGS_SHOWN)
+  const rest = tags.slice(TAGS_SHOWN)
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {shown.map((tag) => (
+        <Badge key={tag} variant="secondary" className="font-normal">
+          {tag}
+        </Badge>
+      ))}
+      {rest.length > 0 && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Badge
+                variant="outline"
+                className="font-normal text-muted-foreground"
+              />
+            }
+          >
+            +{rest.length}
+            <span className="sr-only"> more: {rest.join(", ")}</span>
+          </TooltipTrigger>
+          <TooltipContent>{rest.join(" · ")}</TooltipContent>
+        </Tooltip>
+      )}
+    </div>
+  )
+}
+
+function LocationBucket({ person }: { person: Person }) {
+  const elsewhere = person.preferredLocations.filter(
+    (place) => place !== person.location
+  )
+
+  return (
+    <span className="text-muted-foreground">
+      <span className="font-medium text-foreground">{person.location}</span>
+      {elsewhere.length > 0 && <> · open to {elsewhere.join(", ")}</>}
+    </span>
+  )
+}
+
 function ResultCard({
   person,
   evidence = false,
@@ -621,9 +732,14 @@ function ResultCard({
           </Avatar>
           <div className="flex min-w-0 flex-col gap-0.5">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-heading text-base font-medium">
+              {/* The name is the control that opens the profile; the card
+                  itself is not clickable. */}
+              <button
+                type="button"
+                className="rounded-sm text-left font-heading text-base font-medium outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
                 {person.name}
-              </span>
+              </button>
               {person.fresh && <span className="sr-only">New</span>}
               {person.status === "shortlisted" && (
                 <Badge variant="success">Shortlisted</Badge>
@@ -644,6 +760,16 @@ function ResultCard({
       </div>
 
       <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 border-t border-border pt-3 text-sm sm:grid-cols-[7rem_minmax(0,1fr)]">
+        {/* Above Experience, because it is the summary of it. Three chips, then
+            a `+N` with the rest on hover. `secondary`, not the skills' success
+            green — green means "one of the skills this search asked for", and a
+            tag is a fact about the person nobody asked for. */}
+        <dt className="text-xs leading-6 font-medium text-muted-foreground sm:text-right">
+          Tags
+        </dt>
+        <dd className="min-w-0">
+          <TagsBucket tags={person.tags} />
+        </dd>
         <dt className="text-xs leading-6 font-medium text-muted-foreground sm:text-right">
           Experience
         </dt>
@@ -686,6 +812,14 @@ function ResultCard({
             </Badge>
           ))}
         </dd>
+        {/* Where they are and where they would go — the two only mean anything
+            together, so the current city is repeated here as the emphasis. */}
+        <dt className="text-xs leading-6 font-medium text-muted-foreground sm:text-right">
+          Location
+        </dt>
+        <dd className="min-w-0 leading-6">
+          <LocationBucket person={person} />
+        </dd>
         <dt className="text-xs leading-6 font-medium text-muted-foreground sm:text-right">
           Availability
         </dt>
@@ -714,17 +848,268 @@ function ResultCard({
   )
 }
 
-function SortSelect() {
+function ViewSwitcher({ value = "cards" }: { value?: string }) {
+  return (
+    <ToggleGroup
+      variant="outline"
+      spacing={0}
+      aria-label="View"
+      defaultValue={[value]}
+    >
+      <ToggleGroupItem value="cards" aria-label="Cards">
+        <LayoutListIcon />
+      </ToggleGroupItem>
+      <ToggleGroupItem value="table" aria-label="Table">
+        <Table2Icon />
+      </ToggleGroupItem>
+    </ToggleGroup>
+  )
+}
+
+/**
+ * The columns the table can show. Three are off by default — Match, Education
+ * and Status — because the table is for comparing the numbers, and those three
+ * are read one row at a time.
+ */
+const TABLE_COLUMNS = [
+  { id: "location", label: "Location", on: true },
+  { id: "experience", label: "Exp", on: true },
+  { id: "ctc", label: "Current", on: true },
+  { id: "notice", label: "Notice", on: true },
+  { id: "updated", label: "Updated", on: true },
+  { id: "match", label: "Match", on: false },
+  { id: "education", label: "Education", on: false },
+  { id: "status", label: "Status", on: false },
+]
+
+function ColumnsMenu({ open }: { open?: boolean }) {
+  return (
+    <DropdownMenu open={open}>
+      <DropdownMenuTrigger
+        render={
+          <Button variant="outline" size="sm">
+            <Columns3Icon data-icon="inline-start" />
+            Columns
+          </Button>
+        }
+      />
+      <DropdownMenuContent align="end" className="min-w-48">
+        {/* The label INSIDE a group — Base UI's GroupLabel throws outside one. */}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Show columns</DropdownMenuLabel>
+          {TABLE_COLUMNS.map((column) => (
+            <DropdownMenuCheckboxItem
+              key={column.id}
+              checked={column.on}
+              closeOnClick={false}
+            >
+              {column.label}
+            </DropdownMenuCheckboxItem>
+          ))}
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem disabled>Reset columns</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
+/**
+ * A sortable, filterable, hideable column heading — the response manager's
+ * `DataTableColumnHeader`, reused here. **Its filters are the refine panel's
+ * own sections**, passed in as `tableFilters`: Location is `cur`, Exp `xp`,
+ * Current `ctc`, Notice `np`. So a header, the refine panel and the Juicebox
+ * dialog are one filter in three places.
+ */
+function ColumnHead({
+  title,
+  align = "start",
+  sorted = false,
+  filtered = false,
+  filter,
+  open,
+}: {
+  title: string
+  align?: "start" | "end"
+  sorted?: false | "asc" | "desc"
+  filtered?: boolean
+  filter?: React.ReactNode
+  open?: boolean
+}) {
+  const SortIcon =
+    sorted === "asc"
+      ? ArrowUpIcon
+      : sorted === "desc"
+        ? ArrowDownIcon
+        : ChevronsUpDownIcon
+
+  return (
+    <div className={cn("flex", align === "end" && "justify-end")}>
+      <Popover open={open}>
+        <PopoverTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="sm"
+              className={cn(
+                "-mx-2 h-8 gap-1 px-2 font-medium text-muted-foreground data-popup-open:bg-accent",
+                (sorted || filtered) && "text-foreground"
+              )}
+            />
+          }
+        >
+          {title}
+          {filtered && (
+            <span
+              aria-label="Filtered"
+              className="size-1.5 rounded-full bg-primary"
+            />
+          )}
+          <SortIcon className={cn("size-3.5!", !sorted && "opacity-50")} />
+        </PopoverTrigger>
+
+        <PopoverContent
+          align={align === "end" ? "end" : "start"}
+          className="w-64 gap-1 p-1"
+        >
+          <HeaderAction icon={ArrowUpIcon} active={sorted === "asc"}>
+            Sort ascending
+          </HeaderAction>
+          <HeaderAction icon={ArrowDownIcon} active={sorted === "desc"}>
+            Sort descending
+          </HeaderAction>
+          {sorted && <HeaderAction icon={XIcon}>Clear sort</HeaderAction>}
+          {filter && (
+            <>
+              <Separator className="my-1" />
+              <div className="px-2 py-1.5">{filter}</div>
+            </>
+          )}
+          <Separator className="my-1" />
+          <HeaderAction icon={EyeOffIcon}>Hide column</HeaderAction>
+        </PopoverContent>
+      </Popover>
+    </div>
+  )
+}
+
+function HeaderAction({
+  icon: Icon,
+  active = false,
+  children,
+}: {
+  icon: LucideIcon
+  active?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      className={cn(
+        "flex w-full items-center gap-2.5 rounded-xl px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent",
+        active && "font-medium text-primary"
+      )}
+    >
+      <Icon className="size-4 text-muted-foreground" />
+      {children}
+    </button>
+  )
+}
+
+/**
+ * Search Resume has the table too — cards or table, no split. The arrival
+ * column reads **Updated** here, where a posting's reads Applied: the same
+ * column, named by what it means on this screen.
+ */
+function ResultsTable() {
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow className="hover:bg-transparent">
+          <TableHead className="w-10 pr-0">
+            <Checkbox aria-label="Select all 214" />
+          </TableHead>
+          <TableHead>
+            <ColumnHead title="Candidate" />
+          </TableHead>
+          <TableHead>
+            <ColumnHead title="Location" filtered filter={<LocationList />} />
+          </TableHead>
+          <TableHead className="text-right">
+            <ColumnHead title="Exp" align="end" filtered />
+          </TableHead>
+          <TableHead className="text-right">
+            <ColumnHead title="Current" align="end" sorted="desc" />
+          </TableHead>
+          <TableHead className="text-right">
+            <ColumnHead title="Notice" align="end" />
+          </TableHead>
+          <TableHead>
+            <ColumnHead title="Updated" />
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {PEOPLE.map((person) => (
+          <TableRow key={person.id}>
+            <TableCell className="w-10 pr-0">
+              <Checkbox aria-label={`Select ${person.name}`} />
+            </TableCell>
+            <TableCell>
+              <div className="flex items-start gap-2">
+                <span
+                  aria-hidden
+                  className={cn(
+                    "mt-1.5 size-2 shrink-0 rounded-full",
+                    person.fresh ? "bg-primary" : "invisible"
+                  )}
+                />
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-medium">{person.name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {person.title} at {person.company}
+                  </span>
+                </div>
+              </div>
+            </TableCell>
+            <TableCell className="text-muted-foreground">
+              {person.location}
+            </TableCell>
+            <TableCell className="text-right tabular-nums">
+              {person.years} yrs
+            </TableCell>
+            <TableCell className="text-right font-medium tabular-nums">
+              {person.ctc}
+            </TableCell>
+            <TableCell className="text-right tabular-nums">
+              {person.notice.replace(" notice", "")}
+            </TableCell>
+            <TableCell className="text-muted-foreground">
+              {person.updatedAgo}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
+}
+
+function SortSelect({ sort = "match" }: { sort?: string }) {
   const sorts = {
     match: "Best match",
     recent: "Most recent",
     experience: "Most experience",
     notice: "Soonest available",
+    // A header sort that is not one of the named ones writes
+    // `?sort=<column>.<asc|desc>`, and the select says so rather than falling
+    // back to the default and quietly disagreeing with the table.
+    "ctc.desc": "Current pay ↓",
   }
   return (
     <div className="flex items-center gap-2">
       <span className="text-xs text-muted-foreground">Sort</span>
-      <Select items={sorts} defaultValue="match">
+      <Select items={sorts} defaultValue={sort}>
         <SelectTrigger size="sm" className="w-40" aria-label="Sort by">
           <SelectValue />
         </SelectTrigger>
@@ -809,21 +1194,16 @@ function ExpandPool() {
   )
 }
 
+/**
+ * THE QUERY PILL IS GONE. It was the search restated plus a press to get back
+ * to the box — which is exactly what the bar's title and back button now are,
+ * so it was the same control twice. The band keeps Filters, Criteria and Expand
+ * pool.
+ */
 function JuiceboxHeader() {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="outline"
-          className="h-9 max-w-full min-w-0 justify-start rounded-full sm:max-w-2xl"
-          aria-label="Edit search: Kafka, Kubernetes, platform"
-        >
-          <SearchIcon
-            data-icon="inline-start"
-            className="text-muted-foreground"
-          />
-          <span className="min-w-0 truncate">Kafka, Kubernetes, platform</span>
-        </Button>
         <CountButton icon={ListFilterIcon} label="Filters" count={2} />
         <CountButton icon={SparklesIcon} label="Criteria" count={3} />
       </div>
@@ -832,27 +1212,43 @@ function JuiceboxHeader() {
   )
 }
 
-function JuiceboxResults() {
+function JuiceboxResults({ table = false }: { table?: boolean }) {
   return (
-    <div className="@container/main flex flex-col gap-5 px-4 py-6 lg:px-6">
-      <JuiceboxHeader />
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border pb-3">
-          <h2 className="text-sm font-medium">
-            Matches{" "}
-            <span className="font-normal text-muted-foreground tabular-nums">
-              (214)
-            </span>
-          </h2>
-          <div className="ml-auto flex min-w-48 flex-1 justify-end">
-            <SearchWithin />
+    <div className="flex min-h-svh flex-col bg-canvas">
+      <TopBar>
+        <SearchHeader />
+      </TopBar>
+
+      <div className="@container/main flex flex-1 flex-col gap-5 px-4 py-6 lg:px-6">
+        <JuiceboxHeader />
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-border pb-3">
+            <h2 className="text-sm font-medium">
+              Matches{" "}
+              <span className="font-normal text-muted-foreground tabular-nums">
+                (214)
+              </span>
+            </h2>
+            <div className="ml-auto flex min-w-48 flex-1 justify-end">
+              <SearchWithin />
+            </div>
+            <SortSelect sort={table ? "ctc.desc" : "match"} />
+            {/* Columns only in the view it acts on, left of the toggle. */}
+            {table && <ColumnsMenu />}
+            <ViewSwitcher value={table ? "table" : "cards"} />
           </div>
-          <SortSelect />
-        </div>
-        <div role="list" className="flex flex-col gap-3">
-          {PEOPLE.map((person) => (
-            <ResultCard key={person.id} person={person} evidence />
-          ))}
+
+          <LookingFor />
+
+          {table ? (
+            <ResultsTable />
+          ) : (
+            <div role="list" className="flex flex-col gap-3">
+              {PEOPLE.map((person) => (
+                <ResultCard key={person.id} person={person} evidence />
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -863,43 +1259,83 @@ function JuiceboxResults() {
 /* Results — Refine panel                                                     */
 /* ------------------------------------------------------------------------- */
 
-/** The search, restated where the job's title sits on a posting. */
+/**
+ * THE SEARCH IS THE TOP BAR, under both filter designs. It used to be a white
+ * band above the results while the bar said "Database" — two rows to say where
+ * you are. "Back is edit": the arrow returns to the box with this search still
+ * in it.
+ *
+ * Fitting one row inside `--header-height` costs the band its other lines. The
+ * query truncates to one line instead of clamping to two, and the meta sits
+ * behind a separator that hides below `lg`. **The "Looking for" skills left the
+ * header entirely** for `LookingFor`, drawn above the cards beside the green
+ * chips it explains.
+ */
 function SearchHeader() {
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex min-w-0 flex-1 items-center gap-2">
       <Button
-        variant="outline"
+        variant="ghost"
         size="icon"
         aria-label="Back to the search box"
-        className="shrink-0 rounded-full"
+        className="-ml-2 size-8 shrink-0 rounded-full"
       >
         <ArrowLeftIcon />
       </Button>
-      <div className="flex min-w-0 flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="font-heading text-lg font-medium">
-            Kafka, Kubernetes, platform
-          </h2>
-          <Badge variant="secondary">
-            <SearchIcon data-icon="inline-start" />
-            Keywords
-          </Badge>
-        </div>
-        <Meta>
-          <MetaItem>214 profiles</MetaItem>
-          <MetaItem>Bengaluru</MetaItem>
-          <MetaItem>9–14 yrs</MetaItem>
-          <MetaItem>Last run 2 hours ago</MetaItem>
-        </Meta>
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-xs text-muted-foreground">Looking for</span>
-          {["Kafka", "Kubernetes"].map((skill) => (
-            <Badge key={skill} variant="success" className="font-normal">
-              {skill}
-            </Badge>
-          ))}
-        </div>
-      </div>
+
+      <h1 className="min-w-0 truncate font-heading text-base font-medium">
+        Kafka, Kubernetes, platform
+      </h1>
+
+      <Badge variant="secondary" className="shrink-0">
+        <SearchIcon data-icon="inline-start" />
+        Keywords
+      </Badge>
+
+      <Separator
+        orientation="vertical"
+        className="mx-1 hidden h-4 lg:block data-vertical:self-auto"
+      />
+      <Meta className="hidden shrink-0 lg:flex">
+        <MetaItem>214 profiles</MetaItem>
+        <MetaItem>Bengaluru</MetaItem>
+        <MetaItem>9–14 yrs</MetaItem>
+        <MetaItem>Last run 2 hours ago</MetaItem>
+      </Meta>
+    </div>
+  )
+}
+
+/**
+ * The shell's bar, so the story can show what the header now sits inside. In
+ * the app this is `SiteHeader` and the page reaches it through a portal.
+ */
+function TopBar({ children }: { children: React.ReactNode }) {
+  return (
+    <header className="flex h-12 shrink-0 items-center gap-2 border-b bg-background px-4 lg:px-6">
+      {children}
+      <Button variant="ghost" size="sm" className="ml-auto shrink-0">
+        <SparklesIcon data-icon="inline-start" />
+        Athena
+      </Button>
+    </header>
+  )
+}
+
+/**
+ * The skills the search named, drawn above the cards rather than in the header:
+ * they are the legend for the green chips on every card below, so they belong
+ * beside the thing they explain.
+ */
+function LookingFor() {
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-xs text-muted-foreground">Looking for</span>
+      {["Kafka", "Kubernetes"].map((skill) => (
+        <Badge key={skill} variant="success" className="font-normal">
+          {skill}
+        </Badge>
+      ))}
     </div>
   )
 }
@@ -1062,40 +1498,51 @@ function PanelResults() {
     "730": "Last 2 years",
   }
   return (
-    <div className="@container/main flex flex-col gap-5 px-4 py-6 lg:px-6">
-      <SearchHeader />
-      <div className="flex items-start gap-4">
-        <RefinePanel />
-        <div className="flex min-w-0 flex-1 flex-col gap-4">
-          <div className="flex flex-wrap items-center gap-2">
-            <SearchWithin />
-            <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-muted-foreground">Last seen</span>
-                <Select items={seen} defaultValue="any">
-                  <SelectTrigger
-                    size="sm"
-                    className="w-36"
-                    aria-label="Filter by last seen"
-                  >
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(seen).map(([value, label]) => (
-                      <SelectItem key={value} value={value}>
-                        {label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+    // THE REFINE DESIGN HAS NO BAND LEFT AT ALL — the sticky filter column
+    // starts straight under the top bar.
+    <div className="flex min-h-svh flex-col bg-canvas">
+      <TopBar>
+        <SearchHeader />
+      </TopBar>
+
+      <div className="@container/main flex flex-1 flex-col gap-5 px-4 py-6 lg:px-6">
+        <div className="flex items-start gap-4">
+          <RefinePanel />
+          <div className="flex min-w-0 flex-1 flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <SearchWithin />
+              <div className="ml-auto flex flex-wrap items-center gap-x-3 gap-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">
+                    Last seen
+                  </span>
+                  <Select items={seen} defaultValue="any">
+                    <SelectTrigger
+                      size="sm"
+                      className="w-36"
+                      aria-label="Filter by last seen"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.entries(seen).map(([value, label]) => (
+                        <SelectItem key={value} value={value}>
+                          {label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <SortSelect />
               </div>
-              <SortSelect />
             </div>
-          </div>
-          <div role="list" className="flex flex-col gap-3">
-            {PEOPLE.map((person) => (
-              <ResultCard key={person.id} person={person} />
-            ))}
+            <LookingFor />
+
+            <div role="list" className="flex flex-col gap-3">
+              {PEOPLE.map((person) => (
+                <ResultCard key={person.id} person={person} />
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -1413,6 +1860,22 @@ export const PanelFullPage: Story = {
   render: () => <PanelResults />,
 }
 
+/**
+ * **Search Resume has the table too** — cards or table, no split. The Cards /
+ * Table toggle and, in table view, the **Columns** button sit right of the
+ * toolbar under both filter designs.
+ *
+ * Its header filters are the refine panel's own sections: Location is `cur`,
+ * Exp `xp`, Current `ctc`, Notice `np`. So a header, the refine panel and the
+ * Juicebox dialog are one filter in three places. The arrival column reads
+ * **Updated** here, where a posting's reads Applied, and a header sort that is
+ * not one of the named ones shows in the Sort select as e.g. "Current pay ↓".
+ */
+export const JuiceboxTable: Story = {
+  name: "Results — Juicebox, table view",
+  render: () => <JuiceboxResults table />,
+}
+
 const padded: Decorator = (Story) => (
   <div className="@container/main mx-auto max-w-4xl p-6">
     <Story />
@@ -1467,6 +1930,20 @@ export const CriteriaDialogStory: Story = {
   name: "Criteria dialog (open)",
   decorators: [padded],
   render: () => <CriteriaDialog />,
+}
+
+/**
+ * A Location header, drawn open — the refine panel's own city checklist inside
+ * the column's popover, rather than a second control that means the same thing.
+ */
+export const TableHeaderOpen: Story = {
+  name: "Table header filter, open",
+  decorators: [padded],
+  render: () => (
+    <div className="flex h-[28rem] items-start">
+      <ColumnHead title="Location" filtered open filter={<LocationList />} />
+    </div>
+  ),
 }
 
 export const RefinePanelStory: Story = {

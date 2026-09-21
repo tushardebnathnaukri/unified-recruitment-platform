@@ -357,7 +357,8 @@ function Proposal({ applied = false }: { applied?: boolean }) {
 
 /**
  * A message for the recruiter to send — Athena never sends it. The button puts
- * the text into each recipient's thread and opens the dock. With several
+ * the text into each recipient's thread and goes to `/messages` — one recipient
+ * lands on that thread, several on the list. With several
  * recipients the body keeps `{first name}` and one person's version is shown
  * beneath, so the token is never the only thing proofread.
  */
@@ -628,7 +629,7 @@ function Save({ saved = false }: { saved?: boolean }) {
 }
 
 /**
- * Rows that go somewhere — a page, a thread in the dock, or a dialog on the
+ * Rows that go somewhere — a page, a message thread, or a dialog on the
  * page behind (a clash's Reschedule). A row with none of those only says where
  * to look, and has no arrow.
  */
@@ -689,8 +690,10 @@ a comparison, criteria evidence, "expand pool" rows, a save-to-list card and
 link rows. **Nothing she proposes happens without a click**, and everything
 that decides something has an Undo.
 
-**She writes; she never sends.** A draft goes into each recipient's thread in
-the Messages dock and waits for the recruiter to press Send.
+**She writes; she never sends.** A draft goes into each recipient's thread on
+the Messages **page** and waits for the recruiter to press Send — one recipient
+opens that thread, several open the list, and the row reads "Draft:" until it
+goes.
 
 **One thread per product, across pages.** A divider marks each move, and a
 reply's micro-label appears only when it is about something other than the page

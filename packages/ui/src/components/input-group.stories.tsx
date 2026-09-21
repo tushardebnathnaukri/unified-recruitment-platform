@@ -76,7 +76,7 @@ export const WithUnit: Story = {
 
 /**
  * A `block-end` addon turns the group into a composer — the shape Athena's
- * pane uses, and the one the message dock uses for a reply.
+ * pane uses, and the one a message thread uses for a reply.
  */
 export const Composer: Story = {
   render: () => (

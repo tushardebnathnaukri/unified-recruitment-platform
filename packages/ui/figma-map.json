@@ -109,6 +109,11 @@
       "figmaName": "Toggle",
       "storyId": "components-toggle--docs"
     },
+    "toast": {
+      "nodeId": "167:1151",
+      "figmaName": "Toast",
+      "storyId": "components-toast--docs"
+    },
     "toggle-group": {
       "nodeId": "49:3",
       "figmaName": "ToggleGroup (segmented)",
@@ -163,6 +168,11 @@
       "nodeId": "115:26",
       "figmaName": "ChartContainer (grouped bars)",
       "storyId": "components-chart--docs"
+    },
+    "combobox": {
+      "nodeId": "167:860",
+      "figmaName": "ComboboxChips",
+      "storyId": "components-combobox--docs"
     },
     "command": {
       "nodeId": "109:20",
@@ -235,6 +245,11 @@
       "nodeId": "144:2",
       "figmaName": "Database — page (search, both results, both dialogs)",
       "storyId": "compositions-database--docs"
+    },
+    "messages": {
+      "nodeId": "167:1154",
+      "figmaName": "Messages — full page",
+      "storyId": "compositions-messages--docs"
     }
   },
   "pages": {
