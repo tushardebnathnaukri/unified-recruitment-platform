@@ -224,4 +224,14 @@
   button:not(:disabled), [role="button"]:not(:disabled) {
     cursor: pointer;
     }
+  /* No visible scrollbars anywhere — every region still scrolls by wheel,
+     trackpad, touch and keyboard. A design-review call: on systems without
+     overlay scrollbars they take a gutter out of the rails and panes and
+     draw a bar under rows that scroll sideways. */
+  * {
+    scrollbar-width: none;
+    }
+  *::-webkit-scrollbar {
+    display: none;
+    }
 }
