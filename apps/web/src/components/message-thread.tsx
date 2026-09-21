@@ -1,7 +1,6 @@
 import * as React from "react"
 import {
   ArrowLeftIcon,
-  MessageCircleIcon,
   PhoneIcon,
   SearchIcon,
   SendIcon,
@@ -26,200 +25,10 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 import { useAthena } from "@/components/athena-provider"
 import { useMessages } from "@/components/messages-provider"
-import { photoFor } from "@/lib/avatars"
-import {
-  CONVERSATIONS,
-  placeholderPhoto,
-  type Conversation,
-  type Message,
-} from "@/lib/messages"
-
-/**
- * The floating message dock: a launcher in the bottom-right corner that opens
- * a two-view messaging panel over whatever page you are on.
- *
- * WHATSAPP'S SHAPE, NOT ITS CHROME. What is borrowed is the structure — a
- * thread list whose rows are a name over a one-line preview with the time on
- * the right, and a thread view of asymmetric bubbles with a composer pinned
- * under it. What is not borrowed is the green, the tails on the bubbles or the
- * wallpaper: the outbound bubble is `bg-primary`, so it is emerald on iimjobs
- * and orange on hirist, and the panel is a bordered `bg-card` surface like
- * every other raised thing in the system.
- *
- * THE LAUNCHER IS REPLACED BY THE PANEL, not covered by it. Intercom keeps its
- * bubble visible below the open panel, which costs ~64px of height; at this
- * panel's size that pushes the composer off a laptop viewport. The header's X
- * and the Escape key are the ways out.
- *
- * The dock is mounted in `AppShell`, so it is available on every route and
- * survives navigation — a conversation you are half-way through should not
- * close because you clicked into the jobs table behind it. Its state is
- * `MessagesProvider`'s, because Athena reads the threads and writes drafts.
- */
-export function MessageDock() {
-  const anchor = useDockAnchor()
-  const {
-    conversations,
-    threads,
-    unread,
-    open,
-    activeId,
-    setOpen,
-    openThread,
-    closeThread,
-    send,
-  } = useMessages()
-
-  const [query, setQuery] = React.useState("")
-
-  const totalUnread = Object.values(unread).reduce((sum, n) => sum + n, 0)
-
-  // Escape closes the thread first, then the panel — the same back-out order
-  // the header's arrow gives, so the key and the button never disagree.
-  React.useEffect(() => {
-    if (!open) return
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return
-      event.stopPropagation()
-      if (activeId) closeThread()
-      else setOpen(false)
-    }
-
-    window.addEventListener("keydown", onKeyDown)
-    return () => window.removeEventListener("keydown", onKeyDown)
-  }, [open, activeId, closeThread, setOpen])
-
-  if (!open) {
-    return (
-      <Launcher
-        unread={totalUnread}
-        onOpen={() => {
-          setOpen(true)
-          closeThread()
-        }}
-      />
-    )
-  }
-
-  const activeConversation = conversations.find((c) => c.id === activeId)
-
-  return (
-    // `h-[min(...)]` rather than a fixed height so the composer stays on
-    // screen on a short laptop viewport; `w-[calc(100vw-2rem)]` down to the
-    // `sm` breakpoint so the panel does not hang off a phone.
-    <section
-      aria-label="Messages"
-      // CONTRAST AGAINST THE PAGE HAS TO COME FROM THE EDGE, NOT THE FILL.
-      // Measured, not guessed: `--background` and `--card` are both pure white
-      // in light mode, so the panel fill sits at 1.00:1 against the page and no
-      // choice of surface token can separate them. That leaves the border and
-      // the shadow to do all of it — hence `border-foreground/15` rather than
-      // the 1.27:1 `border-border`, and a deep offset shadow instead of the
-      // system's usual overlay ring.
-      className={cn(
-        anchor,
-        "flex h-[min(36rem,calc(100vh-2rem))] w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl border border-foreground/15 bg-card text-card-foreground shadow-[0_16px_48px_-12px_rgb(0_0_0/0.4)] sm:w-[26rem] dark:border-foreground/20 dark:shadow-[0_16px_48px_-12px_rgb(0_0_0/0.8)]"
-      )}
-    >
-      {activeConversation ? (
-        <Thread
-          id={activeConversation.id}
-          title={activeConversation.name}
-          subtitle={activeConversation.role}
-          initials={activeConversation.initials}
-          photo={photoOf(activeConversation)}
-          online={activeConversation.online}
-          messages={threads[activeConversation.id] ?? []}
-          onBack={closeThread}
-          onClose={() => setOpen(false)}
-          onSend={(body) => send(activeConversation.id, body)}
-        />
-      ) : (
-        <ThreadList
-          query={query}
-          onQueryChange={setQuery}
-          onOpenThread={openThread}
-          onClose={() => setOpen(false)}
-        />
-      )}
-    </section>
-  )
-}
+import { photoOf, type Conversation, type Message } from "@/lib/messages"
 
 function lastOf(messages: Message[] | undefined) {
   return messages?.[messages.length - 1]
-}
-
-/**
- * A thread's portrait: the applicant's own photo for a thread Athena started,
- * the generated one by name for a fixture, and a silhouette keyed off the
- * fixture's position when a fixture has neither — so a person keeps one face.
- */
-function photoOf(conversation: Conversation) {
-  // An applicant without a photo gets their initials, the way their card does
-  // — not a fixture's silhouette, which would give a dozen people one face.
-  if (conversation.applicantId) return conversation.photo
-  return (
-    photoFor(conversation.name) ??
-    placeholderPhoto(
-      Math.max(
-        0,
-        CONVERSATIONS.findIndex((c) => c.id === conversation.id)
-      )
-    )
-  )
-}
-
-/**
- * The closed state. `size-14` because it is a permanent fixture in the corner
- * of every page and has to be hittable without being aimed at, and the badge
- * is the whole reason the dock is worth having shut.
- */
-/**
- * WHERE THE CORNER IS. Both halves of the dock pin to the bottom-right of the
- * viewport, which stopped being empty the moment Athena could take a column
- * there — the launcher was landing on top of the copilot's composer.
- *
- * Shifted left by the pane's own width rather than by a number of its own:
- * `--athena-width` is set on the shell beside `--sidebar-width`, so resizing
- * the pane moves the dock with it. Below `md` the pane covers the page instead
- * of taking a column, so there is nothing to move aside for — the dock hides,
- * because a launcher floating over a full-screen copilot is two things
- * claiming the same corner.
- */
-function useDockAnchor() {
-  const { open } = useAthena()
-  return cn(
-    "fixed right-4 bottom-4 z-50",
-    open && "max-md:hidden md:right-[calc(var(--athena-width)+--spacing(6))]"
-  )
-}
-
-function Launcher({ unread, onOpen }: { unread: number; onOpen: () => void }) {
-  const anchor = useDockAnchor()
-
-  return (
-    <Button
-      size="icon"
-      onClick={onOpen}
-      aria-label={unread > 0 ? `Messages, ${unread} unread` : "Messages"}
-      className={cn(
-        anchor,
-        "size-14 rounded-full shadow-lg transition-transform hover:scale-105 active:scale-95"
-      )}
-    >
-      <MessageCircleIcon className="size-6" />
-      {unread > 0 && (
-        // `ring-background` cuts the badge out of the button beneath it, the
-        // same trick AvatarBadge uses, so the count stays legible against a
-        // saturated accent.
-        <span className="absolute -top-0.5 -right-0.5 inline-flex size-5 items-center justify-center rounded-full bg-destructive text-[10px] font-medium text-white tabular-nums ring-2 ring-background">
-          {unread}
-        </span>
-      )}
-    </Button>
-  )
 }
 
 function PanelHeader({
@@ -230,7 +39,8 @@ function PanelHeader({
   children: React.ReactNode
   /** Sits in the right-hand control cluster, immediately before the close X. */
   actions?: React.ReactNode
-  onClose: () => void
+  /** The dock had one; a page has nowhere to close to, so it goes unset. */
+  onClose?: () => void
 }) {
   return (
     // The one tinted band in the panel. WhatsApp's header is a solid accent;
@@ -245,14 +55,16 @@ function PanelHeader({
           the header's actions read as a group and the title keeps the left. */}
       <div className="ml-auto flex shrink-0 items-center gap-1">
         {actions}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onClose}
-          aria-label="Close messages"
-        >
-          <XIcon />
-        </Button>
+        {onClose && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onClose}
+            aria-label="Close messages"
+          >
+            <XIcon />
+          </Button>
+        )}
       </div>
     </header>
   )
@@ -324,7 +136,7 @@ function CallButton({ name }: { name: string }) {
   )
 }
 
-function ThreadList({
+export function ThreadList({
   query,
   onQueryChange,
   onOpenThread,
@@ -333,7 +145,7 @@ function ThreadList({
   query: string
   onQueryChange: (value: string) => void
   onOpenThread: (id: string) => void
-  onClose: () => void
+  onClose?: () => void
 }) {
   const { conversations, threads, unread, drafts, lastAtFor } = useMessages()
   const needle = query.trim().toLowerCase()
@@ -508,7 +320,7 @@ function ThreadListRow({
   )
 }
 
-function Thread({
+export function Thread({
   id,
   title,
   subtitle,
@@ -528,12 +340,13 @@ function Thread({
   photo: string | undefined
   online?: boolean
   messages: Message[]
-  onBack: () => void
-  onClose: () => void
+  /** Only where the list is not beside it — the page hides this on two columns. */
+  onBack?: () => void
+  onClose?: () => void
   onSend: (body: string) => void
 }) {
   // The composer's text lives in the provider, so a draft Athena wrote is here
-  // when the thread opens and one you typed survives closing the dock.
+  // when the thread opens and one you typed survives leaving the page.
   const { drafts, setDraft: setThreadDraft } = useMessages()
   const draft = drafts[id] ?? ""
   const setDraft = (body: string) => setThreadDraft(id, body)
@@ -558,15 +371,22 @@ function Thread({
         // the list, which keeps this header to the person you are talking to.
         actions={<CallButton name={title} />}
       >
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onBack}
-          aria-label="Back to all messages"
-          className="-ml-1 shrink-0"
-        >
-          <ArrowLeftIcon />
-        </Button>
+        {/* Only where the list is not beside it. The page is two columns at
+            `@3xl/main` and one below, so the arrow goes exactly where the
+            list comes back — there is nothing to go back to when it never
+            left. A container query rather than a prop, because the thing that
+            decides is the width this renders into. */}
+        {onBack && (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onBack}
+            aria-label="Back to all messages"
+            className="-ml-1 shrink-0 @3xl/main:hidden"
+          >
+            <ArrowLeftIcon />
+          </Button>
+        )}
 
         <Avatar>
           <AvatarImage src={photo} alt="" />

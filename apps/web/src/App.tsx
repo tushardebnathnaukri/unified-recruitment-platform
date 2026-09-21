@@ -11,6 +11,7 @@ import { JobsPage } from "@/routes/jobs"
 import { LegacyDashboardPage } from "@/routes/legacy-dashboard"
 import { InsightsPage } from "@/routes/insights"
 import { InterviewsPage } from "@/routes/interviews"
+import { MessagesPage } from "@/routes/messages"
 import { ListsPage } from "@/routes/lists"
 import { PlaceholderPage } from "@/routes/placeholder"
 import { PlaygroundPage } from "@/routes/playground"
@@ -72,10 +73,8 @@ export function App() {
             Resume and Interviews, filed in lists. */}
           <Route path="my-candidates" element={<ListsPage />} />
           <Route path="interviews" element={<InterviewsPage />} />
-          <Route
-            path="credits"
-            element={<PlaceholderPage title="Credits" />}
-          />
+          <Route path="messages" element={<MessagesPage />} />
+          <Route path="credits" element={<PlaceholderPage title="Credits" />} />
           <Route path="insights" element={<InsightsPage />} />
           <Route path="search" element={<PlaceholderPage title="Search" />} />
 

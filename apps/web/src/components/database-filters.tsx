@@ -31,7 +31,7 @@ import {
 } from "@workspace/ui/components/select"
 import { cn } from "@workspace/ui/lib/utils"
 
-import { SORTS } from "@/lib/applicants"
+import { sortOptions } from "@/lib/applicants"
 import {
   LAST_SEEN,
   SECTIONS,
@@ -370,6 +370,46 @@ function ChecksFilter({
   )
 }
 
+/**
+ * One section's controls by its key, outside the panel — the results table's
+ * column headers use these, so a header filter on Search Resume is the refine
+ * panel's own filter rather than a second one.
+ */
+export function SectionControl({
+  sectionKey,
+  profiles,
+  params,
+  onUpdate,
+}: {
+  sectionKey: string
+  profiles: Profile[]
+  params: URLSearchParams
+  onUpdate: FilterUpdate
+}) {
+  const section = SECTIONS.find((candidate) => candidate.key === sectionKey)
+  if (!section) return null
+  if (section.kind === "range")
+    return <RangeFilter section={section} params={params} onUpdate={onUpdate} />
+  if (section.kind === "checks")
+    return (
+      <ChecksFilter
+        section={section}
+        profiles={profiles}
+        chosen={params.getAll(section.key)}
+        onChange={(values) => onUpdate(section.key, values)}
+      />
+    )
+  if (section.kind === "select")
+    return (
+      <SelectFilter
+        section={section}
+        value={params.get(section.key) ?? ""}
+        onChange={(value) => onUpdate(section.key, value || null)}
+      />
+    )
+  return null
+}
+
 function SelectFilter({
   section,
   value,
@@ -561,11 +601,16 @@ export function SortSelect({
   onUpdate: FilterUpdate
   defaultSort: string
 }) {
+  // A table header can sort by a column no named order covers; the select
+  // shows that too rather than falling blank.
+  const sort = params.get("sort") ?? defaultSort
+  const options = sortOptions(sort)
+
   return (
     <ToolbarField label="Sort">
       <Select
-        items={SORTS.map(({ value, label }) => ({ value, label }))}
-        value={params.get("sort") ?? defaultSort}
+        items={options}
+        value={sort}
         onValueChange={(next) =>
           onUpdate("sort", String(next) === defaultSort ? null : String(next))
         }
@@ -574,9 +619,9 @@ export function SortSelect({
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
-          {SORTS.map((sort) => (
-            <SelectItem key={sort.value} value={sort.value}>
-              {sort.label}
+          {options.map((option) => (
+            <SelectItem key={option.value} value={option.value}>
+              {option.label}
             </SelectItem>
           ))}
         </SelectContent>

@@ -10,6 +10,7 @@ import {
   TooltipTrigger,
 } from "@workspace/ui/components/tooltip"
 import { useAthena } from "@/components/athena-provider"
+import { usePageHeaderSlot } from "@/components/page-header"
 
 /**
  * Top bar. Height comes from `--header-height`, set once on SidebarProvider in
@@ -29,9 +30,16 @@ import { useAthena } from "@/components/athena-provider"
  * manager reading "Jobs › <job title>". It is a plain title again: the trail
  * was two crumbs on exactly one route and a single crumb everywhere else, which
  * is a title with extra machinery behind it.
+ *
+ * A SCREEN ABOUT ONE OBJECT SPEAKS FOR ITSELF HERE. The route title names the
+ * section, which on a posting meant this bar said "Jobs" above a page whose
+ * own first row said which job — two rows to say where you are. Those pages
+ * render a `PageHeader` into the slot below and the route title stands down;
+ * see `page-header.tsx`.
  */
 export function SiteHeader({ title }: { title: string }) {
   const { open, setOpen } = useAthena()
+  const { ref, filled } = usePageHeaderSlot()
 
   return (
     <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b bg-background transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
@@ -43,7 +51,13 @@ export function SiteHeader({ title }: { title: string }) {
             className="mx-2 h-4 data-vertical:self-auto"
           />
         </div>
-        <h1 className="text-base font-medium">{title}</h1>
+        {!filled && <h1 className="text-base font-medium">{title}</h1>}
+
+        {/* Where a page's own header lands. Always in the DOM — it is the
+            portal's target, so it has to exist before anybody can fill it —
+            and `min-w-0` so a long job title truncates rather than pushing
+            Athena off the end. */}
+        <div ref={ref} className="flex min-w-0 flex-1 items-center" />
 
         {/* ATHENA IS THE ONE THING THAT COMES BACK TO THIS BAR. The brand and
             theme switchers left because flipping them is a design-review act

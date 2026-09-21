@@ -1,5 +1,4 @@
 import * as React from "react"
-import { Link } from "react-router"
 import type { LucideIcon } from "lucide-react"
 import {
   ArrowDownIcon,
@@ -51,7 +50,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@workspace/ui/components/popover"
-import { cn } from "@workspace/ui/lib/utils"
 
 import {
   ChoiceSelect,
@@ -70,12 +68,6 @@ import {
   type Profile,
   type Section,
 } from "@/lib/database-filters"
-import {
-  headlineFor,
-  modeFor,
-  searchHref,
-  type SearchMode,
-} from "@/lib/database"
 
 /**
  * The Juicebox version of the database's filters — one of the two on
@@ -110,52 +102,29 @@ type FilterProps = {
 }
 
 /**
- * The query as a pill, then Filters and Criteria, then the chips that widen
- * the pool. The pill is the way back to the box — it is the search, and
- * pressing it is how you change it.
+ * Filters and Criteria, then the chips that widen the pool.
+ *
+ * THE QUERY PILL HAS GONE TO THE TOP BAR. It was the search drawn as a control
+ * — the text, and a press that took you back to the box to change it — which
+ * is exactly what `SearchHeader` is now doing in the bar, back button and all.
+ * Two of them was the same control twice. What is left here is what acts on
+ * the results rather than naming them.
  */
 export function JuiceboxHeader({
-  mode,
-  boolean,
-  query,
   criteria,
   onCriteria,
   readSkills,
   expansions,
   ...filters
 }: FilterProps & {
-  mode: SearchMode
-  boolean: boolean
-  query: string
   criteria: string[]
   onCriteria: (next: string[]) => void
   readSkills: (text: string) => string[]
   expansions: Expansion[]
 }) {
-  const option = modeFor(mode)
-  const headline = headlineFor(query, mode)
-
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Button
-          variant="outline"
-          nativeButton={false}
-          aria-label={`Edit search: ${headline}`}
-          className="h-9 max-w-full min-w-0 shrink justify-start rounded-full sm:max-w-2xl"
-          render={<Link to={searchHref({ mode, boolean })} />}
-        >
-          <option.icon
-            data-icon="inline-start"
-            className="text-muted-foreground"
-          />
-          <span
-            className={cn("min-w-0 truncate", boolean && "font-mono text-xs")}
-          >
-            {headline}
-          </span>
-        </Button>
-
         <FiltersDialog {...filters} />
         <CriteriaDialog
           criteria={criteria}

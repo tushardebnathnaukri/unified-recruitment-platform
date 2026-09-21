@@ -18,9 +18,11 @@ import {
   EmptyTitle,
 } from "@workspace/ui/components/empty"
 import { Meta, MetaItem } from "@workspace/ui/components/meta"
+import { Separator } from "@workspace/ui/components/separator"
 import { useBrand } from "@workspace/ui/components/brand-provider"
 import { useAthenaContext } from "@/components/athena-provider"
 import { CandidateList } from "@/components/candidate-list"
+import { PageHeader } from "@/components/page-header"
 import { useDecisions } from "@/components/decisions-provider"
 import {
   applicantsFor,
@@ -74,6 +76,12 @@ export function JobDetailPage() {
  * The posting's people, handed to the shared list. Everything about triage —
  * tabs, views, filters, the panel — is `CandidateList`; what is this page's own
  * is who the people are, what the posting asks for, and the header.
+ *
+ * THE HEADER GOES TO THE TOP BAR rather than into the list's own band. The bar
+ * was naming the section ("Jobs") directly above a band naming the job, which
+ * spent two rows of a triage screen saying where you were; the list is what
+ * this page is for and it starts at the top of the content column now. The
+ * list takes no `header`, so its white band does not draw.
  */
 function ResponseManager({ job }: { job: Job }) {
   const people = React.useMemo(() => applicantsFor(job), [job])
@@ -81,13 +89,18 @@ function ResponseManager({ job }: { job: Job }) {
   useAthenaOnPosting(job, people, requiredSkills)
 
   return (
-    <CandidateList
-      people={people}
-      requiredSkills={requiredSkills}
-      header={<JobHeader job={job} />}
-      empty={<NoResponsesYet job={job} />}
-      candidateSource={(applicant) => jobSource(job, applicant.id)}
-    />
+    <>
+      <PageHeader>
+        <JobHeader job={job} />
+      </PageHeader>
+
+      <CandidateList
+        people={people}
+        requiredSkills={requiredSkills}
+        empty={<NoResponsesYet job={job} />}
+        candidateSource={(applicant) => jobSource(job, applicant.id)}
+      />
+    </>
   )
 }
 
@@ -140,67 +153,75 @@ function useAthenaOnPosting(
 }
 
 /**
- * The job, restated at the top so you know whose responses these are.
+ * The job, in the top bar, so you know whose responses these are.
  *
  * It is deliberately thin — the facts that qualify a candidate against this
  * posting (where it is, how long it runs) and nothing else. The job's own
  * editing lives back on the Jobs page; repeating it here would give the same
  * action two homes.
  *
+ * THE BAR IS ONE ROW AT `--header-height`, so what was a two-line block is a
+ * single line: the title at the bar's own `text-base` rather than `text-lg`,
+ * the back button a ghost icon rather than an outlined circle, and the meta
+ * behind a separator instead of under the title. Under `lg` the meta drops
+ * entirely — the title and its status are what the bar is for, and the same
+ * facts are a click away on the Jobs list.
+ *
  * The back button is a real link rather than `history.back()`. This page is
  * reachable from a pasted URL and from the message dock, and browser-history
  * back from a fresh tab leaves the app entirely — "up to the list" is a fixed
  * destination, not wherever you happened to come from.
- *
- * It is centred against the whole two-line block rather than sitting on the
- * title's line. The block is one object — a job and the facts about it — so the
- * control that leaves it belongs beside the object, not beside its first line.
  */
 function JobHeader({ job }: { job: Job }) {
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex min-w-0 flex-1 items-center gap-2">
       <Button
-        variant="outline"
+        variant="ghost"
         size="icon"
         nativeButton={false}
         aria-label="Back to all jobs"
-        className="shrink-0 rounded-full"
+        className="-ml-2 size-8 shrink-0 rounded-full"
         render={<Link to="/jobs" />}
       >
         <ArrowLeftIcon />
       </Button>
 
-      <div className="flex min-w-0 flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          {/* One step above the applicant cards' `text-base` titles and one
-              below what it was: at `text-xl` it was the loudest thing on a
-              screen whose content is the list underneath it. */}
-          <h2 className="font-heading text-lg font-medium">{job.title}</h2>
-          <Badge variant={job.plan === "Pro" ? "secondary" : "outline"}>
-            {job.plan}
-          </Badge>
-          <JobStatusBadge job={job} />
-        </div>
+      {/* The bar's own size, not the band's `text-lg`: it is a header now, not
+          the loudest thing on the page. */}
+      <h1 className="min-w-0 truncate font-heading text-base font-medium">
+        {job.title}
+      </h1>
 
-        <Meta separator={false}>
+      <Badge
+        variant={job.plan === "Pro" ? "secondary" : "outline"}
+        className="shrink-0"
+      >
+        {job.plan}
+      </Badge>
+      <JobStatusBadge job={job} />
+
+      <Separator
+        orientation="vertical"
+        className="mx-1 hidden h-4 lg:block data-vertical:self-auto"
+      />
+      <Meta separator={false} className="hidden shrink-0 lg:flex">
+        <MetaItem>
+          <MapPinIcon />
+          {job.location}
+        </MetaItem>
+        {job.status === "live" && (
           <MetaItem>
-            <MapPinIcon />
-            {job.location}
+            <ClockIcon />
+            Expires in {job.expiresInDays} days
           </MetaItem>
-          {job.status === "live" && (
-            <MetaItem>
-              <ClockIcon />
-              Expires in {job.expiresInDays} days
-            </MetaItem>
-          )}
-          {job.status === "closed" && (
-            <MetaItem>
-              <ClockIcon />
-              Closed {job.closedOn}
-            </MetaItem>
-          )}
-        </Meta>
-      </div>
+        )}
+        {job.status === "closed" && (
+          <MetaItem>
+            <ClockIcon />
+            Closed {job.closedOn}
+          </MetaItem>
+        )}
+      </Meta>
     </div>
   )
 }
@@ -208,13 +229,29 @@ function JobHeader({ job }: { job: Job }) {
 function JobStatusBadge({ job }: { job: Job }) {
   switch (job.status) {
     case "live":
-      return <Badge variant="success">Live</Badge>
+      return (
+        <Badge variant="success" className="shrink-0">
+          Live
+        </Badge>
+      )
     case "pending":
-      return <Badge variant="secondary">In review</Badge>
+      return (
+        <Badge variant="secondary" className="shrink-0">
+          In review
+        </Badge>
+      )
     case "closed":
-      return <Badge variant="outline">{job.outcome}</Badge>
+      return (
+        <Badge variant="outline" className="shrink-0">
+          {job.outcome}
+        </Badge>
+      )
     case "rejected":
-      return <Badge variant="destructive">Rejected</Badge>
+      return (
+        <Badge variant="destructive" className="shrink-0">
+          Rejected
+        </Badge>
+      )
   }
 }
 

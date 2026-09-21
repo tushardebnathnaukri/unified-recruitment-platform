@@ -108,10 +108,21 @@ export function CandidatePanel({
           prefix on purpose: the stock width and max-width are themselves set
           through that attribute selector, so a bare `w-1/2` loses to them on
           specificity and silently does nothing. Full width below `sm` — half a
-          phone is not a reading column. */}
+          phone is not a reading column.
+
+          IT FLOATS RATHER THAN BEING WELDED TO THE EDGE. The stock sheet is
+          flush — `inset-y-0 right-0 h-full border-l` — which is right for the
+          mobile nav, where the sheet IS the side of the screen. This one is a
+          document you have opened over your work, and a gap on three sides
+          plus the card radius says so: the list is still there underneath,
+          rather than having been replaced. `h-auto` is load-bearing — the
+          stock `h-full` is 100vh against the viewport, so with an inset top
+          the bottom would hang off the screen. `overflow-hidden` keeps the
+          header and the CV inside the corners. The inset is one token on
+          three sides; left is the sheet's own width. */}
       <SheetContent
         side="right"
-        className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:w-1/2 data-[side=right]:sm:max-w-none"
+        className="gap-0 overflow-hidden p-0 data-[side=right]:inset-y-3 data-[side=right]:right-3 data-[side=right]:h-auto data-[side=right]:w-[calc(100%---spacing(6))] data-[side=right]:rounded-2xl data-[side=right]:border data-[side=right]:sm:w-[calc(50%---spacing(6))] data-[side=right]:sm:max-w-none"
       >
         {applicant && (
           <Tabs

@@ -1,3 +1,4 @@
+import { photoFor } from "@/lib/avatars"
 /**
  * Mock threads for the message dock.
  *
@@ -227,3 +228,29 @@ export function firstMessageTo(
     return `Hi ${first}, I came across your profile and I think you could be a strong fit for a role we are hiring for. Would you be open to a 30-minute call this week?`
   return `Hi ${first}, I would like to talk to you about a role we are hiring for. Would you be open to a 30-minute call this week?`
 }
+
+/**
+ * A thread's portrait: the applicant's own photo for a thread Athena started,
+ * the generated one by name for a fixture, and a silhouette keyed off the
+ * fixture's position when a fixture has neither — so a person keeps one face.
+ */
+export function photoOf(conversation: Conversation) {
+  // An applicant without a photo gets their initials, the way their card does
+  // — not a fixture's silhouette, which would give a dozen people one face.
+  if (conversation.applicantId) return conversation.photo
+  return (
+    photoFor(conversation.name) ??
+    placeholderPhoto(
+      Math.max(
+        0,
+        CONVERSATIONS.findIndex((c) => c.id === conversation.id)
+      )
+    )
+  )
+}
+
+/**
+ * The closed state. `size-14` because it is a permanent fixture in the corner
+ * of every page and has to be hittable without being aimed at, and the badge
+ * is the whole reason the dock is worth having shut.
+ */

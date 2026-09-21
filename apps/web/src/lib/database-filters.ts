@@ -200,17 +200,6 @@ const WORK_PERMITS = [
   "Authorized to work in US",
 ]
 
-const CITIES = [
-  "Bengaluru",
-  "Hyderabad",
-  "Pune",
-  "Gurugram",
-  "Mumbai",
-  "Chennai",
-  "Noida",
-  "Delhi NCR",
-]
-
 /**
  * The live page offers regions and groups above the cities — Delhi/NCR,
  * Metros, South India — and ticking one is ticking every city in it.
@@ -265,14 +254,7 @@ export function toProfile(applicant: Applicant): Profile {
   const random = seededRandom(seedFrom(`${applicant.id}:profile`))
   const facts = COMPANY_FACTS[applicant.company] ?? {
     clusters: ["IT Product Companies"],
-    industry: "IT-Software / Software Services",
   }
-
-  const elsewhere = CITIES.filter((city) => city !== applicant.location)
-  const preferred = [applicant.location]
-  if (random() < 0.5)
-    preferred.push(elsewhere[Math.floor(random() * elsewhere.length)])
-  if (random() < 0.15) preferred.push("Anywhere")
 
   const languages = ["English"]
   const regional = LANGUAGE_BY_CITY[applicant.location]
@@ -284,9 +266,11 @@ export function toProfile(applicant: Applicant): Profile {
 
   return {
     ...applicant,
-    preferredLocations: preferred,
+    // `preferredLocations` and `industry` arrive with the spread: they are
+    // dealt with the applicant now, not here, because the response manager's
+    // cards and filters read them too — facts about the person rather than
+    // something only a database search knows.
     clusters: facts.clusters,
-    industry: facts.industry,
     functionalArea:
       FUNCTIONS.find(([pattern]) => pattern.test(applicant.title))?.[1] ??
       "Software Developer",

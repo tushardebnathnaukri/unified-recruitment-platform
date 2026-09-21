@@ -10,6 +10,54 @@ diff.
 
 ## Pending
 
+### Search Resume: table view
+
+- **Date:** 2026-09-17
+- **App:** `apps/web/src/routes/database.tsx`, `apps/web/src/components/candidate-list.tsx`
+  and `database-filters.tsx`. The results have a Cards/Table toggle and, in
+  table view, the Columns button, right of the toolbar under both filter
+  designs. The table is the Response manager's data table:
+  - The arrival column reads "Updated".
+  - Location, Exp, Current and Notice filter from their headers with the
+    refine panel's own controls (the location checklist, min/max selects, the
+    notice select).
+  - The Sort select can read e.g. "Current pay ↓".
+- **Storybook:** `Compositions → Database`. Add a results-in-table story
+  under Juicebox, with the toggle and Columns button in the toolbar row.
+- **Figma:** the Database page (node `144:2`). Add a results frame in table
+  view beside the Juicebox results frame, and the Location header popover
+  drawn open.
+- [ ] Storybook
+- [ ] Figma
+
+### Response manager: table view as a data table
+
+- **Date:** 2026-09-17
+- **App:** `apps/web/src/components/candidate-list.tsx` (`ApplicantTable`),
+  `apps/web/src/components/data-table/column-header.tsx` and
+  `view-options.tsx`. Every column heading except the checkbox and actions is
+  now a ghost button with a sort arrow (⇅ faded, ↑ or ↓ when sorted). It opens
+  a popover with Sort ascending, Sort descending, Clear sort, a filter where
+  the column has one, and Hide column:
+  - Candidate filters with a search box.
+  - Location, Exp and Notice filter with radios.
+  - A primary dot beside the label means that column is filtered.
+  - Number columns are right-aligned.
+
+  A **Columns** outline button sits left of the view toggle in table view.
+  It opens a menu of checkboxes plus Reset columns. Three new columns are
+  hidden by default: Match (%), Education (school over degree) and Status (the
+  decision badge). The sort pill can now read e.g. "Current pay ↓".
+- **Storybook:** `Compositions → Response manager`
+  (`packages/ui/src/compositions/response-manager.stories.tsx`). Change the
+  table story's headings to the sortable header, add the Columns button, and
+  add a story with a header popover drawn open (Location, filter picked) and
+  one with the Columns menu drawn open.
+- **Figma:** `Response manager — full page` (node `117:3`). Same header treatment and Columns button on the table
+  frame. Add the open header popover and Columns menu as overlay frames.
+- [ ] Storybook
+- [ ] Figma
+
 ### Dashboard: Live jobs and Recent searches side by side
 
 - **Date:** 2026-09-17
@@ -227,5 +275,248 @@ diff.
   list its own clipped scroll area, and remove the pill row from that frame.
   Add a variant of the frame with filters on, showing the applied-chips row
   above the cards (reuse the Insights frame's chips).
+- [ ] Storybook
+- [ ] Figma
+
+### Response manager and Search Resume: headers moved into the top bar
+
+- **Date:** 2026-09-20
+- **App:** `apps/web/src/components/page-header.tsx` (new),
+  `site-header.tsx`, `app-shell.tsx`, `apps/web/src/routes/job.tsx` and
+  `candidate-list.tsx`. The posting's header is no longer a white band above
+  the tabs — it is the top bar itself, and the route title ("Jobs") steps
+  aside for it:
+  - One row inside `--header-height`: a ghost circular back button (`size-8`,
+    `-ml-2`), the job title at `text-base` (was `text-lg`, and it truncates),
+    the plan and status badges, then a vertical separator and the location /
+    expiry meta. The separator and meta are hidden below `lg`.
+  - The white band is gone with it, so the sticky tab toolbar is now the first
+    thing in the content column and runs straight into the bar.
+  - Any page can do this: `<PageHeader>` portals into a slot in `SiteHeader`.
+
+  **Search Resume's results do the same**, under both filter designs, from one
+  `SearchHeader` outside the branch:
+  - Back button (still "back is edit" — the box with this search in it), the
+    query truncated to one line (it clamped to two), the mode badge, then a
+    separator and "N profiles · chips · Last run …", all hidden below `lg`.
+  - The **"Looking for" skills row left the header** for `LookingFor`, drawn
+    above the cards under the toolbar, beside the green chips it explains.
+  - **Juicebox's query pill is gone.** The pill was the search plus a press
+    back to the box, which is what the bar's title and back button now are.
+    Its band keeps Filters, Criteria and Expand pool.
+  - The refine design has no band left at all — the sticky filter column
+    starts straight under the bar.
+
+  My Lists still uses the band.
+- **Storybook:** `Components/Sidebar → App shell` shows the bar with a plain
+  title; add a variant with a page header in it. In
+  `Compositions → Response manager`, drop the header band from every story and
+  put the job, its badges and the back button in the top bar instead. In
+  `Compositions → Database`, do the same to the two results stories: no
+  header block, the query pill gone from the Juicebox one, and a "Looking for"
+  row under the toolbar on the refine one.
+- **Figma:** the **Sidebar** page (app shell frames), `Response manager — full
+  page` (node `117:3`) and the Database page (node `144:2`). Same move: delete
+  the header block from the Response manager and both results frames, rebuild
+  the top bar row with the back button, title, badges, separator and meta, and
+  move the "Looking for" chips under the toolbar in the refine results frame.
+- [ ] Storybook
+- [ ] Figma
+
+### Response manager: Apply and Clear on the filter bar
+
+- **Date:** 2026-09-20
+- **App:** `apps/web/src/components/candidate-list.tsx` (`FilterBar`). The pill
+  row now holds a draft:
+  - **Apply** (primary, `size="sm"`) and **Clear** (outline) sit at the right
+    end of the row, pushed there with `ml-auto`. Both are disabled until there
+    is something to apply or clear.
+  - Picking in a pill's menu changes the pill's label but not the list — the
+    URL is only written on Apply. The menus keep their "Any …" reset option.
+  - The row's "N of M match" hides while changes are pending.
+  - The drawer (below `md`) edits the same draft and carries the same two
+    buttons in a `DrawerFooter`; its description reads "Not applied yet" while
+    dirty.
+  - Sort is not in the draft — it still applies on pick.
+  - `FilterRail` is unchanged: it applies as you pick.
+- **Storybook:** `Compositions → Response manager` has its own `FilterBar` copy
+  (`response-manager.stories.tsx` ~line 355). Add the two buttons at the right
+  of the pill row, and a story with a pending change (pill set, Apply enabled,
+  no match count). The drawer story, if there is one, needs the footer.
+- **Figma:** `Response manager — full page` (node `117:3`). Add Apply and Clear
+  to the right of the pill row in the table and split frames, in both states
+  (disabled, and Apply active with a pill changed).
+- [ ] Storybook
+- [ ] Figma
+
+### Response manager: the split view's list becomes a column
+
+- **Date:** 2026-09-20
+- **App:** `apps/web/src/components/candidate-list.tsx` (`SplitView`,
+  `QueueHeading`, `SplitRow`). At `@3xl/main` the candidate list beside the CV
+  is no longer a rounded card:
+  - Flush against the nav (`-ml-4`, `lg:-ml-6`), `bg-background`, `border-r`,
+    no radius, no ring, no padding — the `FilterRail` treatment.
+  - Run headings ("New since …", "Earlier") are sticky bars with a
+    `border-b`, pinned as the rows scroll under them.
+  - Rows lose their rounding, so the selected row is a full-bleed band.
+  - The split block is pulled up `-mt-4` so the column meets the tab toolbar;
+    the CV pane keeps its gap with `pt-4`. Its height is measured off the tab
+    block and the page's bottom gutter is cancelled, so both columns run from
+    the toolbar to the bottom edge of the screen and the page does not scroll.
+- **Storybook:** `Compositions → Response manager` — the split story's list
+  column needs the same treatment (flush, bordered, sticky heading, full-bleed
+  selection).
+- **Figma:** `Response manager — full page` (node `117:3`), split frame. Redraw
+  the list column as the cards frame's filter rail: same flush left edge, 1px
+  `border` stroke on the right, `background` fill, heading bar with a bottom
+  border, and the selected row spanning the full column width.
+- [ ] Storybook
+- [ ] Figma
+
+### Response manager: current and preferred location
+
+- **Date:** 2026-09-20
+- **App:** `apps/web/src/lib/applicants.ts` (`preferredLocations` on
+  `Applicant`, `preferred` on `Filters`), `lib/database-filters.ts`
+  (`toProfile` reads it instead of dealing its own), `candidate-list.tsx`.
+  - **Two location filters** everywhere the filters are drawn: the rail
+    ("Current location" / "Preferred location"), the pill row, the drawer
+    panel and the table's Location header.
+  - **Both are pick-many, drawn by `LocationPicker`** — shadcn's Combobox in
+    its `multiple` shape (`combobox.tsx`, added for this). A `rounded-4xl`
+    chips box: the picked cities sit inside it as `ComboboxChip`s with an ✕,
+    the caret after them, and the popup below lists what is left (plus its
+    count, in the rail only). `autoHighlight`, so the first match is live to
+    Return. There is no "Any city" row: the chips are the clear.
+  - The pill-row triggers read "Any current location", the city itself, or
+    "2 current locations"; preferred reads "Open to Pune" / "Open to 3
+    locations". On a pointer they open the picker in a `w-64` popover.
+  - The applied bar draws **one chip per city**, with "Open to <city>" for the
+    preferred ones so they cannot be mistaken for the current-city chips.
+  - **Cards gain a Location row** between Skills match and Availability:
+    "Noida · open to Pune, Anywhere", current city in `foreground`, the rest
+    muted. Present in both card shapes; the columns shape is five columns at
+    `@5xl/card` now, not four.
+  - "Anywhere" is a real value on a candidate and matches any city filter, but
+    is not offered as an option.
+- **Storybook:** `Compositions → Response manager` — add the Location row to
+  the card stories, the two pills to the pill row, and the two picker sections
+  to the rail. A `LocationPicker` story (empty, two picked, mid-search) would
+  be worth having; it is the first pick-many control on this screen.
+  `Patterns → List card` may want the card row too if it mirrors the card.
+- **Figma:** `Response manager — full page` (node `117:3`). Add the Location
+  row to the ApplicantCard component (so the Database frames' clones inherit
+  it), the two pills to the pill row, and the two picker sections to the filter
+  rail — search box, city list, and the picked-city pills under it. Draw the
+  pill's popover open as an overlay frame.
+- [ ] Storybook
+- [ ] Figma
+
+### Candidate profile panel floats; the card's name opens it
+
+- **Date:** 2026-09-21
+- **App:** `apps/web/src/components/candidate-panel.tsx` and
+  `candidate-list.tsx` (`ApplicantCard`).
+  - The profile sheet is **inset, not flush**: 12px from the top, right and
+    bottom, `rounded-2xl`, a 1px `border` on all four sides (was `border-l`
+    only), `overflow-hidden` so the header and CV clip to the corners. Width is
+    half the viewport less the inset (`calc(50% - 24px)`), full width less the
+    inset below `sm`. The stock `h-full` had to become `h-auto` — it is 100vh
+    against the viewport, so an inset top hung the bottom off the screen.
+  - **Only this sheet.** The mobile nav is a Sheet too and stays flush, where
+    the sheet *is* the side of the screen.
+  - **A card's candidate name is now a button** that opens the panel, matching
+    the table's `CandidateCell`: hover underline, visible focus ring. The card
+    itself is still not clickable, and "View profile" stays at the foot.
+- **Storybook:** `Compositions → Response manager` — the profile-panel story
+  needs the inset treatment, and the card stories should show the name as a
+  link-ish control (underline on hover).
+- **Figma:** `Candidate profile` composition and the Response manager page
+  (node `117:3`). Draw the panel as a floating card with a 12px gutter on three
+  sides and an 18px radius rather than a full-height flush panel.
+- [ ] Storybook
+- [ ] Figma
+
+### Messages moves from a corner dock to a page
+
+- **Date:** 2026-09-21
+- **App:** `apps/web/src/routes/messages.tsx` (new), `components/message-
+  thread.tsx` (was `message-dock.tsx`), `messages-provider.tsx`,
+  `app-shell.tsx`, `lib/nav.ts`, `App.tsx`, `lib/messages.ts`.
+  - **The floating launcher and panel are gone.** No more bubble in the
+    bottom-right corner of every page.
+  - **A `Messages` nav item** (`MessageCircleIcon`) sits between Interviews and
+    Credits — downstream of a candidate, beside My Lists and Interviews.
+  - The page is one card: the thread list in a 320px left column with a right
+    border, the open thread filling the rest. Two columns at `@3xl/main`, one
+    below, where the thread's back arrow returns to the list. Empty state on
+    the right when nothing is open.
+  - The open thread is `?thread=`. `openThread` navigates rather than opening
+    a panel, so Athena's draft cards, the selection bar's Message action and
+    the candidate page's Message button all land here.
+  - `photoOf` moved to `lib/messages.ts`.
+  - **The undo bar is now a toast** (`Components → Toast`, added for this;
+    `app-toaster.tsx` composes it in the bottom-right corner, shifting left by
+    `--athena-width` when Athena is open).
+    Same words — "Rohit Verma moved to Shortlisted" + Undo — but a white pill
+    with a close X on the right, not the old centred black bar, and it leads
+    with the candidate's avatar (an `AvatarGroup` of up to three on a batch,
+    beside e.g. "12 people moved to Shortlisted"). `sm:max-w-md`.
+- **Storybook:** there is no dock story to retire, but `Compositions` could use
+  a `Messages` page story (list + open thread, and the one-column state).
+  `Compositions → Athena` draft cards still say they open the dock. The
+  Response manager's undo-bar story becomes a Toast; `Components → Toast` has
+  no stories at all yet.
+- **Figma:** no dock frame exists yet either. The Athena page (still unbuilt)
+  and any frame showing the corner launcher need it removed; add a Messages
+  page frame when the Compositions batch is next done.
+- [ ] Storybook
+- [ ] Figma
+
+### Response manager: the three decision icons carry their colour at rest
+
+- **Date:** 2026-09-21
+- **App:** `apps/web/src/components/applicant-controls.tsx` (`DecisionGroup`).
+  The tick, the question mark and the ✕ are `--success` (green-600),
+  `--warning` (amber-600) and `--destructive` at rest, not
+  `text-muted-foreground`. The active state is unchanged — the same token at
+  `/10` behind the icon. Only the icon is tinted until hover, so a page of
+  cards does not become a page of traffic lights.
+  - They are the **semantic** tokens, not the brand's: tying the tick to
+    `--primary` would make it orange on hirist, the same colour as Maybe
+    beside it.
+  - The selection bar's copies of the same three are unchanged — they sit on
+    the dark pill and take `text-background`.
+- **Storybook:** `Compositions → Response manager` (card stories) and any
+  `Patterns` story showing the decision group. `Components → Toggle group`
+  does not need to change.
+- **Figma:** the ApplicantCard component on `Response manager — full page`
+  (node `117:3`), so the Database frames' clones inherit it. Three icon
+  colours at rest; the pressed states already exist.
+- [ ] Storybook
+- [ ] Figma
+
+### Response manager: a Tags row opens the card
+
+- **Date:** 2026-09-21
+- **App:** `apps/web/src/lib/applicants.ts` (`tagsFor`) and
+  `candidate-list.tsx` (`TagsBucket`, both card shapes). A **Tags** row above
+  Experience, `secondary` chips like the skills row but neutral:
+  - "Fast riser" (a leading title under eight years) or "Leads a team", then
+    the **sector** ("Fintech", "E-commerce", "SaaS", "FMCG", "Retail",
+    "Auto", "Chemicals", "Conglomerate"), "One sector", "Top institute", then
+    "Long tenure" or "Moves often". Every card has at least the sector, so the
+    row always draws.
+  - **Three chips, then a `+N`** in an outline chip with the rest on hover.
+    About one card in ten overflows.
+  - All derived from the roles, title, school and dates already on the card.
+  - In the columns card shape it is a band across the top, not a sixth column.
+- **Storybook:** `Compositions → Response manager` card stories, and
+  `Patterns → List card` if it mirrors the card. Worth one story per tag
+  since they are the card's new first line.
+- **Figma:** the ApplicantCard component on `Response manager — full page`
+  (node `117:3`), so the Database frames' clones inherit it. Add the Tags row
+  above Experience in both the rows and columns variants.
 - [ ] Storybook
 - [ ] Figma

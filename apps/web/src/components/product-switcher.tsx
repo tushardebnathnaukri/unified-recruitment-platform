@@ -57,12 +57,12 @@ export function ProductSwitcher() {
                 no collapsed shape here: AppSidebar hides this whole control in
                 the rail rather than shrinking it to an initial, which was a
                 button that made you open a menu to find out where you are. */}
-            {/* `h-7!` because `SidebarMenuButton` forces `[&_svg]:size-4` onto
+            {/* `h-5.5!` because `SidebarMenuButton` forces `[&_svg]:size-4` onto
                 any svg inside it — right for a nav icon, fatal for a wordmark,
                 which arrives 16px square and illegible. The descendant
                 selector outranks a plain class on the svg, so this has to be
                 important rather than merely later. */}
-            <BrandWordmark className="h-7! w-auto!" />
+            <BrandWordmark className="h-5.5! w-auto!" />
             <ChevronsUpDownIcon className="ml-auto text-muted-foreground" />
           </DropdownMenuTrigger>
 

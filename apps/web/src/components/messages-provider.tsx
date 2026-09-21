@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components -- provider and its hook
    belong in one file, as in `decisions-provider.tsx`. */
 import * as React from "react"
+import { useNavigate } from "react-router"
 
 import { useDecisions } from "@/components/decisions-provider"
 import { CONVERSATIONS, type Conversation, type Message } from "@/lib/messages"
@@ -44,19 +45,21 @@ type MessagesState = {
   drafts: Record<string, string>
   /** A thread's last activity, humanised — this session's sends over the fixtures'. */
   lastAtFor: (conversation: Conversation) => string
-  open: boolean
-  /** `null` is the thread list; an id is that thread. */
-  activeId: string | null
-  setOpen: (open: boolean) => void
-  /** Opens the dock on a thread and marks it read. */
+  /**
+   * Goes to /messages on that thread and marks it read.
+   *
+   * IT NAVIGATES NOW, because messages are a page rather than a dock in the
+   * corner. Which thread is open is `?thread=` and belongs to the page, so
+   * this provider no longer holds an `open` or an `activeId` — there is
+   * nothing to open, only somewhere to go.
+   */
   openThread: (id: string) => void
-  closeThread: () => void
   setDraft: (id: string, body: string) => void
   send: (id: string, body: string) => void
   /**
    * Puts a draft in each recipient's thread, starting threads that do not
-   * exist. One recipient opens that thread; several open the list, where each
-   * row says it holds a draft.
+   * exist. One recipient lands on that thread; several land on the list,
+   * where each row says it holds a draft.
    */
   fillDrafts: (drafts: { to: Recipient; body: string }[]) => void
 }
@@ -65,8 +68,12 @@ const MessagesContext = React.createContext<MessagesState | undefined>(
   undefined
 )
 
+/** Where a draft or a thread link sends you. */
+const MESSAGES_PATH = "/messages"
+
 export function MessagesProvider({ children }: { children: React.ReactNode }) {
   const { decide } = useDecisions()
+  const navigate = useNavigate()
   const [started, setStarted] = React.useState<Conversation[]>([])
   const [threads, setThreads] = React.useState<Record<string, Message[]>>(() =>
     Object.fromEntries(CONVERSATIONS.map((c) => [c.id, c.messages]))
@@ -76,8 +83,6 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
   )
   const [drafts, setDrafts] = React.useState<Record<string, string>>({})
   const [lastAt, setLastAt] = React.useState<Record<string, string>>({})
-  const [open, setOpen] = React.useState(false)
-  const [activeId, setActiveId] = React.useState<string | null>(null)
 
   // Newest first: a thread you just started belongs at the top of the list.
   const conversations = React.useMemo(
@@ -87,11 +92,10 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
 
   const value = React.useMemo<MessagesState>(() => {
     const openThread = (id: string) => {
-      setOpen(true)
-      setActiveId(id)
       // Opening is what marks read, which is why the count lives here and not
       // in the fixtures.
       setUnread((previous) => ({ ...previous, [id]: 0 }))
+      navigate(`${MESSAGES_PATH}?thread=${encodeURIComponent(id)}`)
     }
 
     return {
@@ -101,11 +105,7 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
       drafts,
       lastAtFor: (conversation) =>
         lastAt[conversation.id] ?? conversation.lastAt,
-      open,
-      activeId,
-      setOpen,
       openThread,
-      closeThread: () => setActiveId(null),
       setDraft: (id, body) =>
         setDrafts((previous) => ({ ...previous, [id]: body })),
       send: (id, body) => {
@@ -157,10 +157,7 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
         }))
 
         if (entries.length === 1) openThread(entries[0].to.id)
-        else {
-          setOpen(true)
-          setActiveId(null)
-        }
+        else navigate(MESSAGES_PATH)
       },
     }
   }, [
@@ -169,10 +166,9 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
     unread,
     drafts,
     lastAt,
-    open,
-    activeId,
     started,
     decide,
+    navigate,
   ])
 
   return (

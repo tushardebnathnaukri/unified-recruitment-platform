@@ -56,6 +56,24 @@ export type Applicant = {
   title: string
   company: string
   location: string
+  /**
+   * Where they would take the job, THEIR CURRENT CITY FIRST. A posting is in
+   * one place and a recruiter's question is "would they come here", which the
+   * current city alone cannot answer — so it is a fact about the candidate
+   * rather than something the database deals separately (`toProfile` in
+   * `lib/database-filters.ts` used to, and now reads this).
+   *
+   * "Anywhere" is a real value, not a placeholder: some people say it, and a
+   * filter on any city has to match them.
+   */
+  preferredLocations: string[]
+  /**
+   * The sector they come from, as the canonical name the database's Industry
+   * filter uses. Here rather than dealt in `toProfile` for the same reason
+   * `preferredLocations` is: the card shows it, so it is a fact about the
+   * person and not something only a search knows.
+   */
+  industry: string
   experienceYears: number
   /** A generated portrait (`lib/avatars.ts`); missing for about one in five. */
   photo?: string
@@ -598,12 +616,26 @@ export function applicantsFor(
     const hasPhoto =
       seededRandom(seedFrom(`${job.id}-a${index + 1}-photo`))() < 0.8
 
+    // Where else they would go. Its own stream so adding a city to `LOCATIONS`
+    // does not re-deal everybody's pay and notice period.
+    const where = seededRandom(seedFrom(`${job.id}-a${index + 1}-where`))
+    const here = options.location ?? pick(LOCATIONS)
+    const elsewhere = LOCATIONS.filter((city) => city !== here)
+    const preferredLocations = [here]
+    // Half would move for the right role, and a few say anywhere — the same
+    // shape `toProfile` used to deal, moved up to where the card can read it.
+    if (where() < 0.5)
+      preferredLocations.push(elsewhere[Math.floor(where() * elsewhere.length)])
+    if (where() < 0.15) preferredLocations.push("Anywhere")
+
     return {
       id: `${job.id}-a${index + 1}`,
       name,
       title,
       company,
-      location: options.location ?? pick(LOCATIONS),
+      location: here,
+      preferredLocations,
+      industry: industryOf(company),
       experienceYears,
       photo: hasPhoto ? candidatePhoto(name, experienceYears) : undefined,
       // Roughly five lakh a year of experience, plus a spread wide enough that
@@ -653,7 +685,17 @@ export type Filters = {
   q: string
   exp: string
   notice: string
-  location: string
+  /**
+   * Cities, not a city. Both location filters are pick-many — a role in one
+   * place is usually open to the cities around it, and asking one at a time
+   * meant running the same list three times to see who was in reach.
+   *
+   * WITHIN A FILTER THE CITIES ARE "OR"; the two filters are "and" with each
+   * other and with everything else. Empty means the filter is off.
+   */
+  location: string[]
+  /** Somewhere they would go — their current city counts, and so does "Anywhere". */
+  preferred: string[]
 }
 
 /*
@@ -708,7 +750,22 @@ export function matchesFilters(applicant: Applicant, filters: Filters) {
   const notice = NOTICE_BANDS.find((b) => b.value === filters.notice)
   if (notice && !notice.test(applicant.noticeDays)) return false
 
-  if (filters.location && applicant.location !== filters.location) return false
+  if (
+    filters.location.length > 0 &&
+    !filters.location.includes(applicant.location)
+  )
+    return false
+
+  // "Anywhere" on a candidate matches every city a recruiter can pick, which
+  // is the whole point of them having said it.
+  if (
+    filters.preferred.length > 0 &&
+    !applicant.preferredLocations.includes("Anywhere") &&
+    !filters.preferred.some((place) =>
+      applicant.preferredLocations.includes(place)
+    )
+  )
+    return false
 
   return true
 }
@@ -726,9 +783,11 @@ export function matchesFilters(applicant: Applicant, filters: Filters) {
  * In To review the sort applies INSIDE New and Earlier, never across them: a
  * better match from three weeks ago does not jump ahead of today's arrivals.
  *
- * THERE IS NO SORT BY PAY, for the same reason there is no filter on it:
+ * THERE IS NO PAY OPTION HERE, for the same reason there is no filter on it:
  * ordering a shortlist by what people are currently paid ranks them by their
- * last employer's budget. It is on the card to read, not to rank by.
+ * last employer's budget. The table's column headers can sort by it (see
+ * `COLUMN_SORTS`) — a design-team call to let the table sort every column it
+ * shows — but it is not offered as one of the list's named orders.
  */
 export const SORTS: {
   value: string
@@ -754,15 +813,136 @@ export const SORTS: {
 ]
 
 /**
- * `recent` is the generated order, so it sorts by nothing — a stable no-op
- * comparator rather than a reversal, because the generator already lays people
- * out newest first and re-deriving that from `appliedAgo` would mean parsing
- * "3 weeks ago" back into a number.
+ * The table's sortable columns, each ascending. A header sort is written to
+ * `?sort=` as `<column>.<asc|desc>` — except where it IS one of `SORTS`, which
+ * keeps its name (`SORT_ALIASES`), so the pill still reads "Most experience"
+ * after the Exp header asked for it.
  */
-export function sortApplicants(applicants: Applicant[], sort: string) {
+export type SortColumn =
+  | "candidate"
+  | "matched"
+  | "location"
+  | "experience"
+  | "pay"
+  | "notice"
+  | "applied"
+  | "match"
+  | "education"
+  | "status"
+
+const STATUS_ORDER: ApplicantStatus[] = [
+  "undecided",
+  "maybe",
+  "shortlisted",
+  "contacted",
+  "rejected",
+]
+
+export const COLUMN_SORTS: Record<
+  SortColumn,
+  {
+    label: string
+    compare: (a: Applicant, b: Applicant, requiredSkills: string[]) => number
+  }
+> = {
+  candidate: { label: "Name", compare: (a, b) => a.name.localeCompare(b.name) },
+  matched: {
+    label: "Matched skills",
+    compare: (a, b, required) =>
+      a.skills.filter((skill) => required.includes(skill)).length -
+      b.skills.filter((skill) => required.includes(skill)).length,
+  },
+  location: {
+    label: "Location",
+    compare: (a, b) => a.location.localeCompare(b.location),
+  },
+  experience: {
+    label: "Experience",
+    compare: (a, b) => a.experienceYears - b.experienceYears,
+  },
+  pay: {
+    label: "Current pay",
+    compare: (a, b) => a.currentCtcLakh - b.currentCtcLakh,
+  },
+  notice: { label: "Notice", compare: (a, b) => a.noticeDays - b.noticeDays },
+  applied: {
+    label: "Applied",
+    compare: (a, b) => a.appliedDaysAgo - b.appliedDaysAgo,
+  },
+  match: { label: "Match", compare: (a, b) => a.match - b.match },
+  education: {
+    label: "Education",
+    compare: (a, b) => a.education.school.localeCompare(b.education.school),
+  },
+  status: {
+    label: "Status",
+    compare: (a, b) =>
+      STATUS_ORDER.indexOf(a.status) - STATUS_ORDER.indexOf(b.status),
+  },
+}
+
+/** The named orders, as the column sort each one is. */
+const SORT_ALIASES: Record<string, { column: SortColumn; desc: boolean }> = {
+  recent: { column: "applied", desc: false },
+  match: { column: "match", desc: true },
+  experience: { column: "experience", desc: true },
+  notice: { column: "notice", desc: false },
+}
+
+const isSortColumn = (value: string): value is SortColumn =>
+  value in COLUMN_SORTS
+
+/** `?sort=` as a column and direction, or null when it names neither. */
+export function parseSort(sort: string) {
+  if (sort in SORT_ALIASES) return SORT_ALIASES[sort]
+  const [column, dir] = sort.split(".")
+  if (!isSortColumn(column) || (dir !== "asc" && dir !== "desc")) return null
+  return { column, desc: dir === "desc" }
+}
+
+/** The `?sort=` value for a column sort, by its name where it has one. */
+export function sortParam(column: SortColumn, desc: boolean) {
+  const alias = Object.entries(SORT_ALIASES).find(
+    ([, rule]) => rule.column === column && rule.desc === desc
+  )
+  return alias ? alias[0] : `${column}.${desc ? "desc" : "asc"}`
+}
+
+/**
+ * The sort pill's options: the named orders, plus the current one when a
+ * header set something they do not name — otherwise the pill would read
+ * "Most recent" over a list sorted by pay.
+ */
+export function sortOptions(sort: string) {
+  const options = SORTS.map(({ value, label }) => ({ value, label }))
+  const parsed = parseSort(sort)
+  if (parsed && !options.some((option) => option.value === sort)) {
+    options.push({
+      value: sort,
+      label: `${COLUMN_SORTS[parsed.column].label} ${parsed.desc ? "↓" : "↑"}`,
+    })
+  }
+  return options
+}
+
+/**
+ * `recent` is the generated order, so it sorts by nothing — a stable no-op
+ * rather than a comparator, because the generator already lays people out
+ * newest first. `applied.desc` does sort, by `appliedDaysAgo`.
+ */
+export function sortApplicants(
+  applicants: Applicant[],
+  sort: string,
+  requiredSkills: string[] = []
+) {
+  if (sort === "recent") return applicants
   const rule = SORTS.find((option) => option.value === sort)
-  if (!rule || rule.value === "recent") return applicants
-  return [...applicants].sort(rule.compare)
+  if (rule) return [...applicants].sort(rule.compare)
+  const parsed = parseSort(sort)
+  if (!parsed) return applicants
+  const { compare } = COLUMN_SORTS[parsed.column]
+  const sign = parsed.desc ? -1 : 1
+  return [...applicants].sort((a, b) => sign * compare(a, b, requiredSkills))
 }
 
 /**
@@ -798,4 +978,164 @@ export function requiredSkillsFor(job: Job) {
   while (required.size < 4)
     required.add(pool[Math.floor(random() * pool.length)])
   return [...required]
+}
+
+/**
+ * THE SHORT FACTS A RECRUITER WOULD OTHERWISE WORK OUT BY READING THE CARD.
+ *
+ * Everything here is DERIVED, never dealt: each tag is a sentence about the
+ * facts already on the card — the roles, the school, the dates — so a tag can
+ * never disagree with the block underneath it, and adding one costs a rule
+ * rather than another field on every generated person.
+ *
+ * THEY ARE NOT SKILLS, AND THEY ARE NOT THE OTHER BLOCKS. Nothing here repeats
+ * the notice period or the location, which have rows of their own; these are
+ * the judgements a recruiter makes about a shape of career — is this somebody
+ * who has been promoted, somebody who moves every eighteen months, somebody
+ * from a school this market rates.
+ *
+ * ORDERED BY HOW MUCH THEY WOULD CHANGE A DECISION, because the card only
+ * shows the first few and counts the rest — so the first one has to be the
+ * reason to read on.
+ */
+export function tagsFor(applicant: Applicant) {
+  const tags: string[] = []
+
+  // SENIORITY AGAINST YEARS, which is the one thing here that no other block
+  // on the card says: "Engineering Manager" and "5 yrs" are both on it, and
+  // the interesting fact is the pair. The two are exclusive — a fast riser
+  // leads a team by definition, and saying both would spend two of three
+  // tags on one fact.
+  if (LEADS.test(applicant.title)) {
+    tags.push(applicant.experienceYears <= 8 ? "Fast riser" : "Leads a team")
+  }
+
+  // The sector, before the school: "came out of fintech" changes whether the
+  // card is worth reading on a fintech posting, and where somebody studied
+  // twenty years ago rarely does.
+  const sector = INDUSTRY_TAGS[applicant.industry]
+  if (sector) tags.push(sector)
+
+  // WHETHER THE SECTOR IS WHERE THEY HAVE ALWAYS BEEN, read off the employers
+  // on the card. It is written as the RARE half on purpose: "switched sector"
+  // was true of 111 people in 120, because the generator picks each earlier
+  // employer independently, and a tag that fits nine cards in ten is a word
+  // the eye learns to skip. Staying put is the signal — deep in one domain —
+  // and it is worth a slot precisely because it is uncommon.
+  const sectors = new Set(
+    applicant.positions.map((role) => industryOf(role.company))
+  )
+  if (sectors.size === 1 && applicant.positions.length > 1)
+    tags.push("One sector")
+
+  if (TOP_SCHOOLS.some((school) => applicant.education.school === school))
+    tags.push("Top institute")
+
+  // Tenure, from the roles rather than a number of its own. A run of short
+  // stints and a long current one are both worth knowing and mean opposite
+  // things, so they are two tags and never both.
+  const closed = applicant.positions.filter((role) => role.to !== null)
+  const average =
+    closed.length > 0
+      ? closed.reduce(
+          (sum, role) => sum + ((role.to as number) - role.from),
+          0
+        ) / closed.length
+      : 0
+  const current = applicant.positions[0]
+  const inRoleFor = current ? CURRENT_YEAR - current.from : 0
+
+  // `<= 2`, NOT `< 2`. The generator deals every stint as two, three or four
+  // years, so "under two" is a tag that could never appear on any card — the
+  // fastest movers this data can produce are the ones whose closed roles were
+  // all the minimum. Ask the generator what it can deal before writing the
+  // rule, not after.
+  if (closed.length >= 2 && average <= 2) tags.push("Moves often")
+  else if (inRoleFor >= 4) tags.push("Long tenure")
+
+  // ALL OF THEM, IN ORDER. How many fit is the card's business, not this
+  // function's — `TagsBucket` shows the first few and counts the rest, so the
+  // ordering here is the only thing that decides what gets seen: most
+  // decision-changing first.
+  return tags
+}
+
+/** What this market treats as a name school, engineering and management both. */
+const TOP_SCHOOLS = [
+  "IIT Bombay",
+  "IIT Delhi",
+  "IIT Kharagpur",
+  "BITS Pilani",
+  "IIIT Hyderabad",
+  "IIM Ahmedabad",
+  "IIM Bangalore",
+  "IIM Calcutta",
+  "XLRI Jamshedpur",
+  "ISB Hyderabad",
+]
+
+/** Titles that carry people under them, on both products' ladders. */
+const LEADS = /manager|head|director|vp|chief|lead/i
+
+/**
+ * WHERE A COMPANY SITS, by the names the database's Industry filter offers —
+ * one vocabulary for the filter and the card, so a tag and a filter can never
+ * describe the same person differently.
+ *
+ * It lives here rather than beside the rest of `COMPANY_FACTS` in
+ * `database-filters.ts` because that module already imports values from this
+ * one; the other direction would be a real cycle. The clusters stay there,
+ * since nothing outside the refine panel asks for them.
+ */
+const COMPANY_INDUSTRIES: Record<string, string> = {
+  Flipkart: "Internet / E-commerce",
+  Swiggy: "Internet / E-commerce",
+  Zomato: "Internet / E-commerce",
+  Meesho: "Internet / E-commerce",
+  Myntra: "Internet / E-commerce",
+  "Urban Company": "Internet / E-commerce",
+  Dream11: "Internet / E-commerce",
+  Razorpay: "Banking / Financial Services / Broking",
+  Zerodha: "Banking / Financial Services / Broking",
+  PhonePe: "Banking / Financial Services / Broking",
+  CRED: "Banking / Financial Services / Broking",
+  Groww: "Banking / Financial Services / Broking",
+  Navi: "Banking / Financial Services / Broking",
+  Freshworks: "IT-Software / Software Services",
+  Postman: "IT-Software / Software Services",
+  Innovaccer: "IT-Software / Software Services",
+  "ICICI Bank": "Banking / Financial Services / Broking",
+  "HDFC Bank": "Banking / Financial Services / Broking",
+  "Bajaj Finserv": "Banking / Financial Services / Broking",
+  "Hindustan Unilever": "FMCG / Foods / Beverage",
+  Marico: "FMCG / Foods / Beverage",
+  Dabur: "FMCG / Foods / Beverage",
+  Godrej: "FMCG / Foods / Beverage",
+  "Asian Paints": "Chemicals / Paints",
+  Titan: "Retail / Lifestyle",
+  Mahindra: "Automobile / Auto Ancillaries",
+  "Tata Motors": "Automobile / Auto Ancillaries",
+  "Aditya Birla Group": "Diversified / Conglomerate",
+}
+
+/** Anything unlisted is a software company, as `toProfile` has always assumed. */
+export function industryOf(company: string) {
+  return COMPANY_INDUSTRIES[company] ?? "IT-Software / Software Services"
+}
+
+/**
+ * The chip a sector gets on a card. SHORT, because the canonical names are
+ * built to be unambiguous in a filter list ("Banking / Financial Services /
+ * Broking") and a card has room for a word. Anything without a shorthand goes
+ * untagged rather than printing the long one.
+ */
+const INDUSTRY_TAGS: Record<string, string> = {
+  "Internet / E-commerce": "E-commerce",
+  "Banking / Financial Services / Broking": "Fintech",
+  "IT-Software / Software Services": "SaaS",
+  "FMCG / Foods / Beverage": "FMCG",
+  "Retail / Lifestyle": "Retail",
+  "Automobile / Auto Ancillaries": "Auto",
+  "Chemicals / Paints": "Chemicals",
+  "Diversified / Conglomerate": "Conglomerate",
 }

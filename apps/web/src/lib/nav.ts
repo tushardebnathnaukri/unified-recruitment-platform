@@ -8,6 +8,7 @@ import {
   DatabaseIcon,
   HistoryIcon,
   LayoutDashboardIcon,
+  MessageCircleIcon,
   SearchIcon,
   Settings2Icon,
   SwatchBookIcon,
@@ -67,6 +68,16 @@ export const NAV_ITEMS: NavItem[] = [
     to: "/interviews",
     label: "Interviews",
     icon: CalendarCheckIcon,
+    end: false,
+  },
+  // Beside My Lists and Interviews rather than up with Jobs: like them it is
+  // downstream of a candidate having come in through one of the two doors, and
+  // it records which. It was a dock in the corner of every page until a
+  // conversation turned out to want the room a page has.
+  {
+    to: "/messages",
+    label: "Messages",
+    icon: MessageCircleIcon,
     end: false,
   },
   {

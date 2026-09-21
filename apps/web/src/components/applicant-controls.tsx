@@ -49,6 +49,19 @@ import type { Applicant, ApplicantStatus } from "@/lib/applicants"
  * group, which lands the candidate back on `undecided` — back in To review.
  * That is the right escape from a misclick on a screen built for fast
  * decisions, and it is why this is a toggle group rather than a radio group.
+ *
+ * EACH ICON CARRIES ITS OWN COLOUR AT REST, not only when it is the decision
+ * in force. Three grey glyphs made the recruiter read the tooltip to tell yes
+ * from maybe from no; green, amber and red say it before the shape does, and
+ * the scale left-to-right is legible as a scale. Only the icon is tinted —
+ * the button stays transparent until hover — so a page of cards does not turn
+ * into a page of traffic lights.
+ *
+ * THEY ARE THE SEMANTIC TOKENS, NOT THE BRAND'S. `--success` is the green the
+ * matched-skill chips already use; tying the tick to `--primary` instead would
+ * make it emerald on iimjobs and ORANGE on hirist, where it would be the same
+ * colour as Maybe sitting next to it. A decision is not a place the two
+ * products differ, so it does not read from the brand layer.
  */
 const DECISIONS: {
   value: Extract<ApplicantStatus, "shortlisted" | "maybe" | "rejected">
@@ -56,6 +69,8 @@ const DECISIONS: {
   icon: LucideIcon
   /** Tint when this one is the active decision. */
   active: string
+  /** Tint when it is not — the icon only, until hover. */
+  resting: string
 }[] = [
   {
     value: "shortlisted",
@@ -63,6 +78,7 @@ const DECISIONS: {
     icon: CheckIcon,
     active:
       "bg-success/10 text-success hover:bg-success/20 hover:text-success data-[pressed]:bg-success/10 data-[pressed]:text-success",
+    resting: "text-success hover:bg-success/10 hover:text-success",
   },
   {
     value: "maybe",
@@ -70,6 +86,7 @@ const DECISIONS: {
     icon: CircleHelpIcon,
     active:
       "bg-warning/10 text-warning hover:bg-warning/20 hover:text-warning data-[pressed]:bg-warning/10 data-[pressed]:text-warning",
+    resting: "text-warning hover:bg-warning/10 hover:text-warning",
   },
   {
     value: "rejected",
@@ -77,6 +94,7 @@ const DECISIONS: {
     icon: XIcon,
     active:
       "bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive data-[pressed]:bg-destructive/10 data-[pressed]:text-destructive",
+    resting: "text-destructive hover:bg-destructive/10 hover:text-destructive",
   },
 ]
 
@@ -116,7 +134,7 @@ export function DecisionGroup({
                 className={
                   applicant.status === decision.value
                     ? decision.active
-                    : "text-muted-foreground"
+                    : decision.resting
                 }
               />
             }

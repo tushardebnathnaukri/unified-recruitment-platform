@@ -17,6 +17,7 @@ import {
 import { Kbd, KbdGroup } from "@workspace/ui/components/kbd"
 import { Meta, MetaItem } from "@workspace/ui/components/meta"
 import { SectionHeader } from "@workspace/ui/components/section-header"
+import { Separator } from "@workspace/ui/components/separator"
 import { Switch } from "@workspace/ui/components/switch"
 import { Textarea } from "@workspace/ui/components/textarea"
 import {
@@ -28,12 +29,14 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import { useAthenaContext } from "@/components/athena-provider"
 import { AuroraBand } from "@/components/aurora-band"
-import { CandidateList } from "@/components/candidate-list"
+import { CandidateList, type TableFilters } from "@/components/candidate-list"
 import {
   RefinePanel,
+  SectionControl,
   ResultsToolbar,
   type FilterUpdate,
 } from "@/components/database-filters"
+import { PageHeader } from "@/components/page-header"
 import { SearchRow } from "@/components/search-row"
 import {
   SEARCH_MODES,
@@ -433,7 +436,8 @@ function SearchResultsPage({
         q: query.get("find") ?? "",
         exp: "",
         notice: "",
-        location: "",
+        location: [],
+        preferred: [],
       }),
     [viewed, open, decided]
   )
@@ -598,8 +602,92 @@ function SearchResultsPage({
     matched: people.length,
   }
 
+  /**
+   * The table's header filters, as the refine panel's own sections — both
+   * filter designs write these keys, so a header, the panel and the Juicebox
+   * dialog are one filter in three places. The Candidate header keeps the
+   * list's search-within box (`find`).
+   */
+  const headerFilter = (key: string) => ({
+    filtered: params.has(key),
+    render: () => (
+      <SectionControl
+        sectionKey={key}
+        profiles={results.people}
+        params={params}
+        onUpdate={update}
+      />
+    ),
+  })
+  const tableFilters: TableFilters = {
+    location: headerFilter("cur"),
+    experience: headerFilter("xp"),
+    pay: headerFilter("ctc"),
+    notice: headerFilter("np"),
+  }
+
+  /**
+   * THE SEARCH GOES IN THE TOP BAR, under both filter designs — the same move
+   * as the posting's header, and the same reason: the bar was saying "Search
+   * Resume" directly above a block saying which search. It is rendered once,
+   * outside the branch, so the two designs cannot drift on the one thing they
+   * are both about.
+   */
+  const bar = (
+    <PageHeader>
+      <SearchHeader
+        mode={mode}
+        boolean={boolean}
+        query={query}
+        results={results}
+      />
+    </PageHeader>
+  )
+
   if (juicebox) {
     return (
+      <>
+        {bar}
+        <CandidateList
+          source="search"
+          people={people}
+          requiredSkills={requiredSkills}
+          defaultSort="match"
+          searchKey="find"
+          layout="results"
+          tableView
+          tableFilters={tableFilters}
+          candidateSource={candidateSource}
+          verdicts={(applicant) => verdicts.get(applicant.id) ?? []}
+          toolbar={
+            <JuiceboxToolbar
+              matched={people.length}
+              params={params}
+              onUpdate={update}
+              defaultSort="match"
+            />
+          }
+          header={
+            <JuiceboxHeader
+              criteria={criteria}
+              onCriteria={setCriteria}
+              readSkills={results.readSkills}
+              expansions={expanded}
+              profiles={results.people}
+              params={params}
+              count={count}
+              onApply={apply}
+            />
+          }
+          empty={<NoMatches mode={mode} boolean={boolean} />}
+        />
+      </>
+    )
+  }
+
+  return (
+    <>
+      {bar}
       <CandidateList
         source="search"
         people={people}
@@ -607,72 +695,39 @@ function SearchResultsPage({
         defaultSort="match"
         searchKey="find"
         layout="results"
+        tableView
+        tableFilters={tableFilters}
         candidateSource={candidateSource}
-        verdicts={(applicant) => verdicts.get(applicant.id) ?? []}
+        sidebar={<RefinePanel {...panel} />}
         toolbar={
-          <JuiceboxToolbar
-            matched={people.length}
-            params={params}
-            onUpdate={update}
-            defaultSort="match"
-          />
-        }
-        header={
-          <JuiceboxHeader
-            mode={mode}
-            boolean={boolean}
-            query={query}
-            criteria={criteria}
-            onCriteria={setCriteria}
-            readSkills={results.readSkills}
-            expansions={expanded}
-            profiles={results.people}
-            params={params}
-            count={count}
-            onApply={apply}
-          />
+          <div className="flex flex-col gap-3">
+            <ResultsToolbar {...panel} defaultSort="match" />
+            <LookingFor skills={results.requiredSkills} />
+          </div>
         }
         empty={<NoMatches mode={mode} boolean={boolean} />}
       />
-    )
-  }
-
-  return (
-    <CandidateList
-      source="search"
-      people={people}
-      requiredSkills={requiredSkills}
-      defaultSort="match"
-      searchKey="find"
-      layout="results"
-      candidateSource={candidateSource}
-      sidebar={<RefinePanel {...panel} />}
-      toolbar={<ResultsToolbar {...panel} defaultSort="match" />}
-      header={
-        <SearchHeader
-          mode={mode}
-          boolean={boolean}
-          query={query}
-          results={results}
-        />
-      }
-      empty={<NoMatches mode={mode} boolean={boolean} />}
-    />
+    </>
   )
 }
 
 /**
- * The search, restated where the job's title sits on a posting — same back
- * button, same two lines — so the two screens are recognisably one.
+ * The search, in the top bar, where the posting's job title sits — so the two
+ * screens are recognisably one.
  *
  * BACK IS EDIT. It returns to the box with this search's text still in it,
  * which is where you would go to change it; a separate "Edit search" beside it
- * would be the same destination twice.
+ * would be the same destination twice. Under Juicebox that is why the query
+ * pill is gone from the page: the pill and this were one control drawn twice.
  *
- * THE THIRD LINE IS HOW THE SEARCH WAS READ. The skills it names are the green
- * chips on every card below, so they are said once up here — without that, a
- * recruiter meets "Kafka" highlighted on forty cards and has to work out why.
- * A search that named none has no third line, and no green on its cards.
+ * THE BAR IS ONE ROW AT `--header-height`, so the three lines are one. The
+ * query truncates rather than clamping to two — the whole text is one click
+ * back — the mode keeps its badge, and the counts sit behind a separator that
+ * drops below `lg`, where the toolbar under the cards says the same number.
+ *
+ * THE SKILLS LEFT ALTOGETHER, to `LookingFor` above the cards. They are there
+ * to explain the green chips on every card, and the thing that explains a card
+ * belongs next to the cards rather than in the chrome.
  */
 function SearchHeader({
   mode,
@@ -688,57 +743,72 @@ function SearchHeader({
   const option = modeFor(mode)
 
   return (
-    <div className="flex items-center gap-3">
+    <div className="flex min-w-0 flex-1 items-center gap-2">
       <Button
-        variant="outline"
+        variant="ghost"
         size="icon"
         nativeButton={false}
         aria-label="Back to the search box"
-        className="shrink-0 rounded-full"
+        className="-ml-2 size-8 shrink-0 rounded-full"
         render={<Link to={searchHref({ mode, boolean })} />}
       >
         <ArrowLeftIcon />
       </Button>
 
-      <div className="flex min-w-0 flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Clamped: a natural-language search can run to a paragraph, and a
-              pasted JD always does. The whole text is one click back. */}
-          <h2
-            className={cn(
-              "line-clamp-2 font-heading text-lg font-medium",
-              boolean && "font-mono text-base"
-            )}
-          >
-            {headlineFor(query, mode)}
-          </h2>
-          <Badge variant="secondary">
-            <option.icon data-icon="inline-start" />
-            {option.label}
-          </Badge>
-        </div>
-
-        <Meta>
-          <MetaItem className="tabular-nums">
-            {results.people.length} profiles
-          </MetaItem>
-          {results.chips.map((chip) => (
-            <MetaItem key={chip}>{chip}</MetaItem>
-          ))}
-          {results.ranAgo && <MetaItem>Last run {results.ranAgo}</MetaItem>}
-        </Meta>
-
-        {results.requiredSkills.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">Looking for</span>
-            {results.requiredSkills.map((skill) => (
-              <Badge key={skill} variant="success" className="font-normal">
-                {skill}
-              </Badge>
-            ))}
-          </div>
+      <h1
+        className={cn(
+          "min-w-0 truncate font-heading text-base font-medium",
+          boolean && "font-mono text-sm"
         )}
-      </div>
+      >
+        {headlineFor(query, mode)}
+      </h1>
+
+      <Badge variant="secondary" className="shrink-0">
+        <option.icon data-icon="inline-start" />
+        {option.label}
+      </Badge>
+
+      <Separator
+        orientation="vertical"
+        className="mx-1 hidden h-4 lg:block data-vertical:self-auto"
+      />
+      {/* `flex-nowrap` and clipped: a search can carry several chips, and a row
+          that wraps inside a fixed-height bar hides half of itself. */}
+      <Meta className="hidden min-w-0 shrink flex-nowrap overflow-hidden whitespace-nowrap lg:flex">
+        <MetaItem className="tabular-nums">
+          {results.people.length} profiles
+        </MetaItem>
+        {results.chips.map((chip) => (
+          <MetaItem key={chip}>{chip}</MetaItem>
+        ))}
+        {results.ranAgo && <MetaItem>Last run {results.ranAgo}</MetaItem>}
+      </Meta>
+    </div>
+  )
+}
+
+/**
+ * HOW THE SEARCH WAS READ, directly above the cards it explains. The skills it
+ * names are the green chips on every card below, so they are said once — with
+ * nothing, a recruiter meets "Kafka" highlighted on forty cards and has to work
+ * out why. A search that named none renders nothing, and its cards have no
+ * green.
+ *
+ * Under Juicebox this is not drawn: there the criteria are the explanation and
+ * each card carries its own evidence line.
+ */
+function LookingFor({ skills }: { skills: string[] }) {
+  if (skills.length === 0) return null
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-xs text-muted-foreground">Looking for</span>
+      {skills.map((skill) => (
+        <Badge key={skill} variant="success" className="font-normal">
+          {skill}
+        </Badge>
+      ))}
     </div>
   )
 }

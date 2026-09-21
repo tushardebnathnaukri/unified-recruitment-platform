@@ -2,14 +2,21 @@ import * as React from "react"
 import type { LucideIcon } from "lucide-react"
 import { useSearchParams } from "react-router"
 import {
+  columnVisibilityFeature,
+  createColumnHelper,
+  rowSortingFeature,
+  tableFeatures,
+  useTable,
+} from "@tanstack/react-table"
+import {
   CalendarCheckIcon,
   CalendarPlusIcon,
   CheckIcon,
+  ChevronRightIcon,
   CircleHelpIcon,
   BookmarkIcon,
   ListPlusIcon,
   ChevronDownIcon,
-  ChevronRightIcon,
   DownloadIcon,
   EllipsisIcon,
   EyeIcon,
@@ -27,6 +34,7 @@ import {
   TrophyIcon,
   UserRoundIcon,
   XIcon,
+  FunnelXIcon,
 } from "lucide-react"
 
 import { Badge } from "@workspace/ui/components/badge"
@@ -48,6 +56,7 @@ import {
 } from "@workspace/ui/components/dropdown-menu"
 import {
   Empty,
+  EmptyContent,
   EmptyDescription,
   EmptyHeader,
   EmptyMedia,
@@ -69,6 +78,14 @@ import { useAthena } from "@/components/athena-provider"
 import { useDecisions } from "@/components/decisions-provider"
 import { useMessages } from "@/components/messages-provider"
 import { NewListDialog, SaveToList } from "@/components/save-to-list"
+import { DataTableColumnHeader } from "@/components/data-table/column-header"
+import { DataTableViewOptions } from "@/components/data-table/view-options"
+import {
+  TABLE_COLUMNS,
+  visibilityFrom,
+  visibilityParams,
+  type ColumnVisibility,
+} from "@/lib/table-columns"
 import { useSavedLists } from "@/components/saved-lists-provider"
 import { firstMessageTo } from "@/lib/messages"
 import {
@@ -104,22 +121,27 @@ import {
   TableRow,
 } from "@workspace/ui/components/table"
 import {
-  Command,
-  CommandEmpty,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@workspace/ui/components/command"
-import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@workspace/ui/components/popover"
+import {
+  Combobox,
+  ComboboxChip,
+  ComboboxChips,
+  ComboboxChipsInput,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxItem,
+  ComboboxList,
+  ComboboxValue,
+} from "@workspace/ui/components/combobox"
 import { useIsMobile } from "@workspace/ui/hooks/use-mobile"
 import {
   Drawer,
   DrawerContent,
   DrawerDescription,
+  DrawerFooter,
   DrawerHeader,
   DrawerTitle,
 } from "@workspace/ui/components/drawer"
@@ -144,9 +166,13 @@ import {
   isNew,
   matchesFilters,
   NOTICE_BANDS,
+  parseSort,
   sortApplicants,
-  SORTS,
+  sortOptions,
+  tagsFor,
+  sortParam,
   type Filters,
+  type SortColumn,
   type Position,
   type Applicant,
   type ApplicantStatus,
@@ -157,6 +183,7 @@ import {
   useListCopy,
   type ListSource,
 } from "@/lib/list-source"
+import { toast } from "@workspace/ui/components/toast"
 import type { Verdict } from "@/lib/criteria"
 import { ApplicantListSkeleton } from "@/components/skeletons"
 import { usePageLoading } from "@/lib/use-page-loading"
@@ -247,6 +274,8 @@ function queueOrder(applicants: Applicant[]) {
  * WHAT THE CALLER OWNS is only what genuinely differs: the people, the skills
  * they are matched against, the header that says whose list this is, what to
  * show when there is nobody, and the words (`source`, see `lib/list-source.ts`).
+ * A page whose header has gone to the top bar (`page-header.tsx`, as the
+ * response manager's has) passes none, and the white band does not draw.
  * Everything else — tab, view, sort, filters, selection, open profile — is in
  * the query string, merged with whatever the page already keeps there.
  */
@@ -264,12 +293,15 @@ export function CandidateList({
   verdicts,
   annotate,
   candidateSource,
+  tableView = false,
+  tableFilters,
 }: {
   /** Everybody on the list, before this session's decisions are laid over. */
   people: Applicant[]
   /** What the skills bucket and the profile match people against. */
   requiredSkills: string[]
-  header: React.ReactNode
+  /** The white band above the list. Omitted where the page's header is in the top bar. */
+  header?: React.ReactNode
   /** Shown instead of the tabs when `people` is empty. */
   empty: React.ReactNode
   source?: ListSource
@@ -322,6 +354,19 @@ export function CandidateList({
    * My Lists passes none: everybody on it already carries their own.
    */
   candidateSource?: (applicant: Applicant) => CandidateSource
+  /**
+   * `results` only: offer the table view beside the cards. A queue always has
+   * it. Search Resume turns it on; My Lists does not yet.
+   */
+  tableView?: boolean
+  /**
+   * The table's header filters where the caller's filters are not this
+   * component's — Search Resume's are its refine panel's keys (`cur`, `xp`…),
+   * so its headers must write those or the two would be different filters.
+   * Columns absent here fall back to the list's own (`exp`, `notice`,
+   * `location`, and the search box).
+   */
+  tableFilters?: TableFilters
 }) {
   return (
     <CandidateSourceContext value={candidateSource}>
@@ -338,6 +383,8 @@ export function CandidateList({
           toolbar={toolbar}
           verdicts={verdicts}
           annotate={annotate}
+          tableView={tableView}
+          tableFilters={tableFilters}
         />
       </ListSourceContext>
     </CandidateSourceContext>
@@ -356,10 +403,15 @@ function CandidateListBody({
   toolbar,
   verdicts,
   annotate,
+  tableView,
+  tableFilters,
 }: {
+  tableView: boolean
+  tableFilters?: TableFilters
   generated: Applicant[]
   requiredSkills: string[]
-  header: React.ReactNode
+  /** The white band above the list. Omitted where the page's header is in the top bar. */
+  header?: React.ReactNode
   empty: React.ReactNode
   defaultSort: string
   searchKey: string
@@ -386,8 +438,16 @@ function CandidateListBody({
   // width. The param is left in the URL rather than cleared, so a link opened
   // on a phone still shows the table when it is opened again on a desktop.
   const isMobile = useIsMobile()
+  // Results offer cards and, where the caller asks, the table — never the
+  // split view, whose list column is a queue's.
+  const views = results
+    ? VIEWS.filter(
+        (option) =>
+          option.value === "cards" || (tableView && option.value === "table")
+      )
+    : VIEWS
   const view: View =
-    !results && !isMobile && VIEWS.some((option) => option.value === viewParam)
+    !isMobile && views.some((option) => option.value === viewParam)
       ? (viewParam as View)
       : "cards"
   const sort = searchParams.get("sort") ?? defaultSort
@@ -403,11 +463,15 @@ function CandidateListBody({
    * cards every time you changed tab. A param at its default is deleted rather
    * than written, so the plain URL stays plain.
    */
-  const setParams = (updates: Record<string, string | null>) => {
+  const setParams = (updates: Record<string, string | string[] | null>) => {
     const next = new URLSearchParams(searchParams)
     for (const [key, value] of Object.entries(updates)) {
-      if (value === null) next.delete(key)
-      else next.set(key, value)
+      // A list is repeated params, the way the database panel writes its
+      // multi-selects — `?location=Pune&location=Noida`, not a joined string,
+      // so a city with a comma in its name could never break it.
+      next.delete(key)
+      if (Array.isArray(value)) value.forEach((item) => next.append(key, item))
+      else if (value !== null) next.set(key, value)
     }
     setSearchParams(next, { replace: true })
   }
@@ -421,8 +485,15 @@ function CandidateListBody({
     q: searchParams.get(searchKey) ?? "",
     exp: searchParams.get("exp") ?? "",
     notice: searchParams.get("notice") ?? "",
-    location: searchParams.get("location") ?? "",
+    location: searchParams.getAll("location"),
+    preferred: searchParams.getAll("preferred"),
   }
+
+  // `getAll` hands back a new array every render, so the arrays themselves are
+  // never equal and the memo below would rerun on every keystroke elsewhere on
+  // the page. These are what it actually keys on.
+  const inCities = filters.location.join()
+  const openTo = filters.preferred.join()
 
   /**
    * THE FILTER RUNS BEFORE THE BUCKETS ARE COUNTED, so a tab's number is always
@@ -434,15 +505,39 @@ function CandidateListBody({
     () =>
       sortApplicants(
         all.filter((applicant) => matchesFilters(applicant, filters)),
-        sort
+        sort,
+        requiredSkills
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [all, sort, filters.q, filters.exp, filters.notice, filters.location]
+    [
+      all,
+      sort,
+      requiredSkills,
+      filters.q,
+      filters.exp,
+      filters.notice,
+      inCities,
+      openTo,
+    ]
   )
 
   /** Only the places somebody actually applied from. */
   const locations = React.useMemo(
     () => [...new Set(all.map((applicant) => applicant.location))].sort(),
+    [all]
+  )
+
+  /**
+   * Everywhere somebody would go. "Anywhere" is kept out of the options: as a
+   * filter value it would mean "only people who said Anywhere", which is not
+   * a question a recruiter asks — they ask about a city, and the people who
+   * said Anywhere answer yes to all of them (see `matchesFilters`).
+   */
+  const preferredLocations = React.useMemo(
+    () =>
+      [...new Set(all.flatMap((applicant) => applicant.preferredLocations))]
+        .filter((place) => place !== "Anywhere")
+        .sort(),
     [all]
   )
 
@@ -474,28 +569,72 @@ function CandidateListBody({
   }, [all])
 
   /**
-   * The last decision, for the undo bar. A decision takes the card out of the
-   * list you are looking at the instant you make it — that is what makes the
-   * queue shrink — so a misclick has to be recoverable from where you are,
-   * not by finding the person again in another tab.
+   * The way back from a decision. A decision takes the card out of the list
+   * you are looking at the instant you make it — that is what makes the queue
+   * shrink — so a misclick has to be recoverable from where you are, not by
+   * finding the person again in another tab.
+   *
+   * IT IS A TOAST NOW, not a bar this screen draws. It was a fixed pill that
+   * had to know about everything else in the bottom of the window: centred,
+   * but re-centred on the content column when Athena took hers, and lifted to
+   * `bottom-20` when the selection bar was up. That is a lot of knowledge for
+   * one message, and none of it was about the message. `Toaster` is mounted
+   * once in `AppShell` and owns the corner, the stacking and the six seconds;
+   * this hands it a sentence and the way back.
+   *
+   * `toast.close(id)` inside the handler reads as using `id` before it exists,
+   * and does not: the click can only happen after `add` has returned.
    */
-  const [undo, setUndo] = React.useState<{
-    /** Everybody the decision moved, and where each of them was before. */
-    moved: { id: string; name: string; from: ApplicantStatus }[]
+  const undoDecision = (
+    moved: {
+      id: string
+      name: string
+      photo?: string
+      from: ApplicantStatus
+    }[],
     to: ApplicantStatus
-    at: number
-  } | null>(null)
+  ) => {
+    const who = moved.length === 1 ? moved[0].name : `${moved.length} people`
+    const where = BUCKETS.find((bucket) => bucket.value === to)?.label
+    const id = toast.add({
+      title: `${who} ${to === "undecided" ? "back in" : "moved to"} ${where}`,
+      // WHO IT WAS ABOUT, as a face. A decision takes the card off the screen,
+      // so by the time this arrives the only trace of the person is their name
+      // in a sentence — and a row of names all move to Shortlisted alike. The
+      // faces are capped at three because past that the count in the sentence
+      // is doing the work.
+      data: {
+        faces: moved.slice(0, 3).map((entry) => ({
+          name: entry.name,
+          photo: entry.photo,
+        })),
+      },
+      actionProps: {
+        children: "Undo",
+        onClick() {
+          moved.forEach((entry) => decide(entry.id, entry.from))
+          toast.close(id)
+        },
+      },
+    })
+  }
 
   const decideWithUndo = (id: string, status: ApplicantStatus) => {
     const applicant = all.find((candidate) => candidate.id === id)
     // Without tabs the card stays put with its decision on it, and pressing
     // the decision again clears it — there is nothing to bring back.
     if (!results && applicant && applicant.status !== status) {
-      setUndo({
-        moved: [{ id, name: applicant.name, from: applicant.status }],
-        to: status,
-        at: Date.now(),
-      })
+      undoDecision(
+        [
+          {
+            id,
+            name: applicant.name,
+            photo: applicant.photo,
+            from: applicant.status,
+          },
+        ],
+        status
+      )
     }
     decide(id, status)
   }
@@ -511,18 +650,13 @@ function CandidateListBody({
       .map((person) => ({
         id: person.id,
         name: person.name,
+        photo: person.photo,
         from: person.status,
       }))
     if (moved.length === 0) return
     moved.forEach((entry) => decide(entry.id, status))
-    setUndo({ moved, to: status, at: Date.now() })
+    undoDecision(moved, status)
   }
-
-  React.useEffect(() => {
-    if (!undo) return
-    const timer = window.setTimeout(() => setUndo(null), 6000)
-    return () => window.clearTimeout(timer)
-  }, [undo])
 
   const selectedId = searchParams.get("candidate")
   // Which of the pane's two documents is open. In the query string with
@@ -558,6 +692,15 @@ function CandidateListBody({
       : bucket === "undecided"
         ? queueOrder(applicants.filter((a) => a.status === "undecided"))
         : applicants.filter((a) => a.status === bucket)
+  /**
+   * How many people in a bucket the filters are hiding, so an empty tab can
+   * say it is empty BECAUSE of them — "You are all caught up" over a queue of
+   * forty that Chennai happens to rule out is the screen lying.
+   */
+  const hiddenIn = (bucket: ResponseBucket) =>
+    (bucket === "all"
+      ? all.length
+      : all.filter((a) => a.status === bucket).length) - listFor(bucket).length
   const walkable = listFor(active)
   const at = profiled
     ? walkable.findIndex((applicant) => applicant.id === profiled.id)
@@ -576,6 +719,7 @@ function CandidateListBody({
     filters,
     sort,
     locations,
+    preferredLocations,
     matched: applicants.length,
     total: all.length,
     // `q` is the filter's own name for the box; the URL may call it something
@@ -585,7 +729,14 @@ function CandidateListBody({
         Object.fromEntries(
           Object.entries(updates).map(([key, value]) => [
             key === "q" ? searchKey : key,
-            value ? value : null,
+            // An empty list clears the key, the same as an empty string.
+            Array.isArray(value)
+              ? value.length > 0
+                ? value
+                : null
+              : value
+                ? value
+                : null,
           ])
         )
       ),
@@ -597,8 +748,48 @@ function CandidateListBody({
         exp: null,
         notice: null,
         location: null,
+        preferred: null,
       }),
   }
+  /**
+   * What the table's headers read and write. The same URL keys as the pills,
+   * so a header filter and a pill are one filter in two places.
+   */
+  const columnVisibility = visibilityFrom(searchParams)
+  const tableControls: TableControls = {
+    filters,
+    locations,
+    sort,
+    onFilter: filterProps.onChange,
+    onSort: (column, desc) => {
+      const next = desc === null ? defaultSort : sortParam(column, desc)
+      setParams({ sort: next === defaultSort ? null : next })
+    },
+    visibility: columnVisibility,
+    onVisibility: (next) => setParams(visibilityParams(next)),
+    headerFilters: tableFilters ?? {},
+  }
+
+  /** Columns and the view toggle, where a list has more than one view. */
+  const viewControls =
+    !isMobile && views.length > 1 ? (
+      <div className="flex items-center gap-2">
+        {view === "table" && (
+          <DataTableViewOptions
+            visibility={columnVisibility}
+            onChange={tableControls.onVisibility}
+          />
+        )}
+        <ViewSwitcher
+          views={views}
+          view={view}
+          onChange={(next) =>
+            setParams({ view: next === "cards" ? null : next })
+          }
+        />
+      </div>
+    ) : null
+
   /**
    * The tab block is sticky at the top, so the filter rail has to stick BELOW
    * it rather than at `top-4`, or it slides underneath once both are stuck. Its
@@ -721,15 +912,22 @@ function CandidateListBody({
           toolbar (itself a white sticky band with the border), so `-mb-5`
           cancels the gap and it draws no border of its own. Results, and a
           queue showing its empty state, have grey under the header instead,
-          so there it ends with its own border. */}
-        <div
-          className={cn(
-            "-mx-4 -mt-4 bg-background px-4 pt-5 md:-mt-6 lg:-mx-6 lg:px-6",
-            !results && generated.length > 0 ? "-mb-5 pb-3" : "border-b pb-5"
-          )}
-        >
-          {header}
-        </div>
+          so there it ends with its own border.
+
+          WITHOUT A HEADER there is no band at all: the page put its header in
+          the top bar, and an empty white strip under it would be the band
+          still claiming the room it no longer fills. The tab toolbar takes
+          over the join instead — see its own margin below. */}
+        {header && (
+          <div
+            className={cn(
+              "-mx-4 -mt-4 bg-background px-4 pt-5 md:-mt-6 lg:-mx-6 lg:px-6",
+              !results && generated.length > 0 ? "-mb-5 pb-3" : "border-b pb-5"
+            )}
+          >
+            {header}
+          </div>
+        )}
 
         {/* Results keep their filters on screen with nobody left under them —
           otherwise narrowing to zero would take away the controls that undo
@@ -743,15 +941,26 @@ function CandidateListBody({
             {sidebar}
 
             <div className="flex min-w-0 flex-1 flex-col gap-4">
-              {toolbar}
+              {viewControls ? (
+                <div className="flex flex-wrap items-start gap-3">
+                  <div className="min-w-0 flex-1">{toolbar}</div>
+                  {viewControls}
+                </div>
+              ) : (
+                toolbar
+              )}
               {loading ? (
                 <ApplicantListSkeleton />
               ) : (
                 <ApplicantList
+                  top={stickyHeight}
                   applicants={listFor("all")}
                   bucket={BUCKETS.find((bucket) => bucket.value === "all")!}
+                  hidden={hiddenIn("all")}
+                  onClearFilters={filterProps.onClear}
+                  table={tableControls}
                   progress={null}
-                  view="cards"
+                  view={view}
                   verdicts={verdicts}
                   annotate={annotate}
                   requiredSkills={requiredSkills}
@@ -792,9 +1001,18 @@ function CandidateListBody({
               `CandidateList`'s own `px-4 lg:px-6` gutter so the cards' rings
               are covered edge to edge. `z-20`, not `z-10`: `AvatarBadge` is
               `z-10` and later in the DOM, so a tie puts the new dot on top. */}
+            {/* `-mt-4 md:-mt-6` ONLY WITHOUT A HEADER, where this block is the
+              first thing in the column: it cancels the shell's top padding so
+              the white toolbar runs straight into the white SiteHeader, the
+              way it used to run into the header band. With a band above, that
+              band has already cancelled the padding and this must not do it
+              twice. */}
             <div
               ref={stickyRef}
-              className="sticky top-0 z-20 -mx-4 flex flex-col gap-4 border-b border-border bg-card px-4 py-2 lg:-mx-6 lg:px-6"
+              className={cn(
+                "sticky top-0 z-20 -mx-4 flex flex-col gap-4 border-b border-border bg-card px-4 py-2 lg:-mx-6 lg:px-6",
+                !header && "-mt-4 md:-mt-6"
+              )}
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <TabsList className="max-w-full overflow-x-auto">
@@ -808,14 +1026,7 @@ function CandidateListBody({
                   ))}
                 </TabsList>
 
-                {!isMobile && (
-                  <ViewSwitcher
-                    view={view}
-                    onChange={(next) =>
-                      setParams({ view: next === "cards" ? null : next })
-                    }
-                  />
-                )}
+                {viewControls}
               </div>
 
               {/* The panel that narrows the list, then the list, side by side above
@@ -867,8 +1078,12 @@ function CandidateListBody({
                   BUCKETS.map((bucket) => (
                     <TabsContent key={bucket.value} value={bucket.value}>
                       <ApplicantList
+                        top={stickyHeight}
                         applicants={listFor(bucket.value)}
                         bucket={bucket}
+                        hidden={hiddenIn(bucket.value)}
+                        onClearFilters={filterProps.onClear}
+                        table={tableControls}
                         progress={
                           bucket.value === "undecided" ? progress : null
                         }
@@ -890,41 +1105,6 @@ function CandidateListBody({
             </div>
           </Tabs>
         )}
-
-        {/* The live region is always mounted and only its contents change, so
-          a screen reader announces the decision rather than missing an
-          element that arrived already filled. */}
-        <div role="status" aria-live="polite">
-          {undo && (
-            <div
-              className={cn(
-                "fixed left-1/2 z-40 flex -translate-x-1/2 items-center",
-                athenaOpen && BAR_BESIDE_ATHENA,
-                picked.length > 0 ? "bottom-20" : "bottom-6",
-                "gap-2 rounded-full bg-foreground py-1.5 pr-1.5 pl-4 text-sm whitespace-nowrap text-background shadow-lg"
-              )}
-            >
-              <span>
-                {undo.moved.length === 1
-                  ? undo.moved[0].name
-                  : `${undo.moved.length} people`}{" "}
-                {undo.to === "undecided" ? "back in" : "moved to"}{" "}
-                {BUCKETS.find((bucket) => bucket.value === undo.to)?.label}
-              </span>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="rounded-full text-background hover:bg-background/15 hover:text-background dark:hover:bg-background/15"
-                onClick={() => {
-                  undo.moved.forEach((entry) => decide(entry.id, entry.from))
-                  setUndo(null)
-                }}
-              >
-                Undo
-              </Button>
-            </div>
-          )}
-        </div>
 
         {picked.length > 0 && (
           <SelectionBar
@@ -978,8 +1158,9 @@ const ON_BAR =
  * Save, message and download are occasional, and a pill that carries all of
  * them is too wide to sit beside Athena's pane.
  *
- * Under the undo bar, which moves up to make room, because the undo is about
- * the last thing you did and this is about what you are about to do.
+ * The bottom lane is its own: toasts sit above it (`app-toaster.tsx`), because
+ * a toast is about the last thing you did and this is about what you are
+ * about to do.
  */
 function SelectionBar({
   beside,
@@ -1253,8 +1434,36 @@ function PickBox({
   )
 }
 
+/**
+ * The page chrome under the split view — its `py-6` bottom and the rest of the
+ * gutter the shell puts around a page — cancelled with a negative bottom
+ * margin so the two columns run to the bottom of the screen. Only the md+
+ * figure, because the split view is not offered below it: `useIsMobile` sends
+ * that width to the cards.
+ */
+const SPLIT_CHROME = 44
+
+const EMPTY_FILTERS: Filters = {
+  q: "",
+  exp: "",
+  notice: "",
+  location: [],
+  preferred: [],
+}
+
+/** Whether two filter sets ask the same thing — what "unapplied" is measured against. */
+function sameFilters(a: Filters, b: Filters) {
+  return (
+    a.q === b.q &&
+    a.exp === b.exp &&
+    a.notice === b.notice &&
+    a.location.join() === b.location.join() &&
+    a.preferred.join() === b.preferred.join()
+  )
+}
+
 /** One run of the list under its own heading — see `ApplicantList`. */
-type Section = {
+type ListRun = {
   key: string
   heading: React.ReactNode
   rows: Applicant[]
@@ -1292,9 +1501,20 @@ function ApplicantList({
   onDecide,
   verdicts,
   annotate,
+  hidden,
+  onClearFilters,
+  table,
+  top,
 }: {
   applicants: Applicant[]
   bucket: { value: ResponseBucket; label: string }
+  /** People in this bucket the filters are hiding. */
+  hidden: number
+  onClearFilters: () => void
+  /** The table view's header controls. Only a queue has a table. */
+  table?: TableControls
+  /** Height of the sticky tab block, measured — what the split view sizes against. */
+  top: number
   /** Today's arrivals, done out of total. Only To review has one. */
   progress: { total: number; done: number } | null
   view: View
@@ -1311,7 +1531,14 @@ function ApplicantList({
   const [visible, setVisible] = React.useState(PAGE_SIZE)
   const copy = useListCopy()
 
-  if (applicants.length === 0) return <EmptyBucket bucket={bucket} />
+  if (applicants.length === 0)
+    return (
+      <EmptyBucket
+        bucket={bucket}
+        hidden={hidden}
+        onClearFilters={onClearFilters}
+      />
+    )
 
   const shown = applicants.slice(0, visible)
 
@@ -1319,12 +1546,12 @@ function ApplicantList({
    * The headings count the whole run, not the page of it on screen — "Earlier
    * · 71" over the first eight of them is the number you want to know.
    */
-  const sectionsOf = (rows: Applicant[], compact = false): Section[] => {
+  const sectionsOf = (rows: Applicant[], compact = false): ListRun[] => {
     if (!progress) return [{ key: "all", heading: null, rows }]
 
     const fresh = applicants.filter((applicant) => applicant.newSinceVisit)
     const earlier = applicants.length - fresh.length
-    const sections: Section[] = []
+    const sections: ListRun[] = []
 
     // New keeps its heading after its last card has gone, so clearing it
     // reads as finishing something rather than as the section vanishing.
@@ -1376,6 +1603,7 @@ function ApplicantList({
         // The whole bucket, not a page of it: the list column scrolls on its
         // own, so there is nothing for "Load more" to be at the bottom of.
         <SplitView
+          top={top}
           applicants={applicants}
           sections={sectionsOf(applicants, true)}
           requiredSkills={requiredSkills}
@@ -1386,13 +1614,14 @@ function ApplicantList({
           onOpenProfile={onOpenProfile}
           onDecide={onDecide}
         />
-      ) : view === "table" ? (
+      ) : view === "table" && table ? (
         <ApplicantTable
           sections={sectionsOf(shown)}
           everyone={applicants}
           requiredSkills={requiredSkills}
           onDecide={onDecide}
           onOpenProfile={onOpenProfile}
+          controls={table}
         />
       ) : (
         <>
@@ -1468,7 +1697,16 @@ function QueueHeading({
     <div
       className={cn(
         "flex flex-col gap-1",
-        compact ? "px-3 pt-2.5 pb-1" : "pt-2 first:pt-0"
+        // In the split column the heading is a bar the rows scroll under, the
+        // way "Filters" is in the rail — so it carries its own background and
+        // border rather than riding along with the list.
+        //
+        // `z-20`, not `z-10`, for the same reason the tab toolbar is: the "new"
+        // dot on an avatar is `AvatarBadge`'s own `z-10` and sits later in the
+        // DOM, so a tie paints it over the bar it is scrolling under.
+        compact
+          ? "px-3 pt-2.5 pb-1 @3xl/main:sticky @3xl/main:top-0 @3xl/main:z-20 @3xl/main:border-b @3xl/main:bg-background @3xl/main:py-2.5"
+          : "pt-2 first:pt-0"
       )}
     >
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
@@ -1489,10 +1727,39 @@ function QueueHeading({
 
 function EmptyBucket({
   bucket,
+  hidden,
+  onClearFilters,
 }: {
   bucket: { value: ResponseBucket; label: string }
+  hidden: number
+  onClearFilters: () => void
 }) {
   const copy = useListCopy().empty
+
+  // Empty because of the filters, not because the work is done. Only when
+  // they actually hide somebody: a tab that is empty unfiltered keeps its own
+  // words, filters or not.
+  if (hidden > 0) {
+    return (
+      <Empty className="rounded-2xl border border-dashed">
+        <EmptyHeader>
+          <EmptyMedia variant="icon">
+            <FunnelXIcon />
+          </EmptyMedia>
+          <EmptyTitle>Nobody matches these filters</EmptyTitle>
+          <EmptyDescription>
+            {hidden === 1 ? "1 person" : `${hidden} people`} in {bucket.label}{" "}
+            {hidden === 1 ? "is" : "are"} hidden by the filters you have on.
+          </EmptyDescription>
+        </EmptyHeader>
+        <EmptyContent>
+          <Button variant="outline" size="sm" onClick={onClearFilters}>
+            Clear filters
+          </Button>
+        </EmptyContent>
+      </Empty>
+    )
+  }
 
   return (
     <Empty className="rounded-2xl border border-dashed">
@@ -1548,6 +1815,7 @@ function ApplicantCard({
   const roles = showAllRoles
     ? applicant.positions
     : applicant.positions.slice(0, 2)
+  const tags = React.useMemo(() => tagsFor(applicant), [applicant])
   const matched = applicant.skills.filter((skill) =>
     requiredSkills.includes(skill)
   )
@@ -1568,9 +1836,22 @@ function ApplicantCard({
 
           <div className="flex min-w-0 flex-col gap-0.5">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-heading text-base font-medium">
+              {/* THE NAME OPENS THE PROFILE, as it does in the table's
+                  `CandidateCell`. Reading somebody is the one thing a card
+                  cannot do in place, and the name is where anybody clicks to
+                  do it — "View profile" at the foot of the card stays, because
+                  a name that happens to be a link is not a discoverable way to
+                  find out there is a profile at all. The card itself is not
+                  clickable: it already carries three decisions, a checkbox and
+                  a menu, and a click target wrapped around those is a click
+                  target you cannot avoid hitting. */}
+              <button
+                type="button"
+                onClick={() => onOpenProfile(applicant.id)}
+                className="rounded-sm text-left font-heading text-base font-medium outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
                 {applicant.name}
-              </span>
+              </button>
               {isNew(applicant) ? (
                 <span className="sr-only">New</span>
               ) : (
@@ -1600,6 +1881,7 @@ function ApplicantCard({
         <BucketColumns
           applicant={applicant}
           roles={roles}
+          tags={tags}
           matched={matched}
           asked={requiredSkills.length > 0}
           showAllRoles={showAllRoles}
@@ -1609,6 +1891,7 @@ function ApplicantCard({
         <BucketRows
           applicant={applicant}
           roles={roles}
+          tags={tags}
           matched={matched}
           asked={requiredSkills.length > 0}
           showAllRoles={showAllRoles}
@@ -1688,6 +1971,8 @@ function CriteriaEvidence({ verdicts }: { verdicts: Verdict[] }) {
 type BucketProps = {
   applicant: Applicant
   roles: Position[]
+  /** Derived, not dealt — see `tagsFor`. Empty means the row does not draw. */
+  tags: string[]
   matched: string[]
   /** Whether anything was asked for — a search that named no skills was not. */
   asked: boolean
@@ -1711,6 +1996,7 @@ type BucketProps = {
 function BucketRows({
   applicant,
   roles,
+  tags,
   matched,
   asked,
   showAllRoles,
@@ -1718,6 +2004,17 @@ function BucketRows({
 }: BucketProps) {
   return (
     <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-2 border-t border-border pt-3 text-sm sm:grid-cols-[7rem_minmax(0,1fr)]">
+      {tags.length > 0 && (
+        <>
+          <dt className="text-xs leading-6 font-medium text-muted-foreground sm:text-right">
+            Tags
+          </dt>
+          <dd className="min-w-0 leading-6">
+            <TagsBucket tags={tags} />
+          </dd>
+        </>
+      )}
+
       <dt className="text-xs leading-6 font-medium text-muted-foreground sm:text-right">
         Experience
       </dt>
@@ -1742,6 +2039,13 @@ function BucketRows({
       </dt>
       <dd className="min-w-0 leading-6">
         <SkillsBucket applicant={applicant} matched={matched} asked={asked} />
+      </dd>
+
+      <dt className="text-xs leading-6 font-medium text-muted-foreground sm:text-right">
+        Location
+      </dt>
+      <dd className="min-w-0 leading-6">
+        <LocationBucket applicant={applicant} />
       </dd>
 
       <dt className="text-xs leading-6 font-medium text-muted-foreground sm:text-right">
@@ -1791,9 +2095,27 @@ function BucketRows({
  * history is one click away in the stacked layout, or on the profile when there
  * is one.
  */
-function BucketColumns({ applicant, roles, matched, asked }: BucketProps) {
+function BucketColumns({
+  applicant,
+  roles,
+  tags,
+  matched,
+  asked,
+}: BucketProps) {
   return (
-    <dl className="grid gap-x-8 gap-y-3 border-t border-border pt-3 text-sm @2xl/card:grid-cols-2 @5xl/card:grid-cols-[1.6fr_1fr_1fr_1fr]">
+    <dl className="grid gap-x-8 gap-y-3 border-t border-border pt-3 text-sm @2xl/card:grid-cols-2 @5xl/card:grid-cols-[1.6fr_1fr_1fr_1fr_1fr]">
+      {/* A band across the top rather than a sixth column: tags are a row of
+          chips of no fixed length, and a column that narrow would wrap every
+          one of them onto its own line. */}
+      {tags.length > 0 && (
+        <div className="col-span-full flex min-w-0 flex-col gap-1">
+          <dt className="text-xs font-medium text-muted-foreground">Tags</dt>
+          <dd className="min-w-0">
+            <TagsBucket tags={tags} />
+          </dd>
+        </div>
+      )}
+
       <div className="flex min-w-0 flex-col gap-1">
         <dt className="text-xs font-medium text-muted-foreground">
           Experience
@@ -1816,6 +2138,13 @@ function BucketColumns({ applicant, roles, matched, asked }: BucketProps) {
         </dt>
         <dd className="min-w-0">
           <SkillsBucket applicant={applicant} matched={matched} asked={asked} />
+        </dd>
+      </div>
+
+      <div className="flex min-w-0 flex-col gap-1">
+        <dt className="text-xs font-medium text-muted-foreground">Location</dt>
+        <dd className="min-w-0">
+          <LocationBucket applicant={applicant} />
         </dd>
       </div>
 
@@ -1959,6 +2288,89 @@ function MatchedSkills({ skills }: { skills: string[] }) {
   )
 }
 
+/**
+ * Where they are, and where else they would go.
+ *
+ * THE CURRENT CITY IS ALREADY ON THE CARD, in the meta line under the name, so
+ * this row exists for the second half: a posting is in one place, and "would
+ * they come here" is not answered by where they are now. The current city is
+ * repeated as the emphasis anyway, because the two only mean anything read
+ * together — "Pune, open to Bengaluru" is a different candidate from "Pune".
+ *
+ * `preferredLocations` leads with their own city (see `applicants.ts`), so it
+ * is dropped here rather than said twice. Somebody who named nowhere else gets
+ * the city alone; "Anywhere" is said as it is, because it is what they said.
+ */
+/**
+ * The short facts about the shape of a career, above everything else on the
+ * card — see `tagsFor`.
+ *
+ * ABOVE EXPERIENCE BECAUSE IT IS THE SUMMARY OF IT. "Leads a team", "Moves
+ * often" and "Top institute" are what a recruiter would come away with after
+ * reading the roles and the school; put under them it would be a conclusion
+ * after its own evidence.
+ *
+ * `secondary`, NOT the skills' `success`. Green is spent on "this is one of
+ * the skills the posting asked for", which is a match against a requirement;
+ * a tag is a fact about the person and nobody asked for it, so it stays
+ * neutral and lets the green keep meaning one thing on the card.
+ */
+/**
+ * How many tags a card shows before it starts counting. Three is a row you
+ * read without meaning to; the rest are behind `+N`, which is a number rather
+ * than a sentence and costs the eye nothing.
+ */
+const TAGS_SHOWN = 3
+
+function TagsBucket({ tags }: { tags: string[] }) {
+  const shown = tags.slice(0, TAGS_SHOWN)
+  const rest = tags.slice(TAGS_SHOWN)
+
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {shown.map((tag) => (
+        <Badge key={tag} variant="secondary" className="font-normal">
+          {tag}
+        </Badge>
+      ))}
+
+      {/* `+2` IS A HANDLE, NOT A FULL STOP. Truncating silently would leave a
+          card that has more to say looking like one that does not, and a
+          count you cannot open is the same thing with a number on it — so the
+          rest are on hover, in the order they would have been drawn. */}
+      {rest.length > 0 && (
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Badge
+                variant="outline"
+                className="font-normal text-muted-foreground"
+              />
+            }
+          >
+            +{rest.length}
+            <span className="sr-only"> more: {rest.join(", ")}</span>
+          </TooltipTrigger>
+          <TooltipContent>{rest.join(" · ")}</TooltipContent>
+        </Tooltip>
+      )}
+    </div>
+  )
+}
+
+function LocationBucket({ applicant }: { applicant: Applicant }) {
+  const elsewhere = applicant.preferredLocations.filter(
+    (place) => place !== applicant.location
+  )
+
+  return (
+    <span className="text-muted-foreground">
+      <span className="font-medium text-foreground">{applicant.location}</span>
+      {elsewhere.length > 0 && <> · open to {elsewhere.join(", ")}</>}
+    </span>
+  )
+}
+
 function AvailabilityBucket({ applicant }: { applicant: Applicant }) {
   return (
     <span className="text-muted-foreground">
@@ -1982,9 +2394,11 @@ function AvailabilityBucket({ applicant }: { applicant: Applicant }) {
  * active item, and a view switcher with no view is not a state this page has.
  */
 function ViewSwitcher({
+  views,
   view,
   onChange,
 }: {
+  views: typeof VIEWS
   view: View
   onChange: (view: View) => void
 }) {
@@ -1999,7 +2413,7 @@ function ViewSwitcher({
         if (next) onChange(next)
       }}
     >
-      {VIEWS.map((option) => (
+      {views.map((option) => (
         <ToggleGroupItem
           key={option.value}
           value={option.value}
@@ -2029,21 +2443,340 @@ function ViewSwitcher({
  * It scrolls sideways inside its own card rather than widening the page; `Table`
  * brings its own `overflow-x-auto` container.
  */
+/** What the table's headers need from the list: the URL's filters and sort. */
+type TableControls = {
+  filters: Filters
+  locations: string[]
+  sort: string
+  onFilter: (updates: Partial<Filters>) => void
+  /** `null` clears back to the list's default order. */
+  onSort: (column: SortColumn, desc: boolean | null) => void
+  visibility: ColumnVisibility
+  onVisibility: (next: ColumnVisibility) => void
+  headerFilters: TableFilters
+}
+
+/** A column header's filter: whether it is on, and its controls. */
+export type TableFilters = Partial<
+  Record<
+    SortColumn,
+    { filtered: boolean; render: (close: () => void) => React.ReactNode }
+  >
+>
+
+const tableFeaturesUsed = tableFeatures({
+  rowSortingFeature,
+  columnVisibilityFeature,
+})
+const columnHelper = createColumnHelper<typeof tableFeaturesUsed, Applicant>()
+const labelOf = (id: string) =>
+  TABLE_COLUMNS.find((column) => column.id === id)?.label ?? id
+
+/**
+ * What the column renderers read. A CONTEXT, NOT CLOSURES: the column
+ * definitions below are one module-level constant, so a header's popover is
+ * never remounted by a filter changing underneath it — built inside the
+ * component, every keystroke in the Candidate search rebuilt the columns and
+ * threw the box (and its focus) away.
+ */
+const ApplicantTableContext = React.createContext<{
+  controls: TableControls
+  everyone: Applicant[]
+  requiredSkills: string[]
+  onDecide: (id: string, status: ApplicantStatus) => void
+  onOpenProfile: (id: string) => void
+} | null>(null)
+
+function useApplicantTable() {
+  const context = React.useContext(ApplicantTableContext)
+  if (!context) throw new Error("Outside ApplicantTable")
+  return context
+}
+
+const NUMERIC_COLUMNS: SortColumn[] = ["experience", "pay", "notice", "match"]
+
+/** A sortable column's heading, with the filter that column carries, if any. */
+function ColumnHead({ id }: { id: SortColumn }) {
+  const { controls } = useApplicantTable()
+  const { filters, locations, onFilter, visibility, onVisibility } = controls
+  const { searchLabel, arrivedColumn } = useListCopy()
+  const parsed = parseSort(controls.sort)
+  const sorted =
+    parsed?.column === id ? (parsed.desc ? "desc" : "asc") : (false as const)
+
+  const radios =
+    (
+      label: string,
+      value: string,
+      options: { value: string; label: string }[],
+      onChange: (value: string) => void
+    ) =>
+    (close: () => void) => (
+      <HeaderRadios
+        label={label}
+        value={value}
+        options={options}
+        onChange={(next) => {
+          onChange(next)
+          close()
+        }}
+      />
+    )
+
+  const filter =
+    id === "candidate"
+      ? {
+          filtered: Boolean(filters.q),
+          render: () => (
+            <Input
+              autoFocus
+              value={filters.q}
+              onChange={(event) => onFilter({ q: event.target.value })}
+              placeholder="Search name, role or skill"
+              aria-label={searchLabel}
+            />
+          ),
+        }
+      : id === "location"
+        ? {
+            filtered: filters.location.length > 0,
+            // The picker, not radios — the same control the rail and the pill
+            // carry, so a header and the rail stay one filter in two places.
+            // It stays open on a pick, because picking several is the point.
+            render: () => (
+              <LocationPicker
+                label="Current location"
+                placeholder="Search locations"
+                options={locations}
+                chosen={filters.location}
+                onChange={(location) => onFilter({ location })}
+              />
+            ),
+          }
+        : id === "experience"
+          ? {
+              filtered: Boolean(filters.exp),
+              render: radios(
+                "Experience",
+                filters.exp,
+                [
+                  { value: "", label: "Any experience" },
+                  ...EXPERIENCE_BANDS.map(({ value, label }) => ({
+                    value,
+                    label,
+                  })),
+                ],
+                (exp) => onFilter({ exp })
+              ),
+            }
+          : id === "notice"
+            ? {
+                filtered: Boolean(filters.notice),
+                render: radios(
+                  "Notice period",
+                  filters.notice,
+                  [
+                    { value: "", label: "Any notice period" },
+                    ...NOTICE_BANDS.map(({ value, label }) => ({
+                      value,
+                      label,
+                    })),
+                  ],
+                  (notice) => onFilter({ notice })
+                ),
+              }
+            : null
+
+  const chosen = controls.headerFilters[id] ?? filter
+
+  return (
+    <DataTableColumnHeader
+      title={id === "applied" ? arrivedColumn : labelOf(id)}
+      align={NUMERIC_COLUMNS.includes(id) ? "end" : "start"}
+      sorted={sorted}
+      onSort={(desc) => controls.onSort(id, desc)}
+      filter={chosen?.render}
+      filtered={chosen?.filtered}
+      onHide={
+        TABLE_COLUMNS.find((column) => column.id === id)?.hideable
+          ? () => onVisibility({ ...visibility, [id]: false })
+          : undefined
+      }
+    />
+  )
+}
+
+function SelectAllHead() {
+  return <SelectAll people={useApplicantTable().everyone} compact />
+}
+
+/**
+ * Who they are and where they are now, as one cell: the role is how a
+ * recruiter tells two names apart, and as its own column it was the widest
+ * thing on the table. The photo is here as on the cards, and New is the
+ * avatar's dot, not a badge — the other statuses keep their badges, because
+ * those are decisions and a dot cannot say which one.
+ */
+function CandidateCell({ applicant }: { applicant: Applicant }) {
+  const { onOpenProfile } = useApplicantTable()
+
+  return (
+    <div className="flex items-center gap-3">
+      <ApplicantAvatar
+        name={applicant.name}
+        photo={applicant.photo}
+        fresh={isNew(applicant)}
+        className="size-9"
+      />
+      <div className="flex flex-col gap-0.5">
+        <div className="flex items-center gap-2">
+          {/* The row's click is mouse-only, so the name is the same action as
+              a real button — the keyboard and screen-reader way in. */}
+          <button
+            type="button"
+            onClick={() => onOpenProfile(applicant.id)}
+            className="rounded-sm text-left font-medium outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          >
+            {applicant.name}
+          </button>
+          {isNew(applicant) ? (
+            <span className="sr-only">New</span>
+          ) : (
+            <ApplicantStatusBadge status={applicant.status} />
+          )}
+        </div>
+        <span className="text-xs text-muted-foreground">
+          {applicant.title} at {applicant.company}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Only the matches, unlike the card's skills bucket: the column is here to
+ * answer "do they have what the job needs".
+ */
+function MatchedCell({ applicant }: { applicant: Applicant }) {
+  const { requiredSkills } = useApplicantTable()
+  return (
+    <MatchedSkills
+      skills={applicant.skills.filter((skill) =>
+        requiredSkills.includes(skill)
+      )}
+    />
+  )
+}
+
+function ActionsCell({ applicant }: { applicant: Applicant }) {
+  const { onDecide } = useApplicantTable()
+  return (
+    <RowActions
+      applicant={applicant}
+      onDecide={onDecide}
+      className="justify-end"
+    />
+  )
+}
+
+const TABLE_COLUMN_DEFS = columnHelper.columns([
+  columnHelper.display({
+    id: "select",
+    header: () => <SelectAllHead />,
+    cell: ({ row }) => <PickBox applicant={row.original} />,
+  }),
+  columnHelper.accessor((applicant) => applicant.name, {
+    id: "candidate",
+    enableHiding: false,
+    header: () => <ColumnHead id="candidate" />,
+    cell: ({ row }) => <CandidateCell applicant={row.original} />,
+  }),
+  // Sorted upstream by count; the accessor only makes the column sortable.
+  columnHelper.accessor((applicant) => applicant.skills.length, {
+    id: "matched",
+    header: () => <ColumnHead id="matched" />,
+    cell: ({ row }) => <MatchedCell applicant={row.original} />,
+  }),
+  columnHelper.accessor((applicant) => applicant.location, {
+    id: "location",
+    header: () => <ColumnHead id="location" />,
+    cell: ({ row }) => (
+      <span className="text-muted-foreground">{row.original.location}</span>
+    ),
+  }),
+  columnHelper.accessor((applicant) => applicant.experienceYears, {
+    id: "experience",
+    header: () => <ColumnHead id="experience" />,
+    cell: ({ row }) => row.original.experienceYears,
+  }),
+  columnHelper.accessor((applicant) => applicant.currentCtcLakh, {
+    id: "pay",
+    header: () => <ColumnHead id="pay" />,
+    cell: ({ row }) => `₹${row.original.currentCtcLakh}L`,
+  }),
+  columnHelper.accessor((applicant) => applicant.noticeDays, {
+    id: "notice",
+    header: () => <ColumnHead id="notice" />,
+    cell: ({ row }) =>
+      row.original.noticeDays === 0 ? (
+        <span className="text-muted-foreground">Now</span>
+      ) : (
+        `${row.original.noticeDays}d`
+      ),
+  }),
+  columnHelper.accessor((applicant) => applicant.appliedDaysAgo, {
+    id: "applied",
+    header: () => <ColumnHead id="applied" />,
+    cell: ({ row }) => (
+      <span className="text-muted-foreground">{row.original.appliedAgo}</span>
+    ),
+  }),
+  columnHelper.accessor((applicant) => applicant.match, {
+    id: "match",
+    header: () => <ColumnHead id="match" />,
+    cell: ({ row }) => `${row.original.match}%`,
+  }),
+  columnHelper.accessor((applicant) => applicant.education.school, {
+    id: "education",
+    header: () => <ColumnHead id="education" />,
+    cell: ({ row }) => (
+      <div className="flex flex-col gap-0.5">
+        <span>{row.original.education.school}</span>
+        <span className="text-xs text-muted-foreground">
+          {row.original.education.degree}
+        </span>
+      </div>
+    ),
+  }),
+  columnHelper.accessor((applicant) => applicant.status, {
+    id: "status",
+    header: () => <ColumnHead id="status" />,
+    cell: ({ row }) => <ApplicantStatusBadge status={row.original.status} />,
+  }),
+  columnHelper.display({
+    id: "actions",
+    header: () => <span className="sr-only">Actions</span>,
+    cell: ({ row }) => <ActionsCell applicant={row.original} />,
+  }),
+])
+
 function ApplicantTable({
   sections,
   everyone,
   requiredSkills,
   onDecide,
   onOpenProfile,
+  controls,
 }: {
-  sections: Section[]
+  sections: ListRun[]
   /** The whole tab, not the page of it on screen — what "select all" ticks. */
   everyone: Applicant[]
   requiredSkills: string[]
   onDecide: (id: string, status: ApplicantStatus) => void
   onOpenProfile: (id: string) => void
+  controls: TableControls
 }) {
-  const copy = useListCopy()
+  const { visibility } = controls
 
   // A click anywhere on a row opens the profile, except on the things in it
   // that do something else. Two traps: React bubbles events out of PORTALS
@@ -2061,144 +2794,172 @@ function ApplicantTable({
     onOpenProfile(id)
   }
 
-  return (
-    <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10">
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="w-10 pr-0">
-              <SelectAll people={everyone} compact />
-            </TableHead>
-            <TableHead>Candidate</TableHead>
-            <TableHead>Matched skills</TableHead>
-            <TableHead>Location</TableHead>
-            <TableHead className="text-right">Exp</TableHead>
-            <TableHead className="text-right">Current</TableHead>
-            <TableHead className="text-right">Notice</TableHead>
-            <TableHead>{copy.arrivedColumn}</TableHead>
-            {/* Pinned: the decision buttons are the point of the row, and on
-                a table this wide they were the first thing to scroll out of
-                sight. The cell carries the row's own background so the columns
-                pass underneath it rather than showing through. */}
-            <TableHead className="sticky right-0 border-l border-border bg-card">
-              <span className="sr-only">Actions</span>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
+  /**
+   * TANSTACK OWNS THE COLUMNS, NOT THE ROWS. The list arrives already filtered
+   * and sorted by `CandidateList`, because the cards, the split view, the tab
+   * counts, Athena and the New/Earlier runs all read that same order — a table
+   * that sorted its own copy would disagree with the tab it sits in. So the
+   * table is `manualSorting`, its sort state is read back off the URL only to
+   * draw the header arrows, and the rows are drawn by section below.
+   */
+  const parsed = parseSort(controls.sort)
+  const sorting = parsed ? [{ id: parsed.column, desc: parsed.desc }] : []
 
-        <TableBody>
-          {sections.map((section) => (
-            <React.Fragment key={section.key}>
-              {/* A run's heading is a row of its own spanning the table, so
+  const rows = React.useMemo(
+    () => sections.flatMap((section) => section.rows),
+    [sections]
+  )
+
+  const table = useTable({
+    features: tableFeaturesUsed,
+    columns: TABLE_COLUMN_DEFS,
+    data: rows,
+    getRowId: (applicant) => applicant.id,
+    manualSorting: true,
+    state: { sorting, columnVisibility: visibility },
+  })
+
+  const rowsById = new Map(table.getRowModel().rows.map((row) => [row.id, row]))
+  const span = table.getVisibleLeafColumns().length
+
+  /** Per-column cell classes: numbers right-aligned, the edges tight. */
+  const cellClass = (id: string, head = false) =>
+    cn(
+      id === "select" && "w-10 pr-0",
+      id === "matched" && !head && "min-w-40 whitespace-normal",
+      ["experience", "pay", "match"].includes(id) &&
+        !head &&
+        "text-right font-medium tabular-nums",
+      id === "notice" && !head && "text-right tabular-nums",
+      ["experience", "pay", "notice", "match"].includes(id) &&
+        head &&
+        "text-right",
+      // Pinned: the decision buttons are the point of the row, and on a table
+      // this wide they were the first thing to scroll out of sight. The cell
+      // carries the row's own background so the columns pass underneath.
+      id === "actions" && "sticky right-0 border-l border-border bg-card",
+      id === "actions" &&
+        !head &&
+        "cursor-default py-1 group-hover/row:bg-muted/50"
+    )
+
+  const context = {
+    controls,
+    everyone,
+    requiredSkills,
+    onDecide,
+    onOpenProfile,
+  }
+
+  return (
+    <ApplicantTableContext.Provider value={context}>
+      <div className="overflow-hidden rounded-2xl bg-card ring-1 ring-foreground/10">
+        <Table>
+          <TableHeader>
+            {table.getHeaderGroups().map((group) => (
+              <TableRow key={group.id} className="hover:bg-transparent">
+                {group.headers.map((head) => (
+                  <TableHead
+                    key={head.id}
+                    className={cellClass(head.column.id, true)}
+                  >
+                    {head.isPlaceholder ? null : (
+                      <table.FlexRender header={head} />
+                    )}
+                  </TableHead>
+                ))}
+              </TableRow>
+            ))}
+          </TableHeader>
+
+          <TableBody>
+            {sections.map((section) => (
+              <React.Fragment key={section.key}>
+                {/* A run's heading is a row of its own spanning the table, so
                   New and Earlier stay one table with one set of columns
                   rather than two tables that line up by coincidence. */}
-              {section.heading && (
-                <TableRow className="bg-muted/40 hover:bg-muted/40">
-                  <TableCell colSpan={9} className="py-2 whitespace-normal">
-                    {section.heading}
-                  </TableCell>
-                </TableRow>
-              )}
-              {section.rows.map((applicant) => (
-                <TableRow
-                  key={applicant.id}
-                  className="group/row cursor-pointer"
-                  onClick={(event) => onRowClick(event, applicant.id)}
-                >
-                  <TableCell data-row-actions className="w-10 pr-0">
-                    <PickBox applicant={applicant} />
-                  </TableCell>
-                  {/* Who they are and where they are now, as one cell: the role is
-                  how a recruiter tells two names apart, and as its own column it
-                  was the widest thing on the table.
+                {section.heading && (
+                  <TableRow className="bg-muted/40 hover:bg-muted/40">
+                    <TableCell
+                      colSpan={span}
+                      className="py-2 whitespace-normal"
+                    >
+                      {section.heading}
+                    </TableCell>
+                  </TableRow>
+                )}
+                {section.rows.map((applicant) => {
+                  const row = rowsById.get(applicant.id)
+                  if (!row) return null
+                  return (
+                    <TableRow
+                      key={applicant.id}
+                      className="group/row cursor-pointer"
+                      onClick={(event) => onRowClick(event, applicant.id)}
+                    >
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell
+                          key={cell.id}
+                          data-row-actions={
+                            cell.column.id === "select" ||
+                            cell.column.id === "actions"
+                              ? true
+                              : undefined
+                          }
+                          className={cellClass(cell.column.id)}
+                        >
+                          <table.FlexRender cell={cell} />
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  )
+                })}
+              </React.Fragment>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </ApplicantTableContext.Provider>
+  )
+}
 
-                  The photo is here as on the cards and the split list, so a
-                  face is recognisable whichever view it was first seen in.
+/** A header filter's options, one of which is always picked ("Any …"). */
+function HeaderRadios({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: string
+  options: { value: string; label: string }[]
+  onChange: (value: string) => void
+}) {
+  const name = React.useId()
 
-                  New is the avatar's dot, not a badge — the inbox convention,
-                  and on a table where the first rows are all new a column of
-                  filled pills was the loudest thing on it. The other statuses
-                  keep their badges, because those are decisions and a dot
-                  cannot say which one. */}
-                  <TableCell>
-                    <div className="flex items-center gap-3">
-                      <ApplicantAvatar
-                        name={applicant.name}
-                        photo={applicant.photo}
-                        fresh={isNew(applicant)}
-                        className="size-9"
-                      />
-                      <div className="flex flex-col gap-0.5">
-                        <div className="flex items-center gap-2">
-                          {/* The row's click is mouse-only, so the name is the
-                              same action as a real button — the keyboard and
-                              screen-reader way in. */}
-                          <button
-                            type="button"
-                            onClick={() => onOpenProfile(applicant.id)}
-                            className="rounded-sm text-left font-medium outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
-                          >
-                            {applicant.name}
-                          </button>
-                          {isNew(applicant) ? (
-                            <span className="sr-only">New</span>
-                          ) : (
-                            <ApplicantStatusBadge status={applicant.status} />
-                          )}
-                        </div>
-                        <span className="text-xs text-muted-foreground">
-                          {applicant.title} at {applicant.company}
-                        </span>
-                      </div>
-                    </div>
-                  </TableCell>
-                  {/* Only the matches, unlike the card's skills bucket: a row
-                      has no room for the skills nobody asked for, and the
-                      column is here to answer "do they have what the job
-                      needs". Wraps inside a capped width so one long list
-                      cannot push the numbers off the side. */}
-                  <TableCell className="min-w-40 whitespace-normal">
-                    <MatchedSkills
-                      skills={applicant.skills.filter((skill) =>
-                        requiredSkills.includes(skill)
-                      )}
-                    />
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {applicant.location}
-                  </TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">
-                    {applicant.experienceYears}
-                  </TableCell>
-                  <TableCell className="text-right font-medium tabular-nums">
-                    ₹{applicant.currentCtcLakh}L
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">
-                    {applicant.noticeDays === 0 ? (
-                      <span className="text-muted-foreground">Now</span>
-                    ) : (
-                      `${applicant.noticeDays}d`
-                    )}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground">
-                    {applicant.appliedAgo}
-                  </TableCell>
-                  <TableCell
-                    data-row-actions
-                    className="sticky right-0 cursor-default border-l border-border bg-card py-1 group-hover/row:bg-muted/50"
-                  >
-                    <RowActions
-                      applicant={applicant}
-                      onDecide={onDecide}
-                      className="justify-end"
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </React.Fragment>
-          ))}
-        </TableBody>
-      </Table>
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-xs font-medium text-muted-foreground">
+        Filter by {label.toLowerCase()}
+      </span>
+      <RadioGroup
+        aria-label={label}
+        className="max-h-56 gap-2 overflow-y-auto p-px"
+        value={value}
+        onValueChange={(next) => onChange(String(next))}
+      >
+        {options.map((option) => {
+          const id = `${name}-${option.value || "any"}`
+          return (
+            <div key={id} className="flex items-center gap-2">
+              <RadioGroupItem id={id} value={option.value} />
+              <Label htmlFor={id} className="text-sm font-normal">
+                {option.label}
+              </Label>
+            </div>
+          )
+        })}
+      </RadioGroup>
     </div>
   )
 }
@@ -2406,6 +3167,7 @@ function FilterPanel({
   filters,
   sort,
   locations,
+  preferredLocations,
   matched,
   total,
   onChange,
@@ -2417,6 +3179,8 @@ function FilterPanel({
   sort: string
   /** Drawn from the people actually here, so no option can return nothing. */
   locations: string[]
+  /** Everywhere they would go, "Anywhere" excluded — see `CandidateListBody`. */
+  preferredLocations: string[]
   matched: number
   total: number
   onChange: (updates: Partial<Filters>) => void
@@ -2436,7 +3200,8 @@ function FilterPanel({
     Boolean(filters.q) ||
     Boolean(filters.exp) ||
     Boolean(filters.notice) ||
-    Boolean(filters.location)
+    filters.location.length > 0 ||
+    filters.preferred.length > 0
 
   return (
     <aside
@@ -2462,7 +3227,7 @@ function FilterPanel({
         name="sort"
         label="Sort by"
         value={sort}
-        options={SORTS}
+        options={sortOptions(sort)}
         onChange={onSort}
       />
 
@@ -2486,15 +3251,23 @@ function FilterPanel({
         />
       </PanelField>
 
-      <PanelField label="Location">
-        <FilterSelect
-          label="Location"
-          value={filters.location}
-          options={locations.map((location) => ({
-            value: location,
-            label: location,
-          }))}
+      <PanelField label="Current location">
+        <LocationPicker
+          label="Current location"
+          placeholder="Search locations"
+          options={locations}
+          chosen={filters.location}
           onChange={(location) => onChange({ location })}
+        />
+      </PanelField>
+
+      <PanelField label="Preferred location">
+        <LocationPicker
+          label="Preferred location"
+          placeholder="Search locations"
+          options={preferredLocations}
+          chosen={filters.preferred}
+          onChange={(preferred) => onChange({ preferred })}
         />
       </PanelField>
 
@@ -2843,6 +3616,7 @@ function IconAction({
  * reload, which a `useState` selection would not.
  */
 function SplitView({
+  top,
   applicants,
   sections,
   requiredSkills,
@@ -2853,9 +3627,11 @@ function SplitView({
   onOpenProfile,
   onDecide,
 }: {
+  /** Height of the sticky tab block, which is all that is above this. */
+  top: number
   applicants: Applicant[]
   /** The same people, under their run headings — see `ApplicantList`. */
-  sections: Section[]
+  sections: ListRun[]
   requiredSkills: string[]
   selectedId: string | null
   onSelect: (id: string) => void
@@ -2870,14 +3646,49 @@ function SplitView({
     applicants.find((applicant) => applicant.id === selectedId) ?? applicants[0]
 
   return (
-    <div className="flex flex-col gap-4 @3xl/main:h-[calc(100svh-var(--header-height)---spacing(24))] @3xl/main:flex-row">
+    // `-mt-4`: the list column below is flush against the tab toolbar, the way
+    // the cards view's filter rail is, so this block starts where the toolbar
+    // ends rather than a gap below it. The CV pane puts the gap back for
+    // itself with `pt-4`.
+    //
+    // THE HEIGHT IS MEASURED, NOT GUESSED, AND IT REACHES THE BOTTOM EDGE. It
+    // used to be `100svh` minus the header and a hand-counted constant, which
+    // was wrong by however much the tab block's own height differed from the
+    // guess — and that block wraps, so its height is data. `top` is its
+    // measured height (the same number the filter rail sticks below), and the
+    // block sits directly under the header, so the two together are everything
+    // above this: the height is the rest of the screen.
+    //
+    // `SPLIT_CHROME` is then cancelled as a NEGATIVE BOTTOM MARGIN rather than
+    // taken off the height. It is the page's own padding, and this view wants
+    // the edge — subtracting it instead left the columns stopping 44px short
+    // with a band of mist under them.
+    <div
+      style={
+        {
+          "--split-top": `calc(var(--header-height) + ${top}px)`,
+          "--split-chrome": `${SPLIT_CHROME}px`,
+        } as React.CSSProperties
+      }
+      className="flex flex-col gap-4 @3xl/main:-mt-4 @3xl/main:mb-[calc(var(--split-chrome)*-1)] @3xl/main:h-[calc(100svh-var(--split-top))] @3xl/main:flex-row"
+    >
       {/* Each column scrolls on its own, which is the whole point of the
           layout — reading a career should not move the list you are working
           through. Below the breakpoint they stack and the page scrolls
-          normally, because two scroll areas on a phone is a trap. */}
+          normally, because two scroll areas on a phone is a trap.
+
+          THE LIST IS THE FILTER RAIL'S COLUMN, not a floating card. Both are
+          "the column beside the work", so at `@3xl` this drops the rounding,
+          the ring and the card fill, runs flush against the nav (the negative
+          margin cancels the page gutter) and divides with a `border-r` — and
+          its run headings pin themselves the way the rail's heading does. A
+          rounded card here and a flush column one view away was the same
+          furniture in two shapes. Below the breakpoint the columns stack and
+          it goes back to being a card, because nothing is beside it to be a
+          column against. */}
       <div
         role="list"
-        className="flex shrink-0 flex-col gap-1 overflow-y-auto rounded-2xl bg-card p-1.5 ring-1 ring-foreground/10 @3xl/main:w-80"
+        className="relative flex shrink-0 flex-col gap-1 overflow-y-auto rounded-2xl bg-card p-1.5 ring-1 ring-foreground/10 @3xl/main:-ml-4 @3xl/main:w-80 @3xl/main:gap-0 @3xl/main:rounded-none @3xl/main:border-r @3xl/main:bg-background @3xl/main:p-0 @3xl/main:ring-0 lg:@3xl/main:-ml-6"
       >
         {sections.map((section) => (
           <React.Fragment key={section.key}>
@@ -2899,7 +3710,7 @@ function SplitView({
           this pane edge to edge, its outline lands in the overflow and
           `overflow-y-auto` (which clips both axes, not just the one named)
           cuts all four sides off. One pixel gives the ring somewhere to sit. */}
-      <div className="min-w-0 flex-1 overflow-y-auto p-px">
+      <div className="relative min-w-0 flex-1 overflow-y-auto p-px @3xl/main:pt-4">
         {selected ? (
           <div className="flex flex-col gap-5 rounded-2xl bg-card p-5 ring-1 ring-foreground/10">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2997,7 +3808,7 @@ function SplitRow({
       onClick={onSelect}
       aria-current={selected ? "true" : undefined}
       className={cn(
-        "group/split flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors",
+        "group/split flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors @3xl/main:rounded-none",
         "focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
         selected ? "bg-muted" : "hover:bg-muted/60"
       )}
@@ -3077,6 +3888,7 @@ function FilterRail({
   filters,
   sort,
   locations,
+  preferredLocations,
   people,
   top,
   onChange,
@@ -3089,32 +3901,40 @@ function FilterRail({
 }) {
   const { searchLabel } = useListCopy()
   const [open, setOpen] = React.useState(
-    () => new Set(["sort", "exp", "notice", "location"])
+    () => new Set(["sort", "exp", "notice", "location", "preferred"])
   )
 
   const count =
     (filters.q ? 1 : 0) +
     (filters.exp ? 1 : 0) +
     (filters.notice ? 1 : 0) +
-    (filters.location ? 1 : 0)
+    filters.location.length +
+    filters.preferred.length
 
   const leaves = (updates: Partial<Filters>) =>
     people.filter((person) =>
       matchesFilters(person, { ...filters, ...updates })
     ).length
 
+  /**
+   * A section is radios by default. `render` replaces them where the filter is
+   * not one-of-a-list — the two location pickers — and `on` is how many values
+   * it holds, for the badge on the heading, which radios answer with 1.
+   */
   const sections: {
     key: string
     title: string
-    value: string
-    options: { value: string; label: string; count?: number }[]
-    onSelect: (value: string) => void
+    value?: string
+    options?: { value: string; label: string; count?: number }[]
+    onSelect?: (value: string) => void
+    render?: React.ReactNode
+    on?: number
   }[] = [
     {
       key: "sort",
       title: "Sort by",
       value: sort,
-      options: SORTS.map(({ value, label }) => ({ value, label })),
+      options: sortOptions(sort),
       onSelect: onSort,
     },
     {
@@ -3151,21 +3971,41 @@ function FilterRail({
     },
     {
       key: "location",
-      title: "Location",
-      value: filters.location,
-      options: [
-        {
-          value: "",
-          label: "Any location",
-          count: leaves({ location: "" }),
-        },
-        ...locations.map((location) => ({
-          value: location,
-          label: location,
-          count: leaves({ location }),
-        })),
-      ],
-      onSelect: (location) => onChange({ location }),
+      title: "Current location",
+      on: filters.location.length,
+      render: (
+        <LocationPicker
+          label="Current location"
+          placeholder="Search locations"
+          options={locations}
+          chosen={filters.location}
+          onChange={(location) => onChange({ location })}
+          // What the list would hold with this city added, not instead of the
+          // ones already picked — a second city widens the list.
+          countFor={(city) => leaves({ location: [...filters.location, city] })}
+        />
+      ),
+    },
+    // WHERE THEY WOULD GO, not where they are. On a posting in one city this
+    // is the question that finds the people worth a conversation who are not
+    // there yet, and the count beside each city says how many that is before
+    // you spend the click.
+    {
+      key: "preferred",
+      title: "Preferred location",
+      on: filters.preferred.length,
+      render: (
+        <LocationPicker
+          label="Preferred location"
+          placeholder="Search locations"
+          options={preferredLocations}
+          chosen={filters.preferred}
+          onChange={(preferred) => onChange({ preferred })}
+          countFor={(city) =>
+            leaves({ preferred: [...filters.preferred, city] })
+          }
+        />
+      ),
     },
   ]
 
@@ -3212,7 +4052,8 @@ function FilterRail({
         {sections.map((section) => {
           const isOpen = open.has(section.key)
           const Chevron = isOpen ? ChevronDownIcon : ChevronRightIcon
-          const narrows = section.key !== "sort" && Boolean(section.value)
+          const on =
+            section.on ?? (section.key !== "sort" && section.value ? 1 : 0)
 
           return (
             <div key={section.key} className="border-t border-border py-3">
@@ -3231,9 +4072,9 @@ function FilterRail({
               >
                 <span className="flex items-center gap-2">
                   {section.title}
-                  {narrows && (
+                  {on > 0 && (
                     <Badge variant="secondary" className="px-1.5">
-                      1
+                      {on}
                     </Badge>
                   )}
                 </span>
@@ -3243,12 +4084,16 @@ function FilterRail({
                 />
               </button>
 
-              {isOpen && (
+              {isOpen && section.render && (
+                <div className="mt-2.5">{section.render}</div>
+              )}
+
+              {isOpen && section.options && (
                 <RadioGroup
                   aria-label={section.title}
                   className="mt-2.5 gap-2.5"
                   value={section.value}
-                  onValueChange={(next) => section.onSelect(String(next))}
+                  onValueChange={(next) => section.onSelect?.(String(next))}
                 >
                   {section.options.map((option) => {
                     const id = `rail-${section.key}-${option.value || "any"}`
@@ -3318,11 +4163,23 @@ function AppliedFilters({
         filters.notice,
       remove: () => onChange({ notice: "" }),
     },
-    filters.location && {
-      key: "location",
-      label: filters.location,
-      remove: () => onChange({ location: "" }),
-    },
+    // ONE CHIP PER CITY, not one per filter: the filters hold lists now, and a
+    // single "3 locations" chip would make dropping one of them a trip back to
+    // the rail.
+    ...filters.location.map((city) => ({
+      key: `location:${city}`,
+      label: city,
+      remove: () =>
+        onChange({ location: filters.location.filter((c) => c !== city) }),
+    })),
+    ...filters.preferred.map((city) => ({
+      key: `preferred:${city}`,
+      // Said with its sense, because "Pune" alone would read as the current
+      // city chip that may be sitting right beside it.
+      label: `Open to ${city}`,
+      remove: () =>
+        onChange({ preferred: filters.preferred.filter((c) => c !== city) }),
+    })),
   ].filter(Boolean) as { key: string; label: string; remove: () => void }[]
 
   if (chips.length === 0) return null
@@ -3368,6 +4225,7 @@ function FilterBar(
     filters,
     sort,
     locations,
+    preferredLocations,
     matched,
     total,
     onChange,
@@ -3378,11 +4236,68 @@ function FilterBar(
   const { searchLabel, filterTitle } = useListCopy()
   const [drawerOpen, setDrawerOpen] = React.useState(false)
 
+  /**
+   * THE BAR IS A DRAFT, APPLIED ON A BUTTON. Picking a band no longer moves
+   * the list under you: the pills and the drawer write here, and only Apply
+   * puts it in the URL. Two filters that belong together — "12+ years, in
+   * Pune" — can be set as one thought and land as one change, instead of the
+   * list shuffling and the counts moving twice on the way to a question that
+   * was never asked.
+   *
+   * SORT IS NOT IN IT. It orders the list and removes nobody, so there is
+   * nothing to weigh before committing to it; holding it back behind Apply
+   * would be a button in front of a control that is already reversible by
+   * picking again.
+   *
+   * It FOLLOWS the URL when the URL changes from somewhere else — a chip
+   * dropped from the applied bar, a table header, the rail at a wider size, a
+   * pasted link. Derived during render rather than in an effect, the way the
+   * database's search box follows its query.
+   */
+  const [draft, setDraft] = React.useState<Filters>(filters)
+  const [followed, setFollowed] = React.useState<Filters>(filters)
+  if (!sameFilters(followed, filters)) {
+    setFollowed(filters)
+    setDraft(filters)
+  }
+
+  const edit = (updates: Partial<Filters>) =>
+    setDraft((current) => ({ ...current, ...updates }))
+
+  const dirty = !sameFilters(draft, filters)
   const active =
-    Boolean(filters.q) ||
-    Boolean(filters.exp) ||
-    Boolean(filters.notice) ||
-    Boolean(filters.location)
+    Boolean(draft.q) ||
+    Boolean(draft.exp) ||
+    Boolean(draft.notice) ||
+    draft.location.length > 0 ||
+    draft.preferred.length > 0
+
+  const apply = () => {
+    onChange(draft)
+    setDrawerOpen(false)
+  }
+  const clear = () => {
+    setDraft(EMPTY_FILTERS)
+    onClear()
+    setDrawerOpen(false)
+  }
+
+  /** Apply and Clear, in the bar and again in the drawer's footer. */
+  const actions = (
+    <>
+      <Button size="sm" disabled={!dirty} onClick={apply}>
+        Apply
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={!active && !dirty}
+        onClick={clear}
+      >
+        Clear
+      </Button>
+    </>
+  )
 
   /**
    * Each pill carries its own options, so the same array drives the label it
@@ -3399,42 +4314,68 @@ function FilterBar(
       key: "sort",
       title: "Sort by",
       value: sort,
-      options: SORTS.map(({ value, label }) => ({ value, label })),
+      options: sortOptions(sort),
       onSelect: onSort,
       narrows: false,
     },
     {
       key: "exp",
       title: "Experience",
-      value: filters.exp,
+      value: draft.exp,
       options: [
         { value: "", label: "Any experience" },
         ...EXPERIENCE_BANDS.map(({ value, label }) => ({ value, label })),
       ],
-      onSelect: (exp: string) => onChange({ exp }),
+      onSelect: (exp: string) => edit({ exp }),
       narrows: true,
     },
     {
       key: "notice",
       title: "Notice period",
-      value: filters.notice,
+      value: draft.notice,
       options: [
         { value: "", label: "Any notice period" },
         ...NOTICE_BANDS.map(({ value, label }) => ({ value, label })),
       ],
-      onSelect: (notice: string) => onChange({ notice }),
+      onSelect: (notice: string) => edit({ notice }),
       narrows: true,
     },
+  ]
+
+  /**
+   * The two location pills. They are not in `pills` because they are not one
+   * of a list any more — each opens a picker, and its label has to say how
+   * many cities are in it rather than name the one.
+   */
+  const places: {
+    key: string
+    title: string
+    empty: string
+    one: (city: string) => string
+    many: (count: number) => string
+    options: string[]
+    chosen: string[]
+    onChange: (next: string[]) => void
+  }[] = [
     {
       key: "location",
-      title: "Location",
-      value: filters.location,
-      options: [
-        { value: "", label: "Any location" },
-        ...locations.map((location) => ({ value: location, label: location })),
-      ],
-      onSelect: (location: string) => onChange({ location }),
-      narrows: true,
+      title: "Current location",
+      empty: "Any current location",
+      one: (city) => city,
+      many: (count) => `${count} current locations`,
+      options: locations,
+      chosen: draft.location,
+      onChange: (location) => edit({ location }),
+    },
+    {
+      key: "preferred",
+      title: "Preferred location",
+      empty: "Any preferred location",
+      one: (city) => `Open to ${city}`,
+      many: (count) => `Open to ${count} locations`,
+      options: preferredLocations,
+      chosen: draft.preferred,
+      onChange: (preferred) => edit({ preferred }),
     },
   ]
 
@@ -3451,7 +4392,7 @@ function FilterBar(
           <PillTrigger
             icon
             label={`${searchLabel} and filter`}
-            marked={Boolean(filters.q)}
+            marked={Boolean(draft.q)}
             onClick={() => setDrawerOpen(true)}
           />
         ) : (
@@ -3461,15 +4402,20 @@ function FilterBar(
                 <PillTrigger
                   icon
                   label={searchLabel}
-                  marked={Boolean(filters.q)}
+                  marked={Boolean(draft.q)}
                 />
               }
             />
             <PopoverContent align="start" className="w-72 p-2">
+              {/* Enter applies, so the common case — type a name, press
+                  Return — costs no trip to the button. */}
               <Input
                 autoFocus
-                value={filters.q}
-                onChange={(event) => onChange({ q: event.target.value })}
+                value={draft.q}
+                onChange={(event) => edit({ q: event.target.value })}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && dirty) apply()
+                }}
                 placeholder="Search name, role or skill"
                 aria-label={searchLabel}
               />
@@ -3495,22 +4441,6 @@ function FilterBar(
                 label={current.label}
                 marked={marked}
                 onClick={() => setDrawerOpen(true)}
-              />
-            )
-          }
-
-          // LOCATION IS THE ONE THAT CAN GROW. Every other pill picks from a
-          // fixed set of bands written in `applicants.ts`; this one is built
-          // from the cities the applicants actually live in, so its length is
-          // data rather than a decision. That is what a search box is for, and
-          // why exactly one of the five has one.
-          if (pill.key === "location") {
-            return (
-              <LocationFilter
-                key={pill.key}
-                pill={pill}
-                current={current}
-                marked={marked}
               />
             )
           }
@@ -3552,34 +4482,86 @@ function FilterBar(
           )
         })}
 
-        {active && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="tabular-nums">
-              {matched} of {total} match
-            </span>
-            <Button
-              variant="link"
-              size="sm"
-              className="h-auto px-0 text-xs"
-              onClick={onClear}
-            >
-              Clear
-            </Button>
-          </div>
+        {/* THE PLACES ARE PICKERS, NOT MENUS. Every other pill picks one of a
+            fixed set of bands written in `applicants.ts`; these are built from
+            the cities the applicants actually live in, so the list is data,
+            and each holds several. On a pointer the pill opens the picker in
+            a popover; on a phone it opens the drawer with everything else,
+            because five popovers have nowhere to anchor at that width. */}
+        {places.map((place) => {
+          const label =
+            place.chosen.length === 0
+              ? place.empty
+              : place.chosen.length === 1
+                ? place.one(place.chosen[0])
+                : place.many(place.chosen.length)
+
+          if (isMobile) {
+            return (
+              <PillTrigger
+                key={place.key}
+                label={label}
+                marked={place.chosen.length > 0}
+                onClick={() => setDrawerOpen(true)}
+              />
+            )
+          }
+
+          return (
+            <Popover key={place.key}>
+              <PopoverTrigger
+                render={
+                  <PillTrigger label={label} marked={place.chosen.length > 0} />
+                }
+              />
+              <PopoverContent align="start" className="w-64 gap-0 p-3">
+                <LocationPicker
+                  label={place.title}
+                  placeholder="Search locations"
+                  options={place.options}
+                  chosen={place.chosen}
+                  onChange={place.onChange}
+                />
+              </PopoverContent>
+            </Popover>
+          )
+        })}
+
+        {/* THE COUNT IS OF THE APPLIED LIST, so it steps aside while there are
+            unapplied changes rather than sitting beside pills it does not
+            describe. Apply is what makes it true again. */}
+        {active && !dirty && (
+          <span className="text-xs text-muted-foreground tabular-nums">
+            {matched} of {total} match
+          </span>
         )}
+
+        {/* Right of the row, so the pills read left to right as the filter and
+            the buttons are what you do about it. */}
+        <div className="ml-auto flex items-center gap-2">{actions}</div>
       </div>
 
       <DrawerContent>
         <DrawerHeader>
           <DrawerTitle>{filterTitle}</DrawerTitle>
           <DrawerDescription>
-            {matched} of {total} match
+            {dirty ? "Not applied yet" : `${matched} of ${total} match`}
           </DrawerDescription>
         </DrawerHeader>
 
+        {/* The same draft the pills write, so opening the drawer after setting
+            a pill shows what is pending rather than what is applied. */}
         <div className="overflow-y-auto px-4 pb-4">
-          <FilterPanel {...props} layout="drawer" />
+          <FilterPanel
+            {...props}
+            filters={draft}
+            onChange={edit}
+            onClear={clear}
+            layout="drawer"
+          />
         </div>
+
+        <DrawerFooter className="flex-row justify-end">{actions}</DrawerFooter>
       </DrawerContent>
     </Drawer>
   )
@@ -3596,56 +4578,85 @@ type FilterPill = {
 }
 
 /**
- * Location, as a searchable list.
+ * CITIES ARE PICKED, NOT CHOSEN ONE AT A TIME: a box you type into, the list
+ * narrowing as you do, and a chip for each city you take — shadcn's Combobox
+ * in its `multiple` shape (`ComboboxChips` + `ComboboxChipsInput`), which is
+ * the control this already wanted to be.
  *
- * Its own open state, because picking has to close it — a menu closes itself,
- * a popover does not, and a filter that stays open after you have chosen is a
- * panel you then have to dismiss.
+ * It replaced radios. A role in one city is usually open to the ones around
+ * it, and with one value per filter seeing who was in reach of three cities
+ * meant running the list three times. The chips are also the only "clear" this
+ * needs: removing the last one turns the filter off, so there is no "Any city"
+ * option sitting at the top of a list pretending to be a city.
  *
- * `value` on the item is the LABEL, since that is what cmdk matches typing
- * against; the id the filter actually stores goes through `onSelect`'s closure
- * instead. For locations the two are the same string, but writing it this way
- * means the next filter that gets a search box does not have to have matching
- * ids and labels to work.
+ * THE COMPONENT BRINGS WHAT A HAND-ROLLED ONE DID NOT: Backspace deletes the
+ * chip behind the caret, the chips are a real focusable list rather than
+ * buttons, and the popup anchors, flips and sizes itself against the input. A
+ * first pass built this out of `Command` and had none of it.
+ *
+ * `autoHighlight` is not decoration. Without it nothing is highlighted until
+ * you press an arrow key, so typing "pun" and pressing Return did nothing at
+ * all — and typing then Return is how anybody uses a box like this.
+ *
+ * `countFor` is the rail's "how many people this would leave" — the count for
+ * the list AS IT WOULD BE with this city added, since a second city widens
+ * rather than narrows. Where there is no room for it (a popover, a table
+ * header) it is left out rather than shown wrong.
  */
-function LocationFilter({
-  pill,
-  current,
-  marked,
+function LocationPicker({
+  label,
+  placeholder,
+  options,
+  chosen,
+  onChange,
+  countFor,
 }: {
-  pill: FilterPill
-  current: { value: string; label: string }
-  marked: boolean
+  label: string
+  placeholder: string
+  options: string[]
+  chosen: string[]
+  onChange: (next: string[]) => void
+  countFor?: (city: string) => number
 }) {
-  const [open, setOpen] = React.useState(false)
-
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={<PillTrigger label={current.label} marked={marked} />}
-      />
-      <PopoverContent align="start" className="w-56 gap-0 p-0">
-        <Command>
-          <CommandInput placeholder="Search locations" />
-          <CommandList>
-            <CommandEmpty>No matching location.</CommandEmpty>
-            {pill.options.map((option) => (
-              <CommandItem
-                key={option.value || "any"}
-                value={option.label}
-                data-checked={option.value === pill.value}
-                onSelect={() => {
-                  pill.onSelect(option.value)
-                  setOpen(false)
-                }}
-              >
-                {option.label}
-              </CommandItem>
-            ))}
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+    <Combobox
+      items={options}
+      multiple
+      autoHighlight
+      value={chosen}
+      onValueChange={onChange}
+    >
+      <ComboboxChips className="w-full" aria-label={label}>
+        <ComboboxValue>
+          {chosen.map((city) => (
+            <ComboboxChip key={city} aria-label={city}>
+              {city}
+            </ComboboxChip>
+          ))}
+        </ComboboxValue>
+        {/* The placeholder goes once there are chips: it is the label for an
+            empty box, and beside three cities it reads as a fourth. */}
+        <ComboboxChipsInput
+          placeholder={chosen.length > 0 ? "" : placeholder}
+        />
+      </ComboboxChips>
+
+      <ComboboxContent>
+        <ComboboxEmpty>No matching location.</ComboboxEmpty>
+        <ComboboxList>
+          {(city: string) => (
+            <ComboboxItem key={city} value={city}>
+              <span className="min-w-0 flex-1 truncate">{city}</span>
+              {countFor && (
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {countFor(city)}
+                </span>
+              )}
+            </ComboboxItem>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
   )
 }
 

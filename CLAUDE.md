@@ -199,9 +199,83 @@ through a callback ref, which is what `top` and the column's height come from. A
 experience, notice, location — not sort) and Clear all. It shows only beside the rail, and only when
 something is on.
 
+**Location is two filters and one card row: where they are, and where they would go.**
+`preferredLocations` is on `Applicant` (their own city first), not dealt by `toProfile` as it used
+to be — the cards and the filters read it, so it is a fact about the person rather than something
+only a database search knows. The rail, the pills, the drawer and the table's Location header all
+carry **Current location** (`?location=`) and **Preferred location** (`?preferred=`), and the card's
+Location row reads "Noida · open to Pune, Anywhere", the current city repeated as the emphasis
+because the two only mean anything together. **"Anywhere" matches every city a recruiter can pick**
+and is kept out of the options: as a value it would mean "only people who said Anywhere", which is
+not a question anybody asks.
+
+**Both are pick-many, through one `LocationPicker`** — shadcn's **Combobox in its `multiple`
+shape** (`ComboboxChips` + `ComboboxValue` + `ComboboxChipsInput`): a box you type into with the
+list narrowing as you do, and a chip inside the box per city taken. They are the only filters here
+that are not one-of-a-list, so they are the only two that do not go through the radios: a role in
+one city is usually open to the ones around it, and with a single value seeing who was in reach of
+three cities meant running the list three times. Repeated params
+(`?location=Pune&location=Noida`), OR within a filter and AND between them.
+
+**`autoHighlight` is not decoration.** Without it nothing is highlighted until an arrow key is
+pressed, so typing "pun" and hitting Return did nothing — and typing then Return is how anybody
+uses a box like this. **The chips are the only "clear" it needs**, so there is no "Any city" option
+sitting in the list pretending to be a city. In the rail each option carries what the list would
+hold **with that city added**, since a second city widens rather than narrows; in a popover or a
+table header the count is left out rather than shown wrong. The applied bar draws one chip per
+city, not one per filter. `filters.location` and `.preferred` are arrays, so anything keying a memo
+on them keys on `.join()` — `getAll` returns a fresh array every render.
+
+A first pass built this out of `Command` and hand-rolled pill buttons. It looked the same and had
+none of the behaviour: no Backspace-removes-the-chip-behind-the-caret, no focusable chip list, no
+popup that anchors, flips and sizes itself against the input. **Adding `combobox` also re-ran the
+Vite optimizer**, which reported `Invalid hook call` and "more than one copy of React" on a tree
+where `npm ls react` said `deduped` — `rm -rf node_modules/.vite` and a restart, as above.
+
+**The split view fills the viewport exactly, to the bottom edge, and the page does not scroll behind
+it.** Its height is `100svh` less the header and the **measured** tab block (`top`, the same number
+the filter rail sticks below) — those two are everything above it, so the rest of the screen is
+what it gets. It used to be a hand-counted constant, which was wrong by however much the tab block's
+real height differed from the guess, and that block wraps. `SPLIT_CHROME` — the page's own `py-6`
+bottom and gutter — is then cancelled as a **negative bottom margin** rather than taken off the
+height: subtract it and the columns stop short with a band of mist under them.
+
+**Both split columns are `relative`, and that is load-bearing.** `sr-only` is `position: absolute`,
+and an absolutely-positioned element is only clipped by an `overflow` ancestor that is its own
+containing block. With the columns unpositioned, the "New" label on every row resolved against
+`main` instead — so a hundred rows scrolled out of sight still staked out a hundred rows of
+document, and the page scrolled ~1800px past a screen that looked full. Any scroll container here
+whose rows carry an absolute child (a badge, an `sr-only`) needs `relative` for the same reason.
+
+**The split view's list is the rail's column too.** At `@3xl/main` it drops the rounding, the ring
+and the card fill, runs flush against the nav (a negative margin cancelling the page gutter),
+divides with a `border-r`, and pins each run heading the way the rail pins "Filters" — so selection
+reads as a full-bleed band rather than a rounded pill inside a card. A floating card in one view and
+a flush column one view away was the same furniture in two shapes. The split container takes
+`-mt-4` and four units off its height so the column starts where the tab toolbar ends; the CV pane
+puts that gap back for itself with `pt-4`. Below the breakpoint the columns stack and it goes back
+to being a card, because nothing is beside it to be a column against — a narrow band of widths
+(roughly 768–816px, since `CandidateList` has already collapsed the nav to its icon rail by then).
+
+**The pill row is a draft, applied on a button; the rail is not.** The pills and the drawer write
+local state in `FilterBar`, and only **Apply** puts it in the URL — so "12+ years, in Pune" lands as
+one change instead of the list shuffling and the counts moving twice on the way to a question nobody
+asked. **Clear** sits beside it; both are disabled until there is something to apply or clear, and
+the menus keep their "Any …" reset option as well. Enter in the search popover applies. Sort is
+deliberately **not** in the draft: it orders the list and removes nobody, so there is nothing to
+weigh before committing to it. The row's "N of M match" hides while changes are pending, because it
+counts the applied list and Apply is what makes it true again.
+
+The rail still applies as you pick, because it has the room to print the consequence beside each
+choice ("Pune 12") — the number is the preview a draft would otherwise be for. The two are never on
+screen together, and the draft **follows the URL** whenever it changes from somewhere else: a chip
+dropped from the applied bar, a table header, the rail at a wider size, a pasted link. That is
+derived during render rather than in an effect, the way the database's search box follows its query.
+If the rail should hold back too, that is a one-line change to where its `onChange` goes.
+
 **The database has two filter designs, picked on /settings** ("Database filters", via
 `useFilterVariant` in `lib/filter-variant.ts` — localStorage, no provider). **Juicebox** (the
-default, `components/juicebox-filters.tsx`): the query as a pill, a Filters dialog that is edited
+default, `components/juicebox-filters.tsx`): a Filters dialog that is edited
 as a draft with a live match count and applied on Save, ranked plain-English Criteria (`?crit=`)
 that decide what the cards highlight and the Best match order but remove nobody, and "Expand
 pool" chips whose `+N` is counted against the real pool (`expansions` in `lib/database-filters`).
@@ -240,6 +314,25 @@ CV/profile tab in the query string, so any state worth showing someone is in the
 `applicants.ts` generates its people from a seeded LCG so a row can be pointed at in a review, and
 their bucket sizes come from the job's own counts so the Jobs list and the detail page cannot
 disagree.
+
+**The table view is a TanStack Table v9 data table, and TanStack owns the columns, not the
+rows.** `CandidateList` still filters and sorts upstream (`matchesFilters`, `sortApplicants`),
+because the cards, split view, tab counts, Athena and the New/Earlier runs all read that order;
+the table is `manualSorting` and draws its rows by section. The column definitions are one
+module-level constant reading an `ApplicantTableContext` — built inside the component, every
+keystroke in a header filter rebuilt the columns and remounted the popover, losing focus.
+Header sorts write `?sort=<column>.<asc|desc>`, except where that is a named sort (`match`,
+`experience`, `notice`, `recent`), which keeps its name; **current pay is sortable from its header**,
+though still not offered as a pill. Header filters write the pills' own keys. Column visibility
+is `?cols=` (off-by-default columns shown) and `?hidecols=` (on-by-default columns hidden) — not
+`hide`, which Search Resume spends on "Hide viewed profiles" — with the column list in
+`lib/table-columns.ts`.
+
+**Search Resume has the table too** (`tableView` on `CandidateList`, cards or table, no split);
+My Lists does not yet. Its header filters are the refine panel's own sections, passed in as
+`tableFilters` and drawn by `SectionControl` from `database-filters.tsx`: Location is `cur`, Exp
+`xp`, Current `ctc`, Notice `np`. So a header, the refine panel and the Juicebox dialog are one
+filter in three places. The Candidate header keeps the list's `find` box.
 
 **The response manager is organised by decision, not by reading.** Statuses are `undecided`,
 `maybe`, `shortlisted`, `contacted`, `rejected` — there is no unread or seen, because the screen
@@ -321,7 +414,7 @@ The nav item was renamed rather than one page trying to be both.
 `AppShell` is the layout route: `SidebarProvider` → `AppSidebar variant="sidebar"` + `SidebarInset`
 + `AthenaPane` → `SiteHeader` + `<Outlet />`. Shell dimensions (`--sidebar-width`,
 `--header-height`, `--athena-width`) are set as inline CSS variables on `SidebarProvider` so the
-header, sidebar, copilot pane and message dock read the same numbers; the structure follows
+header, sidebar and copilot pane read the same numbers; the structure follows
 shadcn's `dashboard-01` block. Pages own their gutters (`px-4 lg:px-6`) — the shell only supplies
 vertical rhythm. The shell is flush, not `inset`: no margin or rounded card around the content,
 with the nav's right border and the header's bottom border dividing the three regions. Athena's
@@ -333,13 +426,30 @@ queue, ending in its own `border-b` on results and empty queues), and the candid
 `Header` the same way. The negative margins assume the header is the first thing on the page. `--canvas` is its own token rather
 than a new `--background`, because chips, active tabs and switches use `bg-background` to stand out.
 
+**A screen about one object puts its header in the top bar** — `PageHeader` in
+`components/page-header.tsx` portals into a slot in `SiteHeader`, and `titleForPath` steps aside
+while anything fills it. The route title names the *section*, so a posting read "Jobs" above a band
+naming the job: two rows to say where you are. The response manager and Search Resume's results do
+this, which is why they pass `CandidateList` **no `header`** (it is optional; without one no band
+draws, and a queue's sticky tab toolbar takes the `-mt-4 md:-mt-6` that joins it to the bar). It is
+a portal rather than a registered node because a `ReactNode` through context re-registers a new
+element identity every render, which loops; the claim count beside it is the one thing a portal
+cannot say — whether anybody filled the slot — and it is a count, not a boolean, because a route
+change mounts the next header in the same commit it unmounts the last.
+
+Fitting one row at `--header-height` costs the second and third lines: the title drops to the bar's
+`text-base` and truncates instead of clamping, the back button is a ghost circle rather than an
+outlined one, and the meta sits behind a separator that hides below `lg`. Two things moved rather
+than shrank — Search Resume's "Looking for" skills are now `LookingFor` above the cards, next to the
+green chips they explain, and Juicebox's query pill is gone entirely, because the bar's title and
+back button were the same control.
+
 **Athena is the third column.** `AthenaProvider` sits inside `SidebarProvider` because opening the
 copilot collapses the nav (and restores whatever it was doing on close), which means it needs
 `useSidebar`. The pane is a sibling of `SidebarInset`, not a child — it sits *beside* the page, not
 over it — and it is `sticky` + `h-svh` rather than a plain flex child, because the shell wrapper is
 `min-h-svh` and grows with the page, which otherwise puts the composer at the bottom of a long
-document instead of the bottom of the screen. Below `md` it covers the page and the message dock
-hides. The trigger is in `SiteHeader` and only opens; the pane carries its own close.
+document instead of the bottom of the screen. Below `md` it covers the page. The trigger is in `SiteHeader` and only opens; the pane carries its own close.
 
 **Athena answers what the page can compute, and nothing else.** A page calls `useAthenaContext`
 (in `athena-provider.tsx`) with a label, a detail and its **openers**. Each opener is a prompt plus
@@ -348,7 +458,7 @@ in `lib/athena.ts` from the same mock data and `DecisionsProvider` overlay the s
 strongest five" are Best match's top five, and shortlisting from the pane moves the tab count
 behind it. Free text gets `CANNOT_ANSWER`, never a plausible invention. Replies are **blocks**
 (`athena-blocks.tsx`): text, candidate rows with Shortlist/Maybe, a **proposal** (a batch decision
-that does nothing until Apply, and has Undo), link rows (to a route or to a dock thread), and a
+that does nothing until Apply, and has Undo), link rows (to a route or to a message thread), and a
 **draft**. The job page, the candidate page, Search Resume's results and the Dashboard register contexts so
 far. Every other page shows only the "Looking at" line.
 
@@ -374,19 +484,58 @@ runs `expansions` (under both filter designs, since they share URL keys), and ea
 the page's own `apply`, so +64 really lands 64 more people. "Save the top five" files people into a
 list and removes nobody from any list, like the bulk save.
 
-**Check that an answer can actually appear before designing it.** The mock pools never deal anybody
-all of a posting's four required skills; three of four is the ceiling. So "shortlist the full
-matches" could never produce its proposal, and the job page's batch question is "clear out people
-with none of the skills" instead. Ask the generators (`applicantsFor`, `requiredSkillsFor`) for the
-distribution first.
+**The card opens with Tags** — `tagsFor` in `lib/applicants.ts`, drawn above Experience because it
+is the summary of it: "Leads a team" / "Fast riser", the sector, "Top institute", "Long tenure" /
+"Moves often" are what a recruiter would come away with after reading the roles, the employer and
+the school, so putting them under would be a conclusion after its own evidence. Every one is
+**derived from facts already on the card**, never dealt, so a tag cannot disagree with the block
+below it and adding one costs a rule rather than a field on every generated person.
 
-**Athena writes messages; she never sends them.** The dock's state is `MessagesProvider`
+**The card shows three and counts the rest** (`TAGS_SHOWN` in `candidate-list.tsx`): `+2` is a
+handle rather than a full stop, so the rest are on hover in the order they would have been drawn.
+`tagsFor` therefore returns ALL of them — how many fit is the card's business — which makes the
+ordering in it the only thing deciding what gets seen. About one card in ten overflows.
+
+**A tag written as the common half of a fact is a word the eye learns to skip.** "Switched sector"
+was true of 111 people in 120, because the generator picks each earlier employer independently; the
+rule is written as **"One sector"** instead, which is uncommon and is the actual signal — deep in
+one domain. Check which half is rare before choosing the wording.
+
+**The sector tag and the database's Industry filter are one vocabulary.** `industry` is on
+`Applicant` (from `industryOf`, a company → industry map in `applicants.ts`) rather than dealt in
+`toProfile`, for the same reason `preferredLocations` is: the card shows it. `INDUSTRY_TAGS` maps
+the canonical name to the chip — "Banking / Financial Services / Broking" is built to be
+unambiguous in a filter list, and a card has room for "Fintech". Anything without a shorthand goes
+untagged rather than printing the long one. **The map lives in `applicants.ts`, not beside the rest
+of `COMPANY_FACTS`**, because `database-filters.ts` already imports values from `applicants.ts` and
+the other direction would be a real cycle; the clusters stay there, since only the refine panel
+asks for them. They are `secondary` chips, not the skills' `success` green — green means "one of the
+skills this posting asked for", and a tag is a fact about the person nobody asked for. Nothing here
+repeats the notice period or the location, which have rows of their own. In the columns card shape
+they are a band across the top rather than a sixth column, since a narrow column wraps every chip
+onto its own line.
+
+**Check that an answer can actually appear before designing it.** Tags cost two goes at this. "Moves
+often" was written as an average stint **under** two years, and the generator deals every stint as
+two, three or four — no card could ever have carried it. "Strong match" was `match >= 80`, and
+`match` is `fits * 25 + jitter * 25` where `fits` peaks at two of four required skills on a real
+posting, so the ceiling is 74%: also unreachable, and dropped for "Fast riser" (a leading title
+under eight years), which the data does produce.
+
+The same trap caught Athena: the mock pools never deal anybody all of a posting's four required
+skills, so "shortlist the full matches" could never produce its proposal, and the job page's batch
+question is "clear out people with none of the skills" instead. **Ask the generators
+(`applicantsFor`, `requiredSkillsFor`, `tagsFor`) for the distribution first** — count it across the
+whole pool, not the first page, because a rule that fires on one card in ten looks broken on twenty.
+
+**Athena writes messages; she never sends them.** Messages' state is `MessagesProvider`
 (`components/messages-provider.tsx`, mounted in `AppShell`), so Athena can read the live threads
 ("which threads are waiting" drops somebody the moment you reply) and fill drafts. A draft card puts
-text into each recipient's composer and opens the dock. The recruiter sends it from the thread, and
+text into each recipient's composer and goes to `/messages` — one recipient lands on that thread,
+several on the list. The recruiter sends it from the thread, and
 the list row says "Draft:" until they do. A thread started for an applicant carries `applicantId`,
 and its first send moves them to Contacted, as the candidate page's Message button does. The body may
-say `{first name}`, filled in per recipient, so one draft serves a shortlist. The dock's composer is
+say `{first name}`, filled in per recipient, so one draft serves a shortlist. The composer is
 a textarea because a draft is read before it is sent.
 
 **Questions also come from the list, not only the page.** Every card and table row in
@@ -396,7 +545,7 @@ bar carries the card's three decisions (Shortlist / Maybe / Not a fit, with one 
 batch, on results as well as queues), a ⋯ menu, and Athena. The ⋯ menu has Save to list, Message and
 Download CVs. **Save to list adds everyone to a list and removes nobody from any**, unlike the card's
 menu, which toggles. **Message writes drafts** into each thread with `firstMessageTo` and opens the
-dock, just like Athena's drafts. Athena offers "Ask Athena" for one person and "Compare in Athena"
+page, just like Athena's drafts. Athena offers "Ask Athena" for one person and "Compare in Athena"
 for two or three (`COMPARE_MAX`), and leaves the bar entirely for more. A decision or action clears
 the selection. A card's
 ⋯ menu has "Ask Athena" too. Both go through `ask()` on the Athena provider, which opens the pane and
@@ -407,7 +556,7 @@ highlights the leader on facts with an agreed direction (most skills, soonest st
 experience are shown but not ranked. The split view has no checkboxes, because its list already
 selects whose CV is open. Bare **A** toggles Athena, guarded like the theme's **D**. With Athena
 open, the selection and undo bars centre on the content column (`BAR_BESIDE_ATHENA`), because
-centred on the window they ran under the dock's launcher.
+centred on the window they ran under the copilot's own edge.
 
 **The nav has two borrowers.** `CandidateList` collapses it below 1400px, and Athena collapses it for
 her pane. Handing it back goes through `restoreNav` on the Athena provider, which defers while she
@@ -418,8 +567,49 @@ was asked (the page's label), and the "Moved to …" dividers are derived from t
 rather than stored. Walking through several pages without asking leaves one divider, and coming
 back leaves none. Old answers keep their live buttons. Switching brand swaps to that product's
 thread and switching back restores it, because the other product's candidates are not people this
-one has. **There is one copilot**: the Messages dock's
-sparkle button opens Athena, and the dock's old assistant thread with its canned replies is gone.
+one has. **There is one copilot**: the Messages page's
+sparkle button opens Athena, and its old assistant thread with its canned replies is gone.
+
+**Transient confirmations are toasts, mounted once** — `AppToaster` in
+`components/app-toaster.tsx`, inside `AppShell`. The response manager's undo is the one so far:
+`toast.add({ title, data, actionProps })`, six seconds, and `toast.close(id)` inside the handler
+reads as using `id` before it exists but cannot fire until `add` has returned. The manager is
+module-level, so `toast.add()` works from any component without a hook threaded through.
+
+**A toast carries faces, where the stock component puts a type icon.** `data.faces` is up to three
+`{ name, photo }`, drawn as an `AvatarGroup`: a decision takes the card off the screen, so by the
+time the toast arrives the only trace of the person is their name in a sentence, and a hundred rows
+all move to Shortlisted alike. Past three the count in the sentence does the work. The viewport is
+`sm:max-w-md` rather than the stock `max-w-sm` because the face takes the width the sentence was
+using, and a one-line message wrapping to two reads as a paragraph.
+
+It is **composed from the parts rather than using the shipped `Toaster`**, because where a toast
+sits is the app's problem and not the design system's. It keeps the stock bottom-right corner and
+changes one thing: it **moves aside for Athena** by `--athena-width`, the trick the message dock
+used before it became a page. It spent a while lifted to `bottom-24` to keep clear of the selection
+bar, which owns the very bottom and can be up at the same time; that bought a rare collision (they
+only meet under about 1300px of window, the bar being centred and this being right-aligned) at the
+cost of 96px of air under every toast. If it ever bites, lift it when something is ticked rather
+than lifting it always.
+
+**The viewport is NOT portalled, and that is load-bearing.** The shell's dimensions are inline CSS
+variables on `SidebarProvider`, so a viewport on `document.body` cannot see `--athena-width`: the
+shift resolved against nothing and threw the toast into the far left of the window. Rendered in
+place it inherits them, and `fixed` still positions against the viewport because nothing above it
+is transformed. Anything else that wants a shell dimension from inside a portal has the same
+problem.
+
+**MESSAGES IS A PAGE, NOT A DOCK IN THE CORNER.** It was a launcher and a 26rem floating panel
+pinned bottom-right until that corner stopped being free — Athena took the column beside it and the
+launcher had to dodge her by `--athena-width` — and until it was clear a conversation you are about
+to reply to wants the room a document gets. `/messages` is two columns above `@3xl/main` (threads
+beside the open one) and one below, where the thread's back arrow returns to the list; the open
+thread is **`?thread=`**, so a conversation is a link like everything else here. `openThread` on the
+provider navigates there and marks read, which is why the provider no longer holds an `open` or an
+`activeId` — there is nothing to open, only somewhere to go. `components/message-thread.tsx` holds
+`ThreadList` and `Thread` (it was `message-dock.tsx`); `photoOf` moved to `lib/messages.ts` because
+a file that exports components cannot also export a function under
+`react-refresh/only-export-components`.
 
 Nav lives in `src/lib/nav.ts`, not in the sidebar component: `SiteHeader` needs it for the page
 title, and `react-refresh/only-export-components` is on in `apps/web`. `NAV_ITEMS` renders through
@@ -493,7 +683,7 @@ this repo uses npm.)
 4. **`cn` is imported from `@workspace/ui/lib/utils`, not a bare `"cn"`.** shadcn 4.21 writes
    `import { cn } from "cn"` and installs an npm package by that name into `packages/ui`. It has
    done this on **every** add so far — `kbd`, `empty`, `item`, then `drawer`, `popover`, `command`,
-   `chart` — so treat it as certain rather than possible. It also hits **registry dependencies you
+   `chart`, `combobox`, `toast` — so treat it as certain rather than possible. It also hits **registry dependencies you
    did not ask for**: `command` pulled `dialog` and `input-group`, and all three arrived with it.
    Grep the whole directory, not just the file you added:
    `grep -rn 'from "cn"' packages/ui/src/components/*.tsx`, fix each, then

@@ -4,8 +4,9 @@ import { SidebarInset, SidebarProvider } from "@workspace/ui/components/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
 import { AthenaPane } from "@/components/athena-pane"
 import { AthenaProvider } from "@/components/athena-provider"
-import { MessageDock } from "@/components/message-dock"
+import { AppToaster } from "@/components/app-toaster"
 import { MessagesProvider } from "@/components/messages-provider"
+import { PageHeaderProvider } from "@/components/page-header"
 import { SiteHeader } from "@/components/site-header"
 import { titleForPath } from "@/lib/nav"
 
@@ -36,34 +37,36 @@ export function AppShell() {
         <MessagesProvider>
           <AppSidebar variant="sidebar" />
 
-          <SidebarInset className="bg-canvas">
-            <SiteHeader title={titleForPath(pathname)} />
+          {/* Around the header AND the outlet, because a page about one object
+              draws its own header into the bar — see `page-header.tsx`. It
+              renders no DOM, so the sidebar's sibling selectors are unmoved. */}
+          <PageHeaderProvider>
+            <SidebarInset className="bg-canvas">
+              <SiteHeader title={titleForPath(pathname)} />
 
-            {/* `@container/main` lets pages respond to the content column rather
-              than the viewport, which is what actually changes when the sidebar
-              collapses — and now also when Athena takes a column. Pages own
-              their own gutters via `px-4 lg:px-6`. */}
-            <div className="flex flex-1 flex-col">
-              <div className="@container/main flex flex-1 flex-col gap-2">
-                <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
-                  <Outlet />
+              {/* `@container/main` lets pages respond to the content column
+                rather than the viewport, which is what actually changes when
+                the sidebar collapses — and now also when Athena takes a
+                column. Pages own their own gutters via `px-4 lg:px-6`. */}
+              <div className="flex flex-1 flex-col">
+                <div className="@container/main flex flex-1 flex-col gap-2">
+                  <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
+                    <Outlet />
+                  </div>
                 </div>
               </div>
-            </div>
-          </SidebarInset>
+            </SidebarInset>
+          </PageHeaderProvider>
 
           {/* The third column, and a sibling of the content rather than a child
             of it: it sits BESIDE the page, not over it. Mounted here rather
             than per page so a half-typed question survives navigation. */}
           <AthenaPane />
 
-          {/* Outside SidebarInset because it is `fixed` to the viewport corner
-            and should not shift when the sidebar collapses. Inside
-            AthenaProvider because it does have to shift for Athena — the
-            copilot takes the corner the dock was sitting in. Mounted here
-            rather than per page so a half-written message survives
-            navigation. */}
-          <MessageDock />
+          {/* Mounted here rather than in `main.tsx` so it sits inside the
+              shell's providers. See `app-toaster.tsx` for why it is composed
+              rather than the shipped `Toaster`. */}
+          <AppToaster />
         </MessagesProvider>
       </AthenaProvider>
     </SidebarProvider>
