@@ -256,6 +256,7 @@
     "colors": "16:4",
     "typography-radius": "16:5",
     "cover": "0:1",
-    "getting-started": "16:2"
+    "getting-started": "16:2",
+    "icons": "167:1258"
   }
 }

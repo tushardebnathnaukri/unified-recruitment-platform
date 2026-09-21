@@ -770,10 +770,33 @@ exists on `:focus` — a highlighted menu row, a select item — it is shown on 
 is visible at all.
 
 The **Compositions** layer is mirrored too — Candidate profile, Dashboard, Database, Insights, Post a
-job form, Jobs list, Response manager and Settings row — assembled from instances rather than redrawn, so a change to Input or Chip lands in the screens. Icons in the
-compositions are placeholders; swap in real instances rather than adding an icon variant. A frame
+job form, Jobs list, Messages, Response manager and Settings row — assembled from instances rather
+than redrawn, so a change to Input or Chip lands in the screens. A frame
 cannot hold a description or `documentationLinks`, so each composition carries its Storybook URL as
 an on-canvas caption instead.
+
+**Icons are one component with a `name` property, on the Foundations `Icons` page** — 340 lucide
+variants, so a glyph is swapped from the variant dropdown rather than detached and redrawn. It is a
+Foundation and not a Component because lucide is a dependency the system *draws with*, like the
+colour ramp, rather than something `packages/ui` authors; `Foundations → Icons` in Storybook mirrors
+it, drawn live from `lucide-react` so the page cannot claim an icon the app cannot import.
+
+**Generated from `node_modules`, never drawn.** The set is built by importing each icon's
+`__iconNode` from `lucide-react/dist/esm/icons`, emitting SVG, and `createNodeFromSvg` — on lucide's
+own 24 grid, then scaled to the 16px slot this library's controls use, with the stroke forced to
+1.5 afterwards because scaling does not carry it. A dozen names are deprecated aliases that
+re-export the canonical icon, so the node list has to be followed one hop. Redrawing one by hand is
+drift, the way editing a variable in Figma is.
+
+**The bridge plugin can `fetch` from `http://localhost:9226`–`9232`**, which is how the 57KB of path
+data got in without being pasted through the tool call. Those ports are in the plugin manifest's
+`allowedDomains`; bind the server dual-stack, because Figma resolves `localhost` to `::1` and an
+IPv4-only bind just fails.
+
+**A `+` reading as "back" is worse than no glyph.** `Button (icon)` bakes a plus into its component,
+and **vector data cannot be overridden in an instance** — only `visible` and paints can. Where a
+Button instance needs a different glyph, hide its `Icon` and draw an Icon instance over it, absolutely
+positioned inside the row; do not detach the button.
 
 **Database is five frames on one page**, one per story that is a screen or an overlay: the search
 page, results under Juicebox, results under the Refine panel, and the two dialogs drawn open. Its
