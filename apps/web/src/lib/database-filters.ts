@@ -221,7 +221,7 @@ const LOCATION_GROUPS: Record<string, string[]> = {
 }
 
 /** Institute groups, by the prefix every member's name starts with. */
-const INSTITUTE_GROUPS: Record<string, string> = {
+export const INSTITUTE_GROUPS: Record<string, string> = {
   IITs: "IIT ",
   NITs: "NIT ",
   IIMs: "IIM ",

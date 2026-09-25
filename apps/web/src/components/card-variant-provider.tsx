@@ -6,16 +6,16 @@ import * as React from "react"
  * Which layout the candidate cards on the response manager use.
  *
  * IT IS A PROTOTYPE SETTING, NOT A PRODUCT ONE. It sits on /settings beside the
- * brand and theme switchers, and for the same reason: these are two answers to
- * "how should a candidate be laid out" that the design team has to look at side
- * by side before picking one. A recruiter would never see this control; the
+ * brand and theme switchers, and for the same reason: these are answers to "how
+ * should a candidate be laid out" that the design team has to look at side by
+ * side before picking one. A recruiter would never see this control; the
  * decision it stands in for gets made once and then it goes away.
  *
  * It persists to `localStorage` and syncs across tabs like the other two, so a
  * shared preview link opens on whichever variant was last picked — which is the
  * whole point of being able to send someone a link to a design review.
  */
-export type CardVariant = "stacked" | "columns"
+export type CardVariant = "stacked" | "columns" | "sections"
 
 export const CARD_VARIANTS: {
   value: CardVariant
@@ -31,6 +31,11 @@ export const CARD_VARIANTS: {
     value: "columns",
     label: "Columns",
     hint: "Buckets across the card, label over value. Fits more per screen.",
+  },
+  {
+    value: "sections",
+    label: "Sections",
+    hint: "Full-width bands with a rule between. No label column, so nothing wraps.",
   },
 ]
 

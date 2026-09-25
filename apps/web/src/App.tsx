@@ -15,7 +15,10 @@ import { MessagesPage } from "@/routes/messages"
 import { ListsPage } from "@/routes/lists"
 import { PlaceholderPage } from "@/routes/placeholder"
 import { PlaygroundPage } from "@/routes/playground"
+import { PostJobPage } from "@/routes/post-job"
 import { SettingsPage } from "@/routes/settings"
+import { SmartHirePage } from "@/routes/smart-hire"
+import { SmartHireBriefPage } from "@/routes/smart-hire-brief"
 
 /**
  * CLEAN SLATE. Every recruiter surface is a placeholder — the names and the
@@ -51,6 +54,24 @@ export function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
 
           <Route path="dashboard" element={<DashboardPage />} />
+          {/* One description, read as a search and as a posting. The bar is
+            all there is so far — see the note in the page. */}
+          <Route path="smart-hire" element={<SmartHirePage />} />
+          {/* The bar hands its sentence here, and the chat asks for the rest
+            of the brief before anybody is shown. */}
+          <Route path="smart-hire/brief" element={<SmartHireBriefPage />} />
+          {/* Where the bar's other setting lands. Named, routed and carrying
+            the description; the screen is the next thing to design. */}
+          <Route
+            path="smart-hire/post"
+            element={<PlaceholderPage title="Write the posting" />}
+          />
+          {/* Where a finished brief lands. Named and routed; the screen
+            itself is the next thing to design. */}
+          <Route
+            path="smart-hire/candidates"
+            element={<PlaceholderPage title="Smart Hire candidates" />}
+          />
           {/* Jobs is a real page now; its four states are tabs on it rather
             than routes, so the list stays one component and the state a
             recruiter is looking at stays in `?status=`. The two routes under
@@ -87,6 +108,9 @@ export function App() {
           {/* Reference, not product: a rebuild of the live recruiter dashboard
             so the current design can sit beside the next one. */}
           <Route path="reference/dashboard" element={<LegacyDashboardPage />} />
+          {/* The posting form from before the clean slate, restored for
+            reference. Reachable from Settings, not from the nav. */}
+          <Route path="reference/post-job" element={<PostJobPage />} />
 
           <Route path="playground" element={<PlaygroundPage />} />
           <Route path="settings" element={<SettingsPage />} />

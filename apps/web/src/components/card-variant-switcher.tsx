@@ -9,10 +9,10 @@ import {
 } from "@/components/card-variant-provider"
 
 /**
- * A two-item toggle, matching the view switcher on the response manager rather
- * than the Select the brand switcher uses: there are two options and both fit
- * as words, so hiding either behind a menu would cost a click to see what the
- * choice even is.
+ * A toggle, matching the view switcher on the response manager rather than the
+ * Select the brand switcher uses: every option fits as a word, so hiding any of
+ * them behind a menu would cost a click to see what the choice even is. Three
+ * still fit; a fourth is where this becomes a Select.
  *
  * An empty selection is ignored — Base UI lets you deselect the active item,
  * and "no card layout" is not a state the app has.

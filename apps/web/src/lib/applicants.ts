@@ -1,3 +1,5 @@
+import type { Brand } from "@workspace/ui/lib/brands"
+
 import { candidatePhoto } from "@/lib/avatars"
 import type { Job } from "@/lib/jobs"
 
@@ -246,7 +248,7 @@ const COMPANIES = [
   "Innovaccer",
 ]
 
-const LOCATIONS = [
+export const LOCATIONS = [
   "Bengaluru",
   "Pune",
   "Hyderabad",
@@ -264,7 +266,7 @@ const LOCATIONS = [
  * design. Same reason pay is derived from experience below rather than rolled
  * independently: nothing on a card should be arguable except the design.
  */
-const ENGINEERING_TITLES: [max: number, titles: string[]][] = [
+export const ENGINEERING_TITLES: [max: number, titles: string[]][] = [
   [8, ["Senior Engineer", "Lead Backend Engineer", "Engineering Manager"]],
   [12, ["Staff Engineer", "Engineering Manager", "Senior Engineering Manager"]],
   [
@@ -278,7 +280,7 @@ const ENGINEERING_TITLES: [max: number, titles: string[]][] = [
   ],
 ]
 
-const ENGINEERING_SKILLS = [
+export const ENGINEERING_SKILLS = [
   "Kafka",
   "Kubernetes",
   "Go",
@@ -293,7 +295,7 @@ const ENGINEERING_SKILLS = [
   "Observability",
 ]
 
-const DESIGN_TITLES: [max: number, titles: string[]][] = [
+export const DESIGN_TITLES: [max: number, titles: string[]][] = [
   [8, ["Product Designer", "Senior Product Designer"]],
   [12, ["Senior Product Designer", "Lead Product Designer", "Design Manager"]],
   [99, ["Staff Product Designer", "Principal Designer", "Head of Design"]],
@@ -307,7 +309,7 @@ const DESIGN_TITLES: [max: number, titles: string[]][] = [
  * people. A single pool with Kafka and P&L in it would put both on the same
  * card, which is the exact thing this is meant to stop.
  */
-const MANAGEMENT_TITLES: [max: number, titles: string[]][] = [
+export const MANAGEMENT_TITLES: [max: number, titles: string[]][] = [
   [8, ["Manager, Sales", "Marketing Manager", "Business Analyst"]],
   [
     12,
@@ -330,7 +332,7 @@ const MANAGEMENT_TITLES: [max: number, titles: string[]][] = [
   ],
 ]
 
-const MANAGEMENT_SKILLS = [
+export const MANAGEMENT_SKILLS = [
   "P&L ownership",
   "GTM strategy",
   "Channel sales",
@@ -374,7 +376,7 @@ const MANAGEMENT_COMPANIES = [
   "HDFC Bank",
 ]
 
-const DESIGN_SKILLS = [
+export const DESIGN_SKILLS = [
   "Figma",
   "Design systems",
   "Prototyping",
@@ -436,6 +438,25 @@ function poolsFor(job: Job) {
     schools: SCHOOLS,
     degrees: design ? DESIGN_DEGREES : ENGINEERING_DEGREES,
   }
+}
+
+/**
+ * The employers and the institutes a brand's people actually come from.
+ *
+ * The requirement chat asks "which companies do you want to hire from" and
+ * "which colleges", and the answer becomes an `org` or `inst` filter. Offering
+ * a company the generator never deals is offering a way to filter the pool
+ * down to nobody, so both lists are the ones behind the people.
+ *
+ * Per-brand DATA, the same split `poolsFor` makes — helpers rather than raw
+ * exports, so the pools stay private and the brand rule stays in one place.
+ */
+export function companiesFor(brand: Brand): string[] {
+  return brand === "iimjobs" ? [...MANAGEMENT_COMPANIES] : [...COMPANIES]
+}
+
+export function schoolsFor(brand: Brand): string[] {
+  return brand === "iimjobs" ? [...MANAGEMENT_SCHOOLS] : [...SCHOOLS]
 }
 
 /**
@@ -1087,7 +1108,7 @@ const LEADS = /manager|head|director|vp|chief|lead/i
  * one; the other direction would be a real cycle. The clusters stay there,
  * since nothing outside the refine panel asks for them.
  */
-const COMPANY_INDUSTRIES: Record<string, string> = {
+export const COMPANY_INDUSTRIES: Record<string, string> = {
   Flipkart: "Internet / E-commerce",
   Swiggy: "Internet / E-commerce",
   Zomato: "Internet / E-commerce",
@@ -1129,7 +1150,7 @@ export function industryOf(company: string) {
  * Broking") and a card has room for a word. Anything without a shorthand goes
  * untagged rather than printing the long one.
  */
-const INDUSTRY_TAGS: Record<string, string> = {
+export const INDUSTRY_TAGS: Record<string, string> = {
   "Internet / E-commerce": "E-commerce",
   "Banking / Financial Services / Broking": "Fintech",
   "IT-Software / Software Services": "SaaS",

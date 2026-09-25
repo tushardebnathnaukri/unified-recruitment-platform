@@ -4,11 +4,13 @@ import {
   CalendarCheckIcon,
   ChartColumnIcon,
   CircleHelpIcon,
+  ClipboardListIcon,
   CoinsIcon,
   DatabaseIcon,
   HistoryIcon,
   LayoutDashboardIcon,
   MessageCircleIcon,
+  LibraryBigIcon,
   SearchIcon,
   Settings2Icon,
   SwatchBookIcon,
@@ -110,6 +112,41 @@ export const PROTOTYPE_ITEMS: NavItem[] = [
     icon: HistoryIcon,
     end: false,
   },
+  // The two-step posting form from before the clean slate (commit `cab0f1b`
+  // dropped every page), restored to be looked at rather than used: /jobs/new
+  // is still where a real one would live. Its lists in `lib/post-job.ts`
+  // predate `lib/taxonomy.ts` and say different things about the same
+  // vocabulary — see the note there.
+  {
+    to: "/reference/post-job",
+    label: "Post a job (earlier design)",
+    icon: ClipboardListIcon,
+    end: false,
+  },
+]
+
+/**
+ * Prototype links that LEAVE the app.
+ *
+ * Kept apart from `PROTOTYPE_ITEMS` rather than folded in with an optional
+ * `href`, because they are a different kind of thing: those are routes this
+ * router owns and `titleForPath` can name, these are somewhere else entirely
+ * and can be shut. Storybook runs separately, so a link here is dead unless
+ * `npm run storybook` is up — which is the honest state of an external link
+ * and worth saying on the page rather than hiding.
+ */
+export type ExternalItem = {
+  label: string
+  icon: LucideIcon
+  href: string
+}
+
+export const PROTOTYPE_LINKS: ExternalItem[] = [
+  {
+    label: "Post a job form (Storybook)",
+    icon: LibraryBigIcon,
+    href: "http://localhost:6006/?path=/docs/compositions-post-a-job-form--docs",
+  },
 ]
 
 /**
@@ -129,6 +166,11 @@ export const SECONDARY_ITEMS: SecondaryItem[] = [
  */
 const UNLISTED_TITLES: { to: string; label: string; end: boolean }[] = [
   { to: "/projects/new", label: "Create Project", end: false },
+  // OUT OF THE SIDEBAR, STILL ROUTED. Smart Hire is reached from the
+  // Dashboard's box rather than from the nav, so it keeps its title here and
+  // nothing else — /smart-hire/brief and /smart-hire/post inherit it by the
+  // longest-match rule below.
+  { to: "/smart-hire", label: "Smart Hire", end: false },
   // Longer than "/jobs", so it wins the longest-match sort and the header says
   // "Post a job" rather than inheriting the list's title.
   { to: "/jobs/new", label: "Post a job", end: false },

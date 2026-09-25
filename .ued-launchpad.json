@@ -1,0 +1,14 @@
+{
+  "baseUrl": "http://10.120.2.26:6001",
+  "projectId": "316794a57f8ea695",
+  "name": "Unified Recruitment Platform",
+  "source": "zip",
+  "sitePort": 6100,
+  "root": ".",
+  "builder": "static",
+  "publish": ".",
+  "spa": true,
+  "archiveSha256": "1e45ec1bfd77d423151f3e1ff0b89fc99063d441ba41d2beacf44f2af0d0ed82",
+  "lastDeployedAt": "2026-09-23T08:58:31.914Z",
+  "notes": "Static build of apps/web (npm run build -> apps/web/dist). Guest-created, so updates need an owner/administrator session."
+}

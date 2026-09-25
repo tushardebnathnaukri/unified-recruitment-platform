@@ -42,7 +42,7 @@ import { useAthena } from "@/components/athena-provider"
  * to bite, lift it when something is ticked rather than lifting it always.
  *
  * The manager is module-level, so `toast.add()` works from any component
- * without a hook threaded through — see `candidate-list.tsx`.
+ * without a hook threaded through — see `candidate-list/index.tsx`.
  */
 /** What a toast can carry besides its words — see `undoDecision`. */
 type ToastData = { faces?: { name: string; photo?: string }[] }

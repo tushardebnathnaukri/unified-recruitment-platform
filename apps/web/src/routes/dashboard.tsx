@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Link } from "react-router"
+import { Link, useNavigate } from "react-router"
 import { ArrowRightIcon } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
@@ -14,6 +14,8 @@ import { postingsNeedingDecisions, threadsWaiting } from "@/lib/athena"
 import { activeJobsFor, newSinceVisitFor, statsFor } from "@/lib/dashboard"
 import { liveJobsFor } from "@/lib/jobs"
 import { recentSearchesFor } from "@/lib/database"
+import { SmartHireBar } from "@/components/smart-hire-bar"
+import { smartHireHref } from "@/lib/smart-hire"
 import { LiveRow } from "@/routes/jobs"
 import { SearchRow } from "@/components/search-row"
 import { DashboardSkeleton } from "@/components/skeletons"
@@ -95,10 +97,12 @@ export function DashboardPage() {
             without it the band would paint over this whole column and swallow
             the card that is supposed to overlap it. */}
       <div className="relative mx-auto -mt-16 flex w-full max-w-7xl flex-col gap-6 px-4 lg:px-6">
+        <QuickSmartHire />
+
         {loading ? (
-          /* The greeting above this stays put: it is the same on both
-             products, so blanking it would be inventing a load that is not
-             happening. Everything below is the product's. */
+          /* The greeting and the box above this stay put: they are the same on
+             both products, so blanking them would be inventing a load that is
+             not happening. Everything below is the product's. */
           <DashboardSkeleton />
         ) : (
           <>
@@ -177,6 +181,33 @@ function Greeting() {
         yesterday.
       </p>
     </div>
+  )
+}
+
+/**
+ * The quick way into a smart hire.
+ *
+ * NOT A SECOND BOX. It is the Smart Hire bar at its compact size, and pressing
+ * the arrow hands the draft to `/smart-hire` rather than searching from here —
+ * so the Dashboard is where you start the sentence and Smart Hire is where it
+ * is read. Two boxes that looked alike and did different things would be the
+ * one thing this prototype keeps trying not to build.
+ *
+ * The draft travels in the query string, not in router state, because a link
+ * that carries its own input survives being pasted to a colleague.
+ *
+ * STRAIGHT TO THE OUTCOME. It used to hand off to /smart-hire, which is the
+ * same box again — see `smartHireHref`.
+ */
+function QuickSmartHire() {
+  const navigate = useNavigate()
+
+  return (
+    <SmartHireBar
+      size="compact"
+      placeholder="Describe who you're hiring for — Smart Hire takes it from there."
+      onSubmit={(draft) => navigate(smartHireHref(draft.intent!, draft.text))}
+    />
   )
 }
 

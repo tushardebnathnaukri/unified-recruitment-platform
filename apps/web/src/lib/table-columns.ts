@@ -4,9 +4,10 @@ import type { SortColumn } from "@/lib/applicants"
  * The response manager table's columns, as data: what each is called, whether
  * it can be hidden, and whether it shows until somebody hides it.
  *
- * Kept apart from the column definitions in `candidate-list.tsx` because the
- * Columns menu sits in the tab row, outside the table (one per tab), and has to
- * list the columns without a table instance to ask.
+ * Kept apart from the column definitions in
+ * `candidate-list/applicant-table.tsx` because the Columns menu sits in the tab
+ * row, outside the table (one per tab), and has to list the columns without a
+ * table instance to ask.
  *
  * VISIBILITY IS IN THE URL, like everything else on this screen worth showing
  * somebody: `?cols=` lists the columns switched ON that are off by default,

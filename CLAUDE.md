@@ -170,7 +170,7 @@ the biggest surface in here — `/jobs/:jobId/applicants/:applicantId`, `/insigh
 for side-by-side comparison and deliberately outside the design system — see the note at the top of
 `legacy-dashboard.tsx`.
 
-**The response manager is `components/candidate-list.tsx`, not `routes/job.tsx`.** It moved out
+**The response manager is `components/candidate-list/`, not `routes/job.tsx`.** It moved out
 when the database's results turned out to be the same screen: `CandidateList` takes the people, the
 skills they are matched against, a header and an empty state, and owns everything else — tabs,
 views, pills, panel, undo. `routes/job.tsx` is now the job header and a thin wrapper. The words that
@@ -178,6 +178,20 @@ differ between the two ("Applied" / "Updated", "New since …", what the skills 
 come from `lib/list-source.ts` through a context that `CandidateList` sets from its `source` prop;
 it defaults to `posting`, so the candidate page and anything older needs no provider. Change triage
 there and it lands on both screens.
+
+**It is a folder of parts, and every import in it runs one way.** `index.tsx` is the screen — the
+query string, the decisions, the arrangement — and it is what `@/components/candidate-list`
+resolves to, so no caller changed when it stopped being one 4,600-line file. Beside it:
+`applicant-card.tsx` (both card layouts and their buckets), `applicant-table.tsx` (the TanStack
+columns), `split-view.tsx`, `applicant-list.tsx` (paging, run headings, empty states),
+`applicant-actions.tsx` (the decisions and the ⋯ menu, drawn by the card and the table row alike),
+`selection.tsx` (the tick boxes and the selection bar), and the filters in their three shapes —
+`filter-panel.tsx` (the one implementation of what a filter is), `filter-bar.tsx` (the pills) and
+`filter-rail.tsx` (the column). **`shared.ts` holds what more than one of them needs** — the views,
+the tabs, the runs, the filter helpers — and it is deliberately not in `index.tsx`, because a part
+importing the screen it is drawn on is a cycle. `PickingContext` lives there too, for the reason
+`apps/web`'s providers carry a file-level eslint-disable: a file exporting a context beside its
+components loses fast refresh, and `shared.ts` exports no components.
 
 **`/database` is one box with three modes under it** — Keywords, Natural language, Job
 description — not the live product's three tabs over three forms. The mode only changes how the
@@ -284,11 +298,11 @@ Both read and write the same URL keys, so a
 link keeps its filters whichever design opens it.
 
 Under Juicebox each card also carries **one evidence line per criterion** (`CriteriaEvidence` in
-`candidate-list.tsx`, fed by `CandidateList`'s `verdicts` prop). The verdicts come from
-`verdictsFor` in `lib/criteria.ts`, and Best match is summed from the same verdicts (`scoreFor`), so
-a card's lines are the reason it ranks where it does. A criterion naming a known skill is checked
-against the person's skills and cites a role on their card; free text gets a stable per-person
-yes/no and a line saying only where it looked — no invented quotations.
+`candidate-list/applicant-card.tsx`, fed by `CandidateList`'s `verdicts` prop). The verdicts come
+from `verdictsFor` in `lib/criteria.ts`, and Best match is summed from the same verdicts
+(`scoreFor`), so a card's lines are the reason it ranks where it does. A criterion naming a known
+skill is checked against the person's skills and cites a role on their card; free text gets a
+stable per-person yes/no and a line saying only where it looked — no invented quotations.
 
 **A search's city and years arrive as filters, not as a fact about the results.** `searchHref`
 writes `cur`/`xp` from `criteriaFrom`, and `resultsFor` deals a wider pool — the same people plus
@@ -503,8 +517,9 @@ the school, so putting them under would be a conclusion after its own evidence. 
 **derived from facts already on the card**, never dealt, so a tag cannot disagree with the block
 below it and adding one costs a rule rather than a field on every generated person.
 
-**The card shows three and counts the rest** (`TAGS_SHOWN` in `candidate-list.tsx`): `+2` is a
-handle rather than a full stop, so the rest are on hover in the order they would have been drawn.
+**The card shows three and counts the rest** (`TAGS_SHOWN` in
+`candidate-list/applicant-card.tsx`): `+2` is a handle rather than a full stop, so the rest are on
+hover in the order they would have been drawn.
 `tagsFor` therefore returns ALL of them — how many fit is the card's business — which makes the
 ordering in it the only thing deciding what gets seen. About one card in ten overflows.
 
@@ -760,9 +775,24 @@ tooltip root does not self-provide). Adding a brand to `brands.ts` therefore upd
 toolbar and the app switcher at once.
 
 Addons: `addon-docs`, `addon-a11y`, `addon-themes`, `addon-designs`. The last one renders a story's
-Figma node in a side panel; it is parameter-driven, so it adds no decorator and leaves `preview.tsx`
-alone. Each story declares its node with `design("<key>")` from `src/lib/figma.ts`, which resolves
-through `figma-map.json` — never a hardcoded URL, because a rebuild in Figma changes the node id.
+Figma node in a side panel; it is parameter-driven, so it contributes no decorator of its own. Each
+story declares its node with `design("<key>")` from `src/lib/figma.ts`, which resolves through
+`figma-map.json` — never a hardcoded URL, because a rebuild in Figma changes the node id.
+
+**Every addon is registered twice, and both halves are load-bearing.** `main.ts` turns an addon on —
+its preset, and its panel in the manager. `preview.tsx`'s `addons: [addonDocs(), addonA11y(),
+addonThemes(), addonDesigns()]` turns on the half that runs inside the preview: the parameters and
+decorators the addon contributes to a story. Under `definePreview` (Storybook 10's CSF Next) that
+half is **opt-in**, so an addon listed only in `main.ts` gets its panel and nothing behind it. The
+array reads like a duplicate of `main.ts` and is not one; do not tidy it away.
+
+**`addonDocs()` is what supplies `parameters.docs.renderer`.** Without it every Docs page — and
+`tags: ["autodocs"]` is global, so every component has one — rendered **blank**, with
+`baseDocsParameter.renderer is not a function` in the browser console and nothing at all in the
+terminal. The stories beside them were fine, which is what made it read as a Storybook bug rather
+than as configuration. Registering the addons here is also what makes each one's parameters
+type-safe inside a story, which is what `design("<key>")` and
+`parameters.docs.description.component` are written against.
 
 ## Figma — AthenaDS
 

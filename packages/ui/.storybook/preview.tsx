@@ -1,11 +1,32 @@
 import { definePreview } from "@storybook/react-vite"
-import { withThemeByClassName } from "@storybook/addon-themes"
+import addonA11y from "@storybook/addon-a11y"
+import addonDesigns from "@storybook/addon-designs"
+import addonDocs from "@storybook/addon-docs"
+import addonThemes, { withThemeByClassName } from "@storybook/addon-themes"
 
 import { TooltipProvider } from "../src/components/tooltip"
 import { BRANDS, DEFAULT_BRAND } from "../src/lib/brands"
 import "../src/styles/globals.css"
 
 export default definePreview({
+  /**
+   * THE ADDONS ARE REGISTERED TWICE, AND BOTH ARE LOAD-BEARING. `main.ts` turns
+   * an addon on — its preset and its panel in the manager. This turns on the
+   * half that runs inside the preview: the parameters and decorators each addon
+   * contributes to a story. Under `definePreview` (Storybook 10's CSF Next) that
+   * half is opt-in, and listing an addon only in `main.ts` gets the panel
+   * without it.
+   *
+   * IT IS NOT COSMETIC. `addonDocs()` is what supplies `parameters.docs.renderer`,
+   * so without it every Docs page — and `tags: ["autodocs"]` below means every
+   * component has one — died on `baseDocsParameter.renderer is not a function`
+   * and rendered blank, while the stories beside them were fine.
+   *
+   * Declaring them here is also what makes each addon's parameters type-safe in
+   * a story file, which is what `design("<key>")` and
+   * `parameters.docs.description.component` are written against.
+   */
+  addons: [addonDocs(), addonA11y(), addonThemes(), addonDesigns()],
   decorators: [
     // Mirrors apps/web's ThemeProvider: the palette is driven by a
     // `light` / `dark` class on the html element.

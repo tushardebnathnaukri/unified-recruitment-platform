@@ -1,4 +1,5 @@
 import { Link } from "react-router"
+import { ArrowUpRightIcon } from "lucide-react"
 
 import { buttonVariants } from "@workspace/ui/components/button"
 import { Kbd } from "@workspace/ui/components/kbd"
@@ -15,7 +16,7 @@ import {
   type FilterVariant,
 } from "@/lib/filter-variant"
 import { ThemeToggle } from "@/components/theme-toggle"
-import { PROTOTYPE_ITEMS } from "@/lib/nav"
+import { PROTOTYPE_ITEMS, PROTOTYPE_LINKS } from "@/lib/nav"
 
 /**
  * Prototype settings — the two controls that decide how the design system
@@ -64,11 +65,13 @@ export function SettingsPage() {
           <div className="flex min-w-0 flex-1 basis-64 flex-col gap-1">
             <h2 className="text-sm font-medium">Candidate card</h2>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              Two layouts for the same facts on the response manager. Stacked
+              Three layouts for the same facts on the response manager. Stacked
               runs the labels down the left and reads like a profile; Columns
               lays the buckets across the card and fits roughly twice as many
-              candidates on a screen. A real recruiter would never see this
-              control — it is here so the two can be compared before one wins.
+              candidates on a screen; Sections drops the label column for
+              full-width bands with a rule between, so nothing has to wrap. A
+              real recruiter would never see this control — it is here so the
+              three can be compared before one wins.
             </p>
           </div>
 
@@ -125,7 +128,32 @@ export function SettingsPage() {
               </Link>
             )
           })}
+
+          {/* Anchors, not Links: these leave the app. `rel="noreferrer"` on a
+              new tab is the habit even for localhost. */}
+          {PROTOTYPE_LINKS.map((item) => {
+            const Icon = item.icon
+
+            return (
+              <a
+                key={item.href}
+                href={item.href}
+                target="_blank"
+                rel="noreferrer"
+                className={buttonVariants({ variant: "outline", size: "sm" })}
+              >
+                <Icon data-icon="inline-start" />
+                {item.label}
+                <ArrowUpRightIcon data-icon="inline-end" />
+              </a>
+            )
+          })}
         </div>
+
+        <p className="text-xs text-muted-foreground">
+          The Storybook link needs <code>npm run storybook</code> running on
+          :6006.
+        </p>
       </div>
     </div>
   )

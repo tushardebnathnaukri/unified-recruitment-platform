@@ -10,13 +10,289 @@ diff.
 
 ## Pending
 
+### Smart Hire bar: the tray and the suggestion row are gone
+
+- **Date:** 2026-09-24
+- **App:** `components/smart-hire-bar.tsx`. Both things under the box are
+  removed — the five-part checklist (Location / Job Title / Years of
+  Experience / Industry / Skills) and the "A Head of Marketing usually has
+  these skills" proposals.
+  - **Why it reads better without them:** the sentence above already shows what
+    was understood. The words are right there and the recognised ones are
+    chips, so the row under it was the same information a second time, in a
+    band that pushed the page down on every keystroke.
+  - **The suggestion row went too** — the strip of alternatives under the box,
+    with their `0` markers. The bar is now the box and the action row, nothing
+    else.
+  - What stays: the inline chips, the ghost text, the switcher, Attach a JD and
+    Dictate. An attached JD still shows as a chip below the card — nothing else
+    on screen says a file is there.
+  - **Two things the row was carrying are now unreachable in the bar**: the
+    substring matches (the live form's "fin" → Recruitment / Staffing) can
+    never be ghost text, and an exact match has no visible affordance — typing
+    "Pune" in full leaves nothing on screen, though Tab still chips it.
+    `matchesFor` stays in `lib/smart-hire.ts`, used only through `suggest` and
+    `exactMatch` now.
+  - `skillsForTitle` and `roleIn` are untouched and still used, by the
+    requirement chat's own skills question (`lib/intake.ts`).
+  - `requirementParts` in `lib/requirement.ts` goes back to being **parked** —
+    written, unused, kept on purpose, as the note in CLAUDE.md asks.
+  - Gone with them: the "should have the following skills:" clause wording and
+    the space-aware lead-in helpers, which only existed to word a taken
+    proposal into the sentence. The bar is ~130 lines lighter.
+- **Storybook:** any Smart Hire bar story should show the card alone; the tray
+  states are no longer real.
+- **Figma:** same — the bar frame loses its lower band.
+- [ ] Storybook
+- [ ] Figma
+
+### Smart Hire: the bar says what the arrow will do
+
+- **Date:** 2026-09-24
+- **App:** `components/smart-hire-bar.tsx` (a segmented `ToggleGroup` in the
+  action row), `lib/smart-hire.ts` (`SmartHireIntent` and `INTENTS` live there,
+  not in the component, because `react-refresh/only-export-components` is on in
+  `apps/web`), plus `routes/smart-hire.tsx`, `routes/dashboard.tsx` and a new
+  `/smart-hire/post` route.
+  - **Post a job | Find candidates, posting selected by default.** The page has
+    claimed "a search and a job post out of one description" since it was
+    written; this is the first time that is a control rather than a sentence.
+  - The choice travels: the Dashboard's bar sends `?intent=`, the Smart Hire
+    page opens its switcher on it, and the arrow goes to `/smart-hire/post` or
+    `/smart-hire/brief` accordingly.
+  - `/smart-hire/post` is a **blank placeholder** ("Write the posting") — the
+    screen is the next thing to design, and the restored form at
+    `/reference/post-job` is the obvious candidate to grow into it.
+  - The switcher is hidden in the chat's `composer` size, where the question
+    was settled on the way in.
+- **Storybook:** the Smart Hire bar states now include the switcher; a story
+  should show both settings, since the default changes what the page is for.
+- **Figma:** same — the bar frame needs the segmented control.
+- [ ] Storybook
+- [ ] Figma
+
+### Post a job: two designs, both now reachable
+
+- **Date:** 2026-09-24
+- **App:** `apps/web/src/routes/post-job.tsx`, `lib/post-job.ts` and
+  `components/tag-input.tsx` restored verbatim from commit `fdfc4da` (dropped
+  by `cab0f1b`, "clean slate — keep the shell, drop every page"). Routed at
+  `/reference/post-job` and linked from Settings, beside a new external link to
+  the Storybook composition. Nothing in the product points at either; `/jobs/new`
+  is still a placeholder.
+- **The two disagree, and that is the thing to resolve.** The restored route is
+  a two-step form with a plan picker, `TagInput` locations capped at 3, video
+  JD, grouped functional areas and a salary-visibility switch. `Compositions →
+  Post a job form` is a single card with six fields. Same name, same Figma
+  entry (`job-form` → "Post a job form — board"), different designs.
+- **And their vocabularies disagree.** `lib/post-job.ts` groups functional
+  areas into eight engineering-flavoured buckets; `lib/taxonomy.ts` has the 36
+  the live form actually offers, read off it today. Whichever form survives
+  should use the extracted list.
+- **Storybook:** no change yet — but the composition should either grow into
+  the restored design or be retired, not sit beside it under the same name.
+- **Figma:** same question for the mirrored frame.
+- [ ] Storybook
+- [ ] Figma
+
+### Smart Hire: the brief gathers, widens and calibrates
+
+- **Date:** 2026-09-24
+- **App:** `apps/web/src/lib/calibration.ts` (new),
+  `apps/web/src/components/brief-rail.tsx` (new),
+  `apps/web/src/components/criteria-evidence.tsx` (new, lifted out of
+  `candidate-list/applicant-card.tsx`), plus `lib/intake.ts` and
+  `routes/smart-hire-brief.tsx`. Modelled on Juicebox's agent, and mostly a
+  matter of calling machinery this repo already had:
+  - **Two more questions** — which companies (`org`) and which institutes
+    (`inst`, offering IITs / NITs / IIMs before the individual colleges). Both
+    ask last, because both narrow hard and neither is a requirement.
+  - **Every question can be waved away** (`?skip=`, repeated). A skipped
+    question stays in the transcript, answered "Doesn't matter".
+  - **A Plan rail beside the chat** — four stages ticking, the live qualified
+    pool against what the sentence alone found, and the criteria in rank order.
+  - **When the pool thins below 25**, the chat offers `expansions()` as chips
+    whose `+N` is counted, not estimated — apply one and the pool lands exactly
+    where the chip said.
+  - **Three profiles to calibrate on**, each with its `verdictsFor` lines. A
+    rejection sinks the criteria that person met and an acceptance lifts them;
+    since `scoreFor` is rank-weighted, that re-ordering re-scores the pool. The
+    chat then says which criterion moved.
+  - Fixed two silent bugs in the existing questions: `xp` is a RANGE the panel
+    splits on a dash (so "12+" parsed to NaN and filtered nothing) and `np` is
+    a SELECT tested with `Number(value)` (so "now" matched nobody). Both now
+    read the section's own vocabulary.
+- **Storybook:** the `Compositions → Smart Hire brief` story (still unwritten)
+  now wants four states rather than one: a question with chips and a skip, the
+  thin-pool suggestion, the three-profile calibration, and the finished brief
+  with the rail beside it. `CriteriaEvidence` is now a shared component and
+  should get a story of its own under Patterns.
+- **Figma:** no frame. Beyond the five chat components, the rail and the review
+  card are new shapes; the review card is the result card's evidence block on a
+  smaller surface, so check whether it is a variant before drawing it.
+- [ ] Storybook
+- [ ] Figma
+
+### Smart Hire: the requirement chat
+
+- **Date:** 2026-09-24
+- **App:** `apps/web/src/routes/smart-hire-brief.tsx` (new),
+  `apps/web/src/lib/intake.ts` (new), plus a `composer` size on
+  `smart-hire-bar.tsx` and two routes in `App.tsx`. The bar's arrow is no
+  longer parked: it goes to `/smart-hire/brief`, and the finished brief goes
+  to `/smart-hire/candidates`, which is a `PlaceholderPage` until that screen
+  is designed.
+  - Built from the **new shadcn chat components** — `message-scroller`,
+    `message`, `bubble`, `marker`, `spinner`. All four arrived with the
+    `from "cn"` import bug; `globals.css` survived untouched this time.
+  - **It only asks what the search can use.** Six questions, each landing on a
+    refine-panel key (`cur`, `xp`, `ind`, `np`, `ctc`) or the query text. Team
+    size and reporting line are the sort of thing a recruiter would happily
+    answer and nothing downstream could use, so they are not asked.
+  - **It only asks what the sentence left out** — name a city in the bar and
+    the city is never asked about.
+  - **The transcript is derived, not stored.** `transcriptFor(context,
+    answers)` rebuilds it from `?q=` plus the answer params, so reload, back
+    and a pasted link all restore the same conversation.
+  - Answers are tapped from chips (cities, bands, the title's own skills) or
+    typed into the bar, which keeps its ghost text and chips in composer size.
+  - The 550ms pause with a spinner before each reply is the only pretence, and
+    it is marked as such in the file.
+- **Storybook:** nothing yet. Wants a `Compositions → Smart Hire brief` with
+  the opening state, a question with chips, a mid-conversation transcript and
+  the finished state. The chat components themselves are `Components → …` and
+  need their own stories before the composition.
+- **Figma:** no frame. Five new components to mirror (Message, Bubble, Marker,
+  MessageScroller, Spinner) before the page can be assembled from instances.
+- [ ] Storybook
+- [ ] Figma
+
+### Smart Hire: the bar
+
+- **Date:** 2026-09-24
+- **App:** `apps/web/src/components/smart-hire-bar.tsx` (new),
+  `apps/web/src/lib/smart-hire.ts` (new), `apps/web/src/routes/smart-hire.tsx`
+  (new, replacing the placeholder) and `routes/dashboard.tsx`. A new nav item,
+  second under Dashboard, and a composer that is nothing else in the app:
+  - A `contenteditable`, not a textarea — it has to paint ghost text and hold
+    chips, and a textarea can do neither.
+  - **Inline autocomplete**: grey ghost text after the caret for job title,
+    city and industry, taken with Tab, dismissed with Esc. The vocabulary is
+    the generators' own (`applicants.ts`), per brand, so a suggestion is
+    always a value the search can find.
+  - **An accepted value becomes a chip in the sentence**, and the chip reads
+    short while carrying the canonical value — "Fintech" over "Banking /
+    Financial Services / Broking", the call `INDUSTRY_TAGS` already makes on a
+    card. Backspace behind a chip removes it whole.
+  - **The tray merges the checklist and the summary**: a part the recruiter
+    confirmed prints its chip with an `✕`, a part only spotted in the prose
+    keeps the grey tick, the rest stay grey labels. It appears only once
+    there is something in the box.
+  - **Attach a JD and Dictate** sit left of the arrow. Drawn, not wired.
+  - Two sizes from one component: `hero` on /smart-hire, `compact` on the
+    Dashboard, whose arrow hands the draft to /smart-hire rather than
+    searching. The hand-off re-reads its chips out of the text (`readBack`).
+  - The arrow on /smart-hire is **parked** until submit is decided.
+- **Storybook:** nothing yet. It wants a `Compositions → Smart Hire` with the
+  bar empty, mid-suggestion (ghost drawn in place, not live), and with chips
+  and the tray — plus the compact size. Ghost and chips are DOM the stories
+  will have to draw statically, the way the Athena overlays are.
+- **Figma:** no frame. Needs a Smart Hire page mirroring those states; the
+  chip is close to `Chip (secondary)` but inline in a text block, so check
+  whether it is a new component or an instance before drawing it.
+- [ ] Storybook
+- [ ] Figma
+
+### Response manager: a third card layout, Sections
+
+- **Date:** 2026-09-22
+- **App:** `apps/web/src/components/candidate-list/applicant-card.tsx`
+  (`BucketSections`), `card-variant-provider.tsx` and `routes/settings.tsx`.
+  A third value on the /settings card toggle, beside Stacked and Columns:
+  - The buckets become full-width bands under their own headings, with a rule
+    between. No label column at all, so values get the card's width.
+  - **Tags are the first band and carry no visible heading** — they are the
+    summary of what is below them, and the chips say what they are.
+  - **Experience and education share a band**, side by side, heading over
+    value, experience on the wider track. They stack below `@2xl/card`.
+  - **Location and availability share the last band**, split by a 1px rule
+    rather than a `·`, because both values already use `·` inside themselves.
+  - So the card is four bands, not six: tags, background, skills, availability.
+  - The roles keep their "Show all (6)" expander, as in Stacked.
+  - It is the tallest of the three: 479px against Stacked's 440px and
+    Columns' 420px on a 916px card.
+- **Storybook:** `Compositions → Response manager`. The card stories draw the
+  stacked shape; add a Sections story beside them, and the toggle on the
+  settings-row composition needs its third item.
+- **Figma:** `Response manager — full page` (node `117:3`). ApplicantCard has
+  no Sections variant yet; the Database frames clone that component, so it
+  lands there too once it exists.
+- [ ] Storybook
+- [ ] Figma
+
+### Smart Hire: the real taxonomy, and what a title implies
+
+- **Date:** 2026-09-24
+- **App:** `apps/web/src/lib/taxonomy.ts` (new), `lib/title-intel.ts` (new),
+  `lib/smart-hire.ts`, `lib/requirement.ts` and `components/smart-hire-bar.tsx`.
+  The bar completes against the live iimjobs lists now, not our generators:
+  - `taxonomy.ts` is read off `recruit.iimjobs.com/post-job` — 120 posting
+    locations, 66 industries, 36 functional areas, 8 categories and 1,071
+    skill tags (the clinical half of their 2,084 is cut; see the file header).
+  - **906 job titles** come from a second product: Naukri's posting form
+    (`hiring.naukri.com`), whose designation suggester is a typeahead rather
+    than a list, so they were sampled with 105 seed words across both markets.
+    Neither iimjobs nor hirist completes a title at all, so this is the one
+    piece of vocabulary with no equivalent in either of our own products.
+  - Every entry carries **`inData`** — whether our mock pool could return
+    anybody. Kolkata and "Brand Management" are offered and marked with a
+    quiet `0` in the suggestion row.
+  - **Finishing a recognised phrase makes it a chip** — type "Product Manager
+    in Indore" straight through and both are chips by the time you reach the
+    end, no Tab needed. Titles, cities and industries only; skills and
+    functional areas are never taken unprompted.
+  - The tray row is **ticks, not pills** — five parts, lit when covered. It
+    ticks from the same vocabulary the completion uses, so a city the box can
+    complete is a city the row counts.
+  - **A suggestion row under the box**, not a popup: the ghost keeps the best
+    prefix, the row holds up to five alternatives including the substring hits
+    a ghost cannot paint ("fin" → Recruitment / Staffing). `↓` walks in, Enter
+    or Tab takes one.
+  - **A title now proposes the skills that go with it** — ranked, must-have
+    and nice-to-have, as dashed "+" chips that are offered rather than added.
+    This mirrors the live form's `suggest-tags`. The title is read out of the
+    prose (`roleIn`), so it fires on "hiring for a junior sales manager" and
+    does not need a chip.
+  - **The functional area is NOT proposed**, though `suggest-cat-fa` does it
+    live and `functionForTitle` still computes it. It restated the title, put
+    a 46-character string mid-sentence, and claimed to be findable when the
+    only functional-area filter here (`fn`) runs on a different nine-value
+    vocabulary. The 36 areas stay typeable, marked unfindable.
+  - The checklist is back to **five** lines; Function was added and removed
+    with the proposal.
+  - **A taken proposal is written INTO the sentence**, not stuck on the end:
+    "… , within ⟨Sales / Business Development⟩ should have the following
+    skills: ⟨Sales⟩, ⟨Channel sales⟩". Skills gather into one clause behind a
+    lead-in that is removed again with the last chip it introduced.
+  - The checklist gained a sixth line, **Function**.
+- **Storybook:** the Smart Hire composition (still unwritten) now needs the
+  suggestion row and the proposal block as two more states, both drawn
+  statically. Worth one story per state rather than a live bar.
+- **Figma:** no frame yet. The dashed proposal chip and the `0` marker are new
+  shapes — decide whether they are Chip variants or their own component before
+  drawing the page.
+- [ ] Storybook
+- [ ] Figma
+
 ### Search Resume: table view
 
 - **Date:** 2026-09-17
-- **App:** `apps/web/src/routes/database.tsx`, `apps/web/src/components/candidate-list.tsx`
-  and `database-filters.tsx`. The results have a Cards/Table toggle and, in
-  table view, the Columns button, right of the toolbar under both filter
-  designs. The table is the Response manager's data table:
+- **App:** `apps/web/src/routes/database.tsx`,
+  `apps/web/src/components/candidate-list/` (`index.tsx` for the toggle,
+  `applicant-table.tsx` for the table) and `database-filters.tsx`. The results
+  have a Cards/Table toggle and, in table view, the Columns button, right of
+  the toolbar under both filter designs. The table is the Response manager's
+  data table:
   - The arrival column reads "Updated".
   - Location, Exp, Current and Notice filter from their headers with the
     refine panel's own controls (the location checklist, min/max selects, the
@@ -36,8 +312,8 @@ diff.
 ### Response manager: table view as a data table
 
 - **Date:** 2026-09-17
-- **App:** `apps/web/src/components/candidate-list.tsx` (`ApplicantTable`),
-  `apps/web/src/components/data-table/column-header.tsx` and
+- **App:** `apps/web/src/components/candidate-list/applicant-table.tsx`
+  (`ApplicantTable`), `apps/web/src/components/data-table/column-header.tsx` and
   `view-options.tsx`. Every column heading except the checkbox and actions is
   now a ghost button with a sort arrow (⇅ faded, ↑ or ↓ when sorted). It opens
   a popover with Sort ascending, Sort descending, Clear sort, a filter where
@@ -67,8 +343,8 @@ diff.
 ### Response manager: Apply and Clear on the filter bar
 
 - **Date:** 2026-09-20
-- **App:** `apps/web/src/components/candidate-list.tsx` (`FilterBar`). The pill
-  row now holds a draft:
+- **App:** `apps/web/src/components/candidate-list/filter-bar.tsx`
+  (`FilterBar`). The pill row now holds a draft:
   - **Apply** (primary, `size="sm"`) and **Clear** (outline) sit at the right
     end of the row, pushed there with `ml-auto`. Both are disabled until there
     is something to apply or clear.
@@ -96,9 +372,9 @@ diff.
 ### Response manager: the split view's list becomes a column
 
 - **Date:** 2026-09-20
-- **App:** `apps/web/src/components/candidate-list.tsx` (`SplitView`,
-  `QueueHeading`, `SplitRow`). At `@3xl/main` the candidate list beside the CV
-  is no longer a rounded card:
+- **App:** `apps/web/src/components/candidate-list/split-view.tsx` (`SplitView`,
+  `SplitRow`) and `applicant-list.tsx` (`QueueHeading`). At `@3xl/main` the
+  candidate list beside the CV is no longer a rounded card:
   - Flush against the nav (`-ml-4`, `lg:-ml-6`), `bg-background`, `border-r`,
     no radius, no ring, no padding — the `FilterRail` treatment.
   - Run headings ("New since …", "Earlier") are sticky bars with a
@@ -124,7 +400,9 @@ diff.
 - **Date:** 2026-09-20
 - **App:** `apps/web/src/lib/applicants.ts` (`preferredLocations` on
   `Applicant`, `preferred` on `Filters`), `lib/database-filters.ts`
-  (`toProfile` reads it instead of dealing its own), `candidate-list.tsx`.
+  (`toProfile` reads it instead of dealing its own), and, under
+  `components/candidate-list/`, `filter-rail.tsx`, `filter-bar.tsx`,
+  `filter-panel.tsx`, `applicant-table.tsx` and `applicant-card.tsx`.
   - **Two location filters** everywhere the filters are drawn: the rail
     ("Current location" / "Preferred location"), the pill row, the drawer
     panel and the table's Location header.
@@ -167,7 +445,7 @@ diff.
 
 - **Date:** 2026-09-21
 - **App:** `apps/web/src/components/candidate-panel.tsx` and
-  `candidate-list.tsx` (`ApplicantCard`).
+  `candidate-list/applicant-card.tsx` (`ApplicantCard`).
   - The profile sheet is **inset, not flush**: 12px from the top, right and
     bottom, `rounded-2xl`, a 1px `border` on all four sides (was `border-l`
     only), `overflow-hidden` so the header and CV clip to the corners. Width is
@@ -194,8 +472,9 @@ diff.
 
 - **Date:** 2026-09-21
 - **App:** `apps/web/src/lib/applicants.ts` (`tagsFor`) and
-  `candidate-list.tsx` (`TagsBucket`, both card shapes). A **Tags** row above
-  Experience, `secondary` chips like the skills row but neutral:
+  `candidate-list/applicant-card.tsx` (`TagsBucket`, both card shapes). A
+  **Tags** row above Experience, `secondary` chips like the skills row but
+  neutral:
   - "Fast riser" (a leading title under eight years) or "Leads a team", then
     the **sector** ("Fintech", "E-commerce", "SaaS", "FMCG", "Retail",
     "Auto", "Chemicals", "Conglomerate"), "One sector", "Top institute", then
@@ -267,3 +546,15 @@ diff.
   on the right, `background` fill, and a header bar with a bottom border.
 - [ ] Storybook
 - [ ] Figma
+
+### Response manager: "Select all" sits in a card
+
+- **Date:** 2026-09-21
+- **App:** `apps/web/src/components/candidate-list/selection.tsx` (`SelectAll`).
+  The row above the cards is now an `Item` with the applicant card's own fill,
+  ring and `px-5` (`py-3`), so its box lines up with the tick on every card
+  below. The table header's compact box is unchanged.
+- **Storybook:** `Compositions → Response manager`, the stories that draw
+  "Select all" above the cards.
+- **Figma:** none — the Response manager frame predates selection.
+- [ ] Storybook
