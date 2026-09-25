@@ -13,6 +13,7 @@
     "avatars": "node scripts/generate-avatars.mjs"
   },
   "dependencies": {
+    "@shadcn/react": "^0.3.1",
     "@tanstack/react-table": "^9.2.4",
     "@workspace/ui": "*",
     "lucide-react": "^1.31.0",

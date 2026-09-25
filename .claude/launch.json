@@ -4,14 +4,38 @@
     {
       "name": "web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "-w", "web", "--", "--port", "5174", "--strictPort"],
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "-w",
+        "web",
+        "--",
+        "--port",
+        "5174",
+        "--strictPort"
+      ],
       "port": 5174,
+      "autoPort": false
+    },
+    {
+      "name": "ai",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev",
+        "-w",
+        "ai"
+      ],
+      "port": 8787,
       "autoPort": false
     },
     {
       "name": "storybook",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "storybook"],
+      "runtimeArgs": [
+        "run",
+        "storybook"
+      ],
       "port": 6006
     }
   ]

@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from "react-router"
 import { AppShell } from "@/components/app-shell"
 import { BrandUrlSync } from "@/components/brand-url-sync"
 import { ScrollToTop } from "@/components/scroll-to-top"
+import { AgentPage } from "@/routes/agent"
 import { DashboardPage } from "@/routes/dashboard"
 import { JobDetailPage } from "@/routes/job"
 import { CandidatePage } from "@/routes/candidate"
@@ -12,6 +13,7 @@ import { LegacyDashboardPage } from "@/routes/legacy-dashboard"
 import { InsightsPage } from "@/routes/insights"
 import { InterviewsPage } from "@/routes/interviews"
 import { MessagesPage } from "@/routes/messages"
+import { NewJobPage } from "@/routes/new-job"
 import { ListsPage } from "@/routes/lists"
 import { PlaceholderPage } from "@/routes/placeholder"
 import { PlaygroundPage } from "@/routes/playground"
@@ -53,6 +55,12 @@ export function App() {
             rather than bouncing through "/". */}
           <Route index element={<Navigate to="/dashboard" replace />} />
 
+          {/* One box over the whole product — the questions a recruiter
+            arrives with, before they have picked a screen to ask them on.
+            Deliberately separate from the Athena pane, which answers for
+            whatever page it is docked beside. */}
+          <Route path="agent" element={<AgentPage />} />
+
           <Route path="dashboard" element={<DashboardPage />} />
           {/* One description, read as a search and as a posting. The bar is
             all there is so far — see the note in the page. */}
@@ -78,10 +86,9 @@ export function App() {
             it are where the rows and the create button point — named and
             routed, not designed. */}
           <Route path="jobs" element={<JobsPage />} />
-          <Route
-            path="jobs/new"
-            element={<PlaceholderPage title="Post a job" />}
-          />
+          {/* The posting form — the other shape of the Agent's posting
+            conversation, which hands its answers here in the query string. */}
+          <Route path="jobs/new" element={<NewJobPage />} />
           <Route path="jobs/:jobId" element={<JobDetailPage />} />
           {/* Nested under the job because a candidate here is not a person in
             the abstract — they are a person who applied to THIS posting. */}

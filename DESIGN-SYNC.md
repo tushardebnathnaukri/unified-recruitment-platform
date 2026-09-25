@@ -10,6 +10,321 @@ diff.
 
 ## Pending
 
+### Post a job: a plain opener, and a checklist while typing
+
+- **Date:** 2026-09-25
+- **App:** `lib/agent.ts` (the from-scratch reply), `openerChecks` in
+  `lib/job-start.ts`, the `checklist` prop on `components/agent-composer.tsx`,
+  `coveredTopics` in `lib/job-refine.ts`.
+  - **The from-scratch opener is one plain ask:** "Tell me about the role — the
+    job title, location, years of experience, industry and the skills that
+    matter. The more you tell me now, the fewer questions I'll need to ask."
+    No hint line, no example chips, no form link under it; the reply box holds
+    an example instead ("e.g. Head of Marketing, Mumbai, 12+ years, FMCG —
+    brand strategy, P&L, team leadership").
+  - **A checklist above the box ticks as you type:** Location · Job title ·
+    Years of experience · Industry — a green tick when covered, a dashed
+    circle when not (shape, not only colour). Skills are left off on purpose:
+    a keystroke-speed read can't tell a skill from a phrase. It is read by the
+    rules, instantly, so it is a nudge — anything missing is asked in the next
+    card anyway.
+  - **An industry named early is kept.** The opener asks for one, so any
+    posting-stage answer records it on the brief ("Also noted: from FMCG"),
+    and refinement drops any topic the conversation already covered.
+- **Storybook:** the composer with its checklist, empty and fully ticked.
+- **Figma:** no node yet.
+- [ ] Storybook
+- [ ] Figma
+
+### Agent: voice input transcribed by Gemini
+
+- **Date:** 2026-09-25
+- **App:** `POST /api/transcribe` in `apps/ai` (`src/transcribe.ts`,
+  `gemini-3.5-transcribe` over the Interactions API, audio inline);
+  `startRecording` and `dictationVocabulary` in `lib/dictation.ts`;
+  `transcribe` in `lib/ai-client.ts`; the mic in `components/agent-composer.tsx`.
+  - **Press to record, press to stop.** A running timer beside the mic
+    ("0:07 · 53s left", capped at a minute), then "Transcribing…" with a
+    spinner in the button. The transcript is ADDED to the reply box, not
+    sent, so it is read before it is an answer.
+  - **A custom vocabulary rides with every clip:** the conversation's role,
+    skills, cities and neighbouring titles, the form's cities (and Bengaluru /
+    Gurugram), the pay words (lakh, LPA, CTC, crore), and the product's
+    companies. Tested on a synthesised clip: "…Gurugram, 12+ years, budget
+    around 60 lakhs, hybrid", ~4–5s.
+  - **Silence is not an error:** an empty transcript says "I didn't hear
+    anything — try again a little closer to the mic."
+  - **Without the AI server** the mic falls back to the browser's speech
+    recognition, as before; the tooltip says which one is listening.
+- **Storybook / Figma:** the composer's recording and transcribing states, on
+  `Compositions → Agent` when it is written.
+- [ ] Storybook
+- [ ] Figma
+
+### Post a job: the first question is how to start
+
+- **Date:** 2026-09-25
+- **App:** new `lib/job-start.ts`; the intake state carries an `origin`
+  (`lib/job-intake.ts`); the start step runs before any reading, rules or
+  Gemini (`advance`, `advanceWithAi`); `lib/agent.ts` draws the three replies.
+  - **"How would you like to start?"** as a one-question card: *I have a JD* ·
+    *Start from scratch* · *Use one of my jobs as a base*. Picking moves on at
+    once; the page reads it, never a model, and no "Read by …" step is drawn
+    over a button press.
+  - **I have a JD** → "Paste the job description below, or attach it with the
+    paperclip", and the reply box says "Paste the job description here…".
+    Pasted text is read as a document: a full JD fills all six fields, skips
+    the posting card entirely, and whatever it says about the search ("manage
+    a team of 4") is recorded too — the plan drops the topics it covered.
+  - **Use one of my jobs** → a second card listing live postings, then closed
+    ones. Picking copies the title, city and matched skills ("Starting from
+    Financial Controller — Bangalore · …"); experience, pay and work mode
+    aren't on a posting, and the card says so before asking them.
+  - **Start from scratch** → "Who would you like to hire?" as before. Typing a
+    sentence instead of picking also counts as this; attaching a file counts
+    as a JD.
+  - **A single-question card has no pager** ("1 of 1" was noise), and a card
+    with nothing optional doesn't offer Esc to skip.
+  - **The rail** reads "Choosing how to start" / "Waiting for the JD" /
+    "Choosing a job to start from", and step 1 says where it came from
+    ("From a JD", "From Financial Controller — Bengaluru").
+- **Storybook:** on `Compositions → Agent` (not yet written), the start card,
+  the job list, and the JD prompt.
+- **Figma:** no node yet.
+- [ ] Storybook
+- [ ] Figma
+
+### Post a job: a rail of stages beside the conversation
+
+- **Date:** 2026-09-25
+- **App:** new `components/posting-rail.tsx` and `lib/posting-rail.ts`;
+  `routes/agent.tsx` lays the rail beside the chat from `@3xl/main` up; each
+  posting reply carries a collapsed work step (`WorkStep` in `lib/agent.ts`).
+  - **A new rail, not `BriefRail`.** Status line (the active step, or
+    "Reading your answer…"); **Plan** — Understand the role · Fill in the
+    posting (4 of 6) · Sharpen the search (2 of 4) · Review and post, which is
+    never ticked because posting happens on the form; **The posting so far**
+    as chips, skills split into must-have and good-to-have; **Who we're
+    looking for** marked Private; **People this would find — 24 of 145**,
+    with a link to open that search.
+  - **The count is exact, not a range.** It is `poolFor` over the very link
+    "Find people now" opens, so the rail and Search Resume cannot disagree
+    (checked: 30 of 176 in both for the same brief). While an answer is being
+    read it dims and says "Updating…" rather than showing a stale number.
+  - **Work steps in the transcript:** "✓ Read by Gemini in 4.7s ›" above each
+    posting reply, opening onto exactly what that answer recorded. The time
+    is measured by the page around the whole call. It replaces the small
+    "Read by …" line that sat under the cards.
+  - **The reply box stays under the card** ("Or reply directly…"), so saying
+    something else never takes closing the card first. × still collapses the
+    card, with "Answer the questions" to bring it back.
+  - **Known quirk of the mock:** adding neighbouring titles changes the search
+    text, and `resultsFor` deals a different pool for different text — so the
+    total moves (258 → 145) instead of only widening. The rail is faithful to
+    what the search would show; the generator is what would need to change.
+- **Storybook:** on `Compositions → Agent` (not yet written), the rail at each
+  stage, a work step open and closed, and the card over the reply box.
+- **Figma:** no node yet.
+- [ ] Storybook
+- [ ] Figma
+
+### Post a job: questions arrive as a questionnaire, not one per turn
+
+- **Date:** 2026-09-25
+- **Design system:** new `packages/ui/src/components/questionnaire.tsx`
+  (shadcn's Base UI Questionnaire over `@shadcn/react/questionnaire`, added
+  with the CLI; its stray `import { cn } from "cn"` fixed and the `cn`
+  package removed, as every add so far has needed).
+- **App:** new `components/agent-questionnaire.tsx`; the intake reads a
+  whole card at once (`advance` in `lib/job-refine.ts`, the batch contract in
+  `lib/job-intake-ai.ts` and `apps/ai/src/intake.ts`).
+  - **The opener stays a sentence** ("Who would you like to hire?", answered
+    in the chat box, because one sentence often fills three fields).
+    **Everything after it is a card**: every posting field still missing, one
+    step at a time — choices, a free-text "Or say it in your words…", Skip,
+    Previous, Next — then **Continue**. Refinement is a second card ending in
+    **Finish**, with "Skip these, post it now" beside it. A posting that took
+    about ten turns takes three or four, and one Gemini call per card.
+  - **A card is one turn.** Its answers go into `?ask=` as one prompt, and
+    the recruiter's bubble draws them as a list (Experience · 12+ years,
+    Industry · Skipped), so the transcript is still the URL.
+  - **Anything unreadable comes back in the next card with a note**, alone;
+    anything skipped is never asked again.
+  - **Number shortcuts (1–9), not letters** — bare A opens Athena and D
+    switches theme. A new card takes focus only when nothing has it, so a
+    keyboard run works without stealing the composer from someone typing.
+  - **Docked, Claude-style.** The live card takes the chat box's place at the
+    bottom of the screen instead of sitting in the transcript: the question on
+    the left with **‹ 2 of 4 ›** and × on the right, numbered rows with rules
+    between them, and **Something else** with **Skip** as the last row, key
+    hints underneath. A single-answer row moves on when clicked or numbered
+    (the last one submits); arrows only move, Enter confirms, Esc skips; a
+    several-answer question shows **Next**. × hands the chat box back with
+    **Answer the questions** to reopen. Built on the unstyled
+    `@shadcn/react/questionnaire`, not the styled `packages/ui` component,
+    whose pills and action bar are a different layout — so if this shape
+    holds up, it is the candidate for a Pattern of its own.
+  - **Two questions keep the page's own wording:** the skills split (a tick
+    means "must-have", which Gemini's phrasing did not always say) and work
+    mode's options (Gemini offered the raw values).
+- **Storybook:** a `Components → Questionnaire` story for the stock
+  component (single, multiple, freeform, skip, progress); on
+  `Compositions → Agent` (not yet written), the docked card — posting and
+  refinement — the closed state with "Answer the questions", and an answers
+  bubble.
+- **Figma:** a Questionnaire component page, in Storybook's order; add its
+  key to `figma-map.json`.
+- [ ] Storybook
+- [ ] Figma
+
+### Post a job: refinement, and a private brief beside the posting
+
+- **Date:** 2026-09-25
+- **App:** new `lib/job-refine.ts`; the intake state gains a stage (posting →
+  refine → done) and a private brief (`lib/job-intake.ts`); Gemini reads both
+  stages (`lib/job-intake-ai.ts`, `apps/ai/src/intake.ts`); the finished card
+  and the refinement question are new shapes in `components/agent-reply.tsx`;
+  the form gains three fields (`routes/new-job.tsx`).
+  - **After the six posting fields, up to four refinement questions** from
+    nine: which skills are must-haves, neighbouring roles, people who'd
+    relocate, industry, team scale, target companies, preferred institutes,
+    budget stretch, and who to rule out. Gemini picks the ones that fit the
+    role; the page caps them at four and fixes the order. Each shows
+    **"2 of 4"** and a **"Skip, post it now"**. The first says "That's the
+    posting. Before it goes up, a few quick questions…".
+  - **Without a model only the tap-answerable topics are asked** —
+    neighbouring roles and rule-outs are free text and are left out rather
+    than read badly by the rules.
+  - **The finished card is two sections of one card**: *The posting* (now
+    with must-have / good-to-have skills, a Team line and relocation support)
+    and *Who we're looking for* — labelled private, with a note on what the
+    search can and cannot do with it. **Two actions**: Review and post, and
+    **Find people now**, which opens Search Resume with the brief as filters
+    (industry, has led a team, budget, people who'd move) and as Juicebox
+    criteria (skills, institutes, rule-outs).
+  - **It refuses to screen on who someone is** — age, gender, family,
+    religion or caste, disability, nationality, career gaps. Said first,
+    every time: "I've left out anything about gender or age — I can't screen
+    on that. Got it — ruling out people who change jobs every year."
+  - **The form** gains Good-to-have skills, Team, and a Relocation support
+    switch, so the chat's posting and the form's are still the same fields.
+- **Storybook:** on `Compositions → Agent` (not yet written), a refinement
+  question with its progress and post-now link, a refusal, and the two-part
+  finished card; on `Compositions → Post a job`, the three new fields.
+- **Figma:** no node for either yet.
+- [ ] Storybook
+- [ ] Figma
+
+### Post a job: a conversation, and the form it hands off to
+
+- **Date:** 2026-09-25
+- **App:** new `lib/job-intake.ts` and `routes/new-job.tsx`; `/jobs/new` is no
+  longer a `PlaceholderPage`. The Agent's "Post a job" card (`lib/agent.ts`)
+  now opens the intake, folded turn by turn in `answersFor`, and
+  `components/agent-reply.tsx` gained a `question` block and a `posting` block.
+  - **It opens on "Who would you like to hire?"** and then asks only what the
+    answer left out. "A senior product manager in Pune, 8–12 years" fills the
+    role, the city and the years at once and goes straight to skills. Six
+    fields in all — role, location, experience, skills, pay, work mode — each
+    with tap-to-answer chips and a Skip (except the title). An answer that
+    cannot be read is asked again with an example, and anything it *did* say
+    is kept: "Pune" alone records Pune and re-asks the title.
+  - **"Fill in a form instead" is on every question**, not just the first, and
+    carries what has been said so far — leaving three questions in loses
+    nothing. The finished posting is a summary card, a description written
+    from the fields (every sentence is one of them; nothing about the team or
+    the mission is invented) and **Review and post**, which opens the same
+    form filled in.
+  - **The form is the same six fields** plus the description, in the same
+    order, reading `?title=`, `?loc=`, `?xp=`, `?pay=`, `?skill=`, `?mode=` as
+    opening values. `loc` rather than the refine panel's `cur`, so a posting's
+    cities can never land on a search as a filter. It has its own "Talk it
+    through instead" back to the Agent, a "Redraft from the fields" that never
+    fires on its own (the recruiter may have edited the paragraph), and a Post
+    button that says publishing isn't wired rather than faking a Jobs row.
+  - **An attached JD during the intake answers everything it can at once** —
+    the first short line as the title, the rest scanned the same way a file is.
+  - **Answers are read by Gemini** through the new `apps/ai` server when it has
+    a key, and by the rules otherwise. Every question and the finished posting
+    carry a small **"Read by Gemini" / "Read by rules · reason"** line under
+    them, for review rather than for recruiters — a good reading from a model
+    and from a regex look identical. The Agent's footer now says which part of
+    the page is which.
+- **Storybook:** a `Compositions → Post a job` with the form empty and filled,
+  and on `Compositions → Agent` (not yet written) the question block live and
+  the finished posting card.
+- **Figma:** no node for either yet.
+- [ ] Storybook
+- [ ] Figma
+
+### Agent: one box over the whole product
+
+- **Date:** 2026-09-25
+- **App:** new `routes/agent.tsx`, `components/agent-composer.tsx`,
+  `components/agent-reply.tsx`, `lib/agent.ts` and `lib/dictation.ts`, plus the
+  `/agent` route in `App.tsx` and a first nav item in `lib/nav.ts` (divider
+  under it, so it does not read as another object screen).
+  - **Two states, one screen.** It opens as a hero — the mascot, "Who are you
+    hiring today?", six cards naming the six things it can answer, a row of
+    follow-up chips and the box. The first question replaces all of it with a
+    transcript and the same box pinned to the bottom.
+  - **The card order is the argument.** Top row is what a recruiter comes to
+    START — **Post a job**, **Search people**, **Get insights** — because that
+    is where a hiring day begins and what somebody with nothing in flight
+    needs. Bottom row is work already moving: Clear the queue, The strongest
+    five, This week's diary, all useful daily and useless on day one. The `/`
+    menu lists them in the same order (`/post`, `/people`, `/insights`, then
+    `/queue`, `/strongest`, `/diary`), so the hero and the menu read alike.
+  - **`?ask=`, one per turn, is the whole conversation.** There is no model:
+    every reply is computed from the brand's own mock data at the moment it is
+    drawn, so the list of questions IS the transcript and a reload, a back
+    button or a pasted link rebuilds it exactly. A reply worth showing someone
+    is a link.
+  - **Replies are blocks, not paragraphs** — text, figures, candidate rows,
+    link rows, prompt chips and a draft. Nothing in them decides, sends or
+    books: the block gets the recruiter to the screen that holds the evidence.
+  - **A miss is a refusal.** Free text is keyword-routed; anything that misses
+    gets "I can't answer that one" plus the questions that do work, drawn as
+    chips that ask themselves.
+  - **The mascot is the unused owl** from `scripts/generate-athena.mjs`
+    (`assets/athena/head-2.png`, previously generated and never wired up). It
+    is NOT named on the screen, and the Athena pane is untouched — whether
+    these are one assistant with two front doors is still open.
+  - **Quick actions on `/`** — a menu above the box, thirteen commands, opened
+    by typing a slash (the sparkle types it rather than toggling a panel, so
+    there is one mechanism and the box shows what happened). Arrow keys, Enter
+    or Tab to take, Escape to close, filtering as you type. The rows are two
+    kinds on one list — six that ask a question and seven that open a page —
+    because asking "who is waiting on a decision" and opening the Jobs list are
+    the same size of intention. **One icon colour, not a hue per row:** the
+    accent here is the product and swaps with brand, so a rainbow would be the
+    one thing on the page that does not, and a green row beside an amber one
+    would read as a status.
+  - **Attach really reads the file.** `.txt`/`.md` come back as words, and the
+    reply quotes what it found — the word count, the title line, the city and
+    years `criteriaFrom` reads, and the skills that are in this product's own
+    pool. `.pdf`/`.docx` are accepted and answered with "that is bytes, not
+    words". **A link carries the question, not the file:** the turn is in
+    `?ask=` and the reading is in memory, so reopening the link says the file
+    did not travel and offers to take it again.
+  - **Dictate is the browser's own `SpeechRecognition`** (`lib/dictation.ts`,
+    `en-IN`, interim results appended to whatever was already typed). Where the
+    browser has no speech recognition the button is disabled and says which
+    browsers do — there is no "Listening…" state with nothing behind it. This
+    is a **divergence from the Smart Hire bar**, whose paperclip and microphone
+    both toast "isn't wired up yet"; if this one holds up in review, that bar
+    should take the same two implementations.
+- **Storybook:** nothing yet. It wants a `Compositions → Agent` with the
+  landing hero, a transcript, the `/` menu drawn open, the composer with a file
+  chip attached, and a story per reply block (figures, candidates, links,
+  draft, file read, refusal) — the shape `Compositions → Athena` already uses.
+  Draw the menu and the chip in place rather than as live overlays, as the
+  other compositions do, so a Docs page shows them without covering itself.
+- **Figma:** no node yet. A new page, mirroring whatever Storybook titles the
+  composition, with its `figma-map.json` key added.
+- [ ] Storybook
+- [ ] Figma
+
 ### Smart Hire bar: the tray and the suggestion row are gone
 
 - **Date:** 2026-09-24

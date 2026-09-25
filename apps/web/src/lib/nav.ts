@@ -13,6 +13,7 @@ import {
   LibraryBigIcon,
   SearchIcon,
   Settings2Icon,
+  SparklesIcon,
   SwatchBookIcon,
   UsersIcon,
 } from "lucide-react"
@@ -39,11 +40,18 @@ export type SecondaryItem = {
  * `react-refresh/only-export-components` is on in this app.
  */
 export const NAV_ITEMS: NavItem[] = [
+  // FIRST, AND ON ITS OWN. It is the one item that is not a place — every
+  // other row opens a screen about a thing the recruiter already has, and
+  // this one takes a question before they have decided which screen it is
+  // about. The divider under it says that rather than filing it with the
+  // objects.
+  { to: "/agent", label: "Agent", icon: SparklesIcon, end: false },
   {
     to: "/dashboard",
     label: "Dashboard",
     icon: LayoutDashboardIcon,
     end: false,
+    separatorBefore: true,
   },
   { to: "/jobs", label: "Jobs", icon: BriefcaseIcon, end: false },
   // Sits next to Jobs because it is the other way into a candidate: Jobs is
