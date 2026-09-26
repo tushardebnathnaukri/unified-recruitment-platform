@@ -31,17 +31,17 @@ import {
 import { Spinner } from "@workspace/ui/components/spinner"
 import { cn } from "@workspace/ui/lib/utils"
 
-import head from "@/assets/athena/head-2.png"
 import { AgentComposer } from "@/components/agent-composer"
+import { Aura, AuraStill } from "@/components/aura"
 import { AgentQuestionnaire } from "@/components/agent-questionnaire"
 import { AgentBlocks } from "@/components/agent-reply"
 import { PostingRail } from "@/components/posting-rail"
+import { useCollapseNav } from "@/components/use-collapse-nav"
 import {
   answersFor,
   CARDS,
-  CHIPS,
+  type Answer,
   type Block,
-  type Skill,
   type WorkStep,
 } from "@/lib/agent"
 import { dictationVocabulary } from "@/lib/dictation"
@@ -58,7 +58,7 @@ import { decodeAnswers, LABELS } from "@/lib/job-refine"
  * starts blank asks the recruiter to guess what it knows, and the guesses are
  * always either too small ("show me my jobs") or far too large. So the first
  * state is a hero: six cards naming the six things it can do, each carrying an
- * example rather than a category, and a row of follow-ups under them. The
+ * example rather than a category. The
  * moment anything is asked the hero goes and the transcript takes the screen —
  * the same box, now at the bottom of a conversation.
  *
@@ -72,7 +72,7 @@ import { decodeAnswers, LABELS } from "@/lib/job-refine"
  * conversation backwards one turn at a time, which is the right thing for it
  * to do here.
  *
- * THE HEAD IS THE UNUSED MASCOT FROM `scripts/generate-athena.mjs`. It is not
+ * THE FACE IS THE AURA FROM `avatar-kit/` (`components/aura.tsx`). It is not
  * named on this screen and the older copilot is untouched — whether these are
  * one assistant with two front doors or two different things is a product
  * question, and a name would answer it before the design team has.
@@ -89,6 +89,9 @@ export function AgentPage() {
 
   const asked = params.getAll(ASK)
   const started = asked.length > 0
+  // A conversation wants the room at every width — the transcript plus the
+  // posting rail beside it. The landing keeps the nav; its cards fit.
+  useCollapseNav(started ? "all" : null)
 
   /**
    * The transcript, as one comparable value.
@@ -296,10 +299,12 @@ export function AgentPage() {
                               <WorkStepRow step={answer.step} />
                             ) : null}
                             <Message>
-                              <Head />
+                              <Head live={index === turns.length - 1} />
                               <MessageContent>
                                 <Bubble variant="secondary">
-                                  <BubbleContent>{answer.said}</BubbleContent>
+                                  <BubbleContent>
+                                    <Said answer={answer} />
+                                  </BubbleContent>
                                 </Bubble>
                                 <div className="mt-1 w-full">
                                   <AgentBlocks
@@ -366,7 +371,7 @@ export function AgentPage() {
                 showCard
                   ? "Or reply directly…"
                   : waitingForJd
-                    ? "Paste the job description here…"
+                    ? "Paste the job description, or drop a PDF or Word doc here…"
                     : waitingForRole
                       ? "e.g. Head of Marketing, Mumbai, 12+ years, FMCG — brand strategy, P&L, team leadership"
                       : undefined
@@ -446,13 +451,8 @@ function Landing({
   )
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col items-center px-4 py-10 lg:px-6">
-      <img
-        src={head}
-        alt=""
-        width={96}
-        height={96}
-        className="size-24 shrink-0"
-      />
+      {/* The top margin is room for the glow, which spills past the orb. */}
+      <Aura size={80} className="mt-6" />
 
       <h1 className="mt-5 text-center text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
         Who are you hiring today?
@@ -481,8 +481,6 @@ function Landing({
         ))}
       </div>
 
-      <Prompts skills={CHIPS} onAsk={onAsk} className="mt-5 justify-center" />
-
       <AgentComposer
         autoFocus
         vocabulary={landingVocabulary}
@@ -494,32 +492,6 @@ function Landing({
   )
 }
 
-/** The prompt pills — the chips under the cards, and the sparkle's list. */
-function Prompts({
-  skills,
-  onAsk,
-  className,
-}: {
-  skills: Skill[]
-  onAsk: (prompt: string) => void
-  className?: string
-}) {
-  return (
-    <div className={cn("flex flex-wrap gap-2", className)}>
-      {skills.map((skill) => (
-        <button
-          key={skill.id}
-          type="button"
-          onClick={() => onAsk(skill.prompt)}
-          className="rounded-4xl border bg-background px-3 py-1.5 text-xs font-medium transition-colors outline-none hover:bg-muted focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
-        >
-          {skill.prompt}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 /**
  * Who is answering. Unnamed for now — see the note on the page.
  *
@@ -527,19 +499,21 @@ function Prompts({
  * and then a stack of cards, sometimes a screen tall, and an avatar pinned to
  * the bottom of that stack ends up beside the fifth candidate looking like it
  * belongs to them. It goes beside the sentence it is saying.
+ *
+ * Only the newest reply is live; `overflow-visible` lets its glow spill.
  */
-function Head() {
+function Head({ live }: { live: boolean }) {
   return (
-    <MessageAvatar className="self-start bg-transparent">
-      <img src={head} alt="" width={32} height={32} className="size-8" />
+    <MessageAvatar className="self-start overflow-visible bg-transparent">
+      {live ? <Aura size={28} /> : <AuraStill size={28} />}
     </MessageAvatar>
   )
 }
 
 // Versioned: a reading is a whole `IntakeState`. v2 added the stage and the
 // brief; v3 the opener and the batch shape the questionnaire needs; v4 how
-// the posting started.
-const READINGS_KEY = "agent:intake-readings:v4"
+// the posting started; v5 what an answer recorded, as rows (`noted`).
+const READINGS_KEY = "agent:intake-readings:v5"
 
 /** Per-tab, and allowed to be empty — a cache, so losing it costs a re-read. */
 function loadReadings(): Record<string, IntakeState> {
@@ -567,6 +541,29 @@ function saveReadings(readings: Record<string, IntakeState>) {
   } catch {
     // Private mode or a full quota: the page still works, it just re-reads.
   }
+}
+
+/**
+ * What the agent said, in its bubble. What the last answer recorded comes
+ * first, as "Got it." and a label beside each value — the same grid the
+ * recruiter's own bubble uses for their answers — and the sentence after.
+ */
+function Said({ answer }: { answer: Answer }) {
+  if (!answer.noted?.length) return answer.said
+  return (
+    <div className="flex flex-col gap-2">
+      <p>Got it.</p>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+        {answer.noted.map((row) => (
+          <div key={row.label} className="contents">
+            <dt className="text-muted-foreground">{row.label}</dt>
+            <dd className="min-w-0 font-medium">{row.value}</dd>
+          </div>
+        ))}
+      </dl>
+      {answer.said ? <p>{answer.said}</p> : null}
+    </div>
+  )
 }
 
 /**

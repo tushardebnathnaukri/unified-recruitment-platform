@@ -10,6 +10,22 @@ diff.
 
 ## Pending
 
+### Post a job: what an answer recorded, as rows
+
+- **Date:** 2026-09-26
+- **App:** `noted` on `IntakeState` (`notedFrom` in `lib/job-intake.ts`,
+  `refineNoted` in `lib/job-refine.ts`), drawn by `Said` in `routes/agent.tsx`.
+  - The agent's bubble opens "Got it." and then a label beside each value
+    (Role · Location · Experience · Skills · Pay · Work mode, and in
+    refinement the brief's own labels), the same grid the recruiter's answer
+    bubble uses — instead of "Got it — Head of Marketing · Delhi NCR · 4–5
+    years · Fintech." run together in a sentence. The follow-up line comes
+    after the rows. "Also noted: …" is gone; those facts are rows too.
+- **Storybook:** on `Compositions → Agent` when it is written.
+- **Figma:** no node yet.
+- [ ] Storybook
+- [ ] Figma
+
 ### Post a job: a plain opener, and a checklist while typing
 
 - **Date:** 2026-09-25
@@ -63,33 +79,40 @@ diff.
 
 ### Post a job: the first question is how to start
 
-- **Date:** 2026-09-25
+- **Date:** 2026-09-25 (options relabelled and a fourth added 2026-09-26)
 - **App:** new `lib/job-start.ts`; the intake state carries an `origin`
   (`lib/job-intake.ts`); the start step runs before any reading, rules or
-  Gemini (`advance`, `advanceWithAi`); `lib/agent.ts` draws the three replies.
+  Gemini (`advance`, `advanceWithAi`); `lib/agent.ts` draws the four replies.
   - **"How would you like to start?"** as a one-question card: *I have a JD* ·
-    *Start from scratch* · *Use one of my jobs as a base*. Picking moves on at
-    once; the page reads it, never a model, and no "Read by …" step is drawn
-    over a button press.
+    *Fill in a form* · *Let's chat about it* · *Use one of my existing jobs as
+    a base*. Picking moves on at once; the page reads it, never a model, and
+    no "Read by …" step is drawn over a button press.
   - **I have a JD** → "Paste the job description below, or attach it with the
     paperclip", and the reply box says "Paste the job description here…".
     Pasted text is read as a document: a full JD fills all six fields, skips
     the posting card entirely, and whatever it says about the search ("manage
     a team of 4") is recorded too — the plan drops the topics it covered.
-  - **Use one of my jobs** → a second card listing live postings, then closed
-    ones. Picking copies the title, city and matched skills ("Starting from
-    Financial Controller — Bangalore · …"); experience, pay and work mode
-    aren't on a posting, and the card says so before asking them.
-  - **Start from scratch** → "Who would you like to hire?" as before. Typing a
-    sentence instead of picking also counts as this; attaching a file counts
-    as a JD.
+  - **Fill in a form** → a link-out reply ("Post a job", to `postingHref`)
+    rather than a stage of its own — there is no draft yet to carry over, so
+    this is the below-card escape hatch every other posting card offers,
+    surfaced as a first-class choice instead, since it is the first question
+    asked. The below-card link is left off this one card so the same words
+    don't appear twice.
+  - **Use one of my existing jobs** → a second card listing live postings,
+    then closed ones. Picking copies the title, city and matched skills
+    ("Starting from Financial Controller — Bangalore · …"); experience, pay
+    and work mode aren't on a posting, and the card says so before asking
+    them.
+  - **Let's chat about it** (was "Start from scratch") → "Who would you like
+    to hire?" as before. Typing a sentence instead of picking also counts as
+    this; attaching a file counts as a JD.
   - **A single-question card has no pager** ("1 of 1" was noise), and a card
     with nothing optional doesn't offer Esc to skip.
   - **The rail** reads "Choosing how to start" / "Waiting for the JD" /
     "Choosing a job to start from", and step 1 says where it came from
     ("From a JD", "From Financial Controller — Bengaluru").
-- **Storybook:** on `Compositions → Agent` (not yet written), the start card,
-  the job list, and the JD prompt.
+- **Storybook:** on `Compositions → Agent` (not yet written), the start card
+  (now four options), the job list, and the JD prompt.
 - **Figma:** no node yet.
 - [ ] Storybook
 - [ ] Figma
@@ -264,9 +287,9 @@ diff.
   `components/agent-reply.tsx`, `lib/agent.ts` and `lib/dictation.ts`, plus the
   `/agent` route in `App.tsx` and a first nav item in `lib/nav.ts` (divider
   under it, so it does not read as another object screen).
-  - **Two states, one screen.** It opens as a hero — the mascot, "Who are you
-    hiring today?", six cards naming the six things it can answer, a row of
-    follow-up chips and the box. The first question replaces all of it with a
+  - **Two states, one screen.** It opens as a hero — the Aura, "Who are you
+    hiring today?", six cards naming the six things it can answer, and the box
+    (the row of follow-up chips was removed 2026-09-26). The first question replaces all of it with a
     transcript and the same box pinned to the bottom.
   - **The card order is the argument.** Top row is what a recruiter comes to
     START — **Post a job**, **Search people**, **Get insights** — because that
@@ -286,10 +309,13 @@ diff.
   - **A miss is a refusal.** Free text is keyword-routed; anything that misses
     gets "I can't answer that one" plus the questions that do work, drawn as
     chips that ask themselves.
-  - **The mascot is the unused owl** from `scripts/generate-athena.mjs`
-    (`assets/athena/head-2.png`, previously generated and never wired up). It
-    is NOT named on the screen, and the Athena pane is untouched — whether
-    these are one assistant with two front doors is still open.
+  - **The face is the Aura** from `avatar-kit/` (2026-09-26, replacing the
+    owl `assets/athena/head-2.png`): an animated WebGL glass sphere, vendored
+    into `lib/aura/` and drawn by `components/aura.tsx`. Live in the hero and
+    on the newest reply only (one WebGL context each); older replies draw a
+    still gradient orb. It is NOT named on the screen, and the Athena pane is
+    untouched — whether these are one assistant with two front doors is still
+    open.
   - **Quick actions on `/`** — a menu above the box, thirteen commands, opened
     by typing a slash (the sparkle types it rather than toggling a panel, so
     there is one mechanism and the box shows what happened). Arrow keys, Enter

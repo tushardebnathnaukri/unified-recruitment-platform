@@ -47,8 +47,8 @@ import {
   VIEWS,
   type View,
   queueOrder,
-  useCollapseNavBelow,
 } from "@/components/candidate-list/shared"
+import { useCollapseNavBelow } from "@/components/use-collapse-nav"
 import { SelectionBar } from "@/components/candidate-list/selection"
 import { ApplicantList } from "@/components/candidate-list/applicant-list"
 import {

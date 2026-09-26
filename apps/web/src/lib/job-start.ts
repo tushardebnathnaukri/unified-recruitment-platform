@@ -8,7 +8,7 @@ import {
 } from "@/lib/applicants"
 import {
   canonicalCity,
-  heardFrom,
+  notedFrom,
   readDescription,
   nextQuestion,
   type AskedItem,
@@ -28,10 +28,17 @@ import type { IntakeInput } from "@/lib/job-refine"
  * the conversation opens by asking which of those it is, as a card, and the
  * answer picks the road.
  *
- * FIXED CHOICES, READ BY THE PAGE. These are three buttons and a list of the
+ * FIXED CHOICES, READ BY THE PAGE. These are four buttons and a list of the
  * recruiter's own postings — nothing a model has to interpret — so they never
  * go to Gemini. Anything else still works: a sentence typed into the reply box
- * is "from scratch" and is read as one, and a file attached is "I have a JD".
+ * is "let's chat about it" and is read as one, and a file attached is "I have
+ * a JD".
+ *
+ * "FILL IN A FORM" IS THE SAME ESCAPE HATCH EVERY OTHER CARD OFFERS, MADE A
+ * CHOICE HERE RATHER THAN A LINK BESIDE THE CARD — this is the first question
+ * asked, before there is a draft worth carrying over, so it reads as one more
+ * road rather than a way out of one. Picking it is read in `intakeReply`
+ * (`lib/agent.ts`) as a link to `postingHref`, not as a stage of its own.
  *
  * A BASE JOB GIVES WHAT A JOB HOLDS, AND NO MORE. A posting in `lib/jobs.ts`
  * has a title, a city and — through `requiredSkillsFor` — the skills it is
@@ -39,12 +46,13 @@ import type { IntakeInput } from "@/lib/job-refine"
  * asked rather than guessed; the card says so.
  */
 
-export type Origin = "jd" | "scratch" | "job"
+export type Origin = "jd" | "form" | "scratch" | "job"
 
 export const START_OPTIONS: { value: Origin; label: string }[] = [
   { value: "jd", label: "I have a JD" },
-  { value: "scratch", label: "Start from scratch" },
-  { value: "job", label: "Use one of my jobs as a base" },
+  { value: "form", label: "Fill in a form" },
+  { value: "scratch", label: "Let's chat about it" },
+  { value: "job", label: "Use one of my existing jobs as a base" },
 ]
 
 export function startItem(): AskedItem {
@@ -92,8 +100,9 @@ function originOf(answer: string): Origin | null {
   )
   if (option) return option.value
   if (/\b(jd|job description)\b/i.test(answer)) return "jd"
+  if (/\bform\b/i.test(answer)) return "form"
   if (/\b(existing|old|previous|one of my|base)\b/i.test(answer)) return "job"
-  if (/\b(scratch|new|fresh)\b/i.test(answer)) return "scratch"
+  if (/\b(scratch|new|fresh|chat)\b/i.test(answer)) return "scratch"
   return null
 }
 
@@ -173,12 +182,6 @@ export function advanceStart(
       skills: requiredSkillsFor(job),
     }
     const draft: PostingDraft = { ...state.draft, ...copied }
-    // The title is already in "Starting from …"; saying it again after the
-    // dash read as a stutter.
-    const said = heardFrom({
-      locations: copied.locations,
-      skills: copied.skills,
-    })
     return {
       done: true,
       state: {
@@ -188,12 +191,30 @@ export function advanceStart(
         basedOn: jobLabel(job),
         draft,
         asking: nextQuestion(draft, state.skipped),
-        heard: said ? `Starting from ${job.title} — ${said}.` : null,
+        heard: null,
+        noted: notedFrom(copied),
       },
     }
   }
 
   return { done: false, state, input }
+}
+
+/**
+ * Whether a sentence that starts a posting already says who — "hire an FMCG
+ * product manager in Delhi" — in which case it IS the from-scratch opener and
+ * asking "How would you like to start?" would throw it away.
+ *
+ * A title alone is not proof: the title reader falls back to the whole
+ * sentence, title-cased, so "I'm hiring" reads as the title "I'm Hiring". A
+ * title counts only when it is something other than the prompt echoed back.
+ */
+export function describesRole(text: string, brand: Brand) {
+  const read = readDescription(text, brand)
+  if (read.locations?.length || read.experience) return true
+  return Boolean(
+    read.title && read.title.toLowerCase() !== text.trim().toLowerCase()
+  )
 }
 
 /**

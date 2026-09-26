@@ -36,8 +36,9 @@ import {
   summaryRows,
   type AskedItem,
   type IntakeState,
+  type Noted,
 } from "@/lib/job-intake"
-import { baseItem, startItem } from "@/lib/job-start"
+import { baseItem, describesRole, startItem } from "@/lib/job-start"
 import {
   briefRows,
   decodeAnswers,
@@ -178,6 +179,11 @@ export type WorkStep = {
 export type Answer = {
   /** The line above the blocks — what the agent understood it was asked. */
   said: string
+  /**
+   * What the last answer recorded, drawn in the bubble ahead of `said` as
+   * "Got it." and one label-and-value row per fact.
+   */
+  noted?: Noted
   blocks: Block[]
   step?: WorkStep
 }
@@ -252,8 +258,13 @@ export const CARDS: Skill[] = [
       "post a job",
       "post",
       "advert",
+      "hire",
       "hire for",
+      "hiring",
       "hiring for",
+      "recruit",
+      "vacancy",
+      "opening",
     ],
     card: {
       title: "Post a job",
@@ -568,14 +579,26 @@ export const CARDS: Skill[] = [
 
 /**
  * THE CHIPS. Follow-ups rather than starting points — each one is a question
- * that only makes sense once you are already in the middle of hiring, which is
- * why they sit under the cards as a row of words instead of getting a tile.
+ * that only makes sense once you are already in the middle of hiring, so they
+ * get nothing on the landing. Free text reaches them, `/new` and `/note` in the
+ * `/` menu send two of them, and `cannotAnswer` lists them all.
  */
 export const CHIPS: Skill[] = [
   {
     id: "new",
     prompt: "What changed since I was last here?",
-    keywords: ["changed", "new", "since", "latest", "yesterday", "today"],
+    // Not a bare "new": it is half of "New Delhi" and of "a new role".
+    keywords: [
+      "changed",
+      "what's new",
+      "anything new",
+      "new applicants",
+      "new applications",
+      "since",
+      "latest",
+      "yesterday",
+      "today",
+    ],
     answer: (brand) => {
       const rows = liveJobsFor(brand)
         .filter((job) => job.newSinceVisit > 0)
@@ -624,6 +647,7 @@ export const CHIPS: Skill[] = [
       "reach",
       "draft",
       "write to",
+      "write a note",
     ],
     answer: (brand) => {
       const job = busiestJob(brand)
@@ -1041,7 +1065,12 @@ function cannotRead(name: string): Answer {
     blocks: [
       {
         kind: "text",
-        text: `A ${kind} is bytes rather than words in the browser, and there is nothing behind this screen to convert one — so I have the file's name and nothing else, and guessing at a role from a filename would be inventing. A .txt or .md I can read properly.`,
+        text:
+          kind === ".pdf"
+            ? "This PDF has no text in it — it is most likely a scan, which is a picture of words rather than words. Paste the text instead, or attach the Word version, and I'll read it properly."
+            : kind === ".doc"
+              ? "An old .doc is a format the browser can't open. Save it as .docx or PDF, or paste the text, and I'll read it properly."
+              : `I couldn't get any words out of this ${kind}, so I have the file's name and nothing else — and guessing at a role from a filename would be inventing. A PDF, a .docx or a text file I can read.`,
       },
       {
         kind: "prompts",
@@ -1057,7 +1086,7 @@ function fileIsGone(name: string): Answer {
     blocks: [
       {
         kind: "text",
-        text: "The conversation travels in the URL, and a file cannot. The question is here; what I read is not. Attach it again with the paperclip and I'll read it back.",
+        text: "The conversation travels in the URL, and a file cannot. The question is here; what I read is not. Attach or drop it again and I'll read it back.",
       },
     ],
   }
@@ -1117,15 +1146,32 @@ export function answerFor(
   const exact = skillFor(prompt)
   if (exact) return exact.answer(brand)
 
+  const best = routeFor(prompt)
+  return best ? best.answer(brand) : cannotAnswer()
+}
+
+/**
+ * The skill whose keywords a sentence hits hardest, or null.
+ *
+ * WHOLE WORDS, AND A PHRASE WEIGHS ITS LENGTH. Substrings let "new" in "New
+ * Delhi" outvote a sentence about hiring, and "post" hide inside "position".
+ * Weighing a phrase by its words is what lets "how is my hiring going" (two)
+ * beat posting's bare "hiring" (one).
+ */
+function routeFor(prompt: string): Skill | null {
   const text = prompt.toLowerCase()
-  let best: { skill: Skill; hits: number } | null = null
-
+  let best: { skill: Skill; score: number } | null = null
   for (const skill of ALL) {
-    const hits = skill.keywords.filter((word) => text.includes(word)).length
-    if (hits && (!best || hits > best.hits)) best = { skill, hits }
+    const score = skill.keywords
+      .filter((word) =>
+        new RegExp(`\\b${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(
+          text
+        )
+      )
+      .reduce((sum, word) => sum + word.split(" ").length, 0)
+    if (score && (!best || score > best.score)) best = { skill, score }
   }
-
-  return best ? best.skill.answer(brand) : cannotAnswer()
+  return best?.skill ?? null
 }
 
 /**
@@ -1144,13 +1190,30 @@ export function intakeReply(state: IntakeState, brand: Brand): Answer {
   // changes every question after it (`lib/job-start.ts`).
   if (state.stage === "posting" && state.opener && state.origin === null) {
     return {
+      // "Fill in a form" is already one of the choices below, so the
+      // below-card escape hatch would only say the same thing twice.
       said: "Happy to help. First, how would you like to start?",
       blocks: [
+        { kind: "questionnaire", items: [startItem()], submit: "Continue" },
+      ],
+    }
+  }
+
+  // FILL IN A FORM — read here, not as a stage of its own. There is no draft
+  // yet to carry over, so this is a link out rather than a question answered.
+  if (state.stage === "posting" && state.opener && state.origin === "form") {
+    return {
+      said: "Sure — here's the form.",
+      blocks: [
         {
-          kind: "questionnaire",
-          items: [startItem()],
-          submit: "Continue",
-          form: { label: "Fill in a form instead", to },
+          kind: "links",
+          items: [
+            {
+              label: "Post a job",
+              detail: "The same six questions, as a form instead of a chat",
+              to,
+            },
+          ],
         },
       ],
     }
@@ -1161,6 +1224,7 @@ export function intakeReply(state: IntakeState, brand: Brand): Answer {
       said: [state.heard, "Which job should we start from?"]
         .filter(Boolean)
         .join(" "),
+      noted: state.noted,
       blocks: [
         {
           kind: "questionnaire",
@@ -1173,10 +1237,10 @@ export function intakeReply(state: IntakeState, brand: Brand): Answer {
   }
 
   // A JD is coming: pasted into the reply box, or attached with the
-  // paperclip. Either way it is read as a document.
+  // paperclip, or dropped on the box. Either way it is read as a document.
   if (state.stage === "posting" && state.opener && state.origin === "jd") {
     return {
-      said: "Paste the job description below, or attach it with the paperclip.",
+      said: "Paste the job description below, or drop a PDF or Word doc on the box.",
       blocks: [
         {
           kind: "question",
@@ -1222,6 +1286,7 @@ export function intakeReply(state: IntakeState, brand: Brand): Answer {
           : "One more go at these."
     return {
       said: [state.heard, lead].filter(Boolean).join(" "),
+      noted: state.noted,
       blocks: [
         {
           kind: "questionnaire",
@@ -1259,6 +1324,7 @@ export function intakeReply(state: IntakeState, brand: Brand): Answer {
     ]
       .filter(Boolean)
       .join(" "),
+    noted: state.noted,
     blocks: [
       {
         kind: "posting",
@@ -1276,13 +1342,7 @@ export function intakeReply(state: IntakeState, brand: Brand): Answer {
 /** The posting skill, found the way free text finds it. */
 function startsPosting(prompt: string) {
   if (prompt === byId("posting").prompt) return true
-  const text = prompt.toLowerCase()
-  let best: { skill: Skill; hits: number } | null = null
-  for (const skill of ALL) {
-    const hits = skill.keywords.filter((word) => text.includes(word)).length
-    if (hits && (!best || hits > best.hits)) best = { skill, hits }
-  }
-  return best?.skill.id === "posting"
+  return routeFor(prompt)?.id === "posting"
 }
 
 /** A turn of the intake that has not been read yet, for the page to read. */
@@ -1347,9 +1407,17 @@ export function answersFor(
     ) {
       intake = startIntake()
       posting = intake
-      turns = [prompt]
-      answers.push(intakeReply(intake, brand))
-      continue
+      // "Hire an FMCG product manager in Delhi" has already answered how it
+      // starts — from scratch, with this sentence — so it is read as the
+      // opener below rather than asked "How would you like to start?".
+      if (exact || !describesRole(prompt, brand)) {
+        turns = [prompt]
+        answers.push(intakeReply(intake, brand))
+        continue
+      }
+      intake = { ...intake, origin: "scratch" }
+      posting = intake
+      turns = []
     }
 
     if (intake && !exact) {

@@ -11,7 +11,7 @@ import { INSTITUTE_GROUPS, writeRange } from "@/lib/database-filters"
 import {
   advanceIntake,
   filled,
-  heardFrom,
+  notedFrom,
   isSkip,
   nextQuestion,
   payLabel,
@@ -25,6 +25,7 @@ import {
   type AskedItem,
   type FieldId,
   type IntakeState,
+  type Noted,
   type PostingDraft,
 } from "@/lib/job-intake"
 import { advanceStart } from "@/lib/job-start"
@@ -129,13 +130,38 @@ export function industriesFor(brand: Brand) {
 export const industryLabel = (industry: string) =>
   INDUSTRY_TAGS[industry] ?? industry
 
-/** Institute groups that have somebody in this pool, then the schools. */
+/**
+ * The two answers the institutes question offers. PREMIUM IS KEPT AS ONE
+ * VALUE on the brief rather than expanded into schools, so the brief, the rail
+ * and the search's criterion all say "premium" — which is what was asked.
+ */
+export const PREMIUM_INSTITUTES = "Premium institutes"
+export const ALL_INSTITUTES = "All institutes"
+
+/** "Premium", then the groups with somebody in this pool, then the schools. */
 export function institutesFor(brand: Brand) {
   const schools = schoolsFor(brand)
   const groups = Object.keys(INSTITUTE_GROUPS).filter((group) =>
     schools.some((school) => school.startsWith(INSTITUTE_GROUPS[group]))
   )
-  return [...groups, ...schools]
+  return [PREMIUM_INSTITUTES, ...groups, ...schools]
+}
+
+/**
+ * An answer to the institutes question: the institutes to prefer, an empty
+ * list for no preference, or null when it could not be read. Premium or all
+ * is the whole question; a school typed into "Something else" still counts.
+ */
+export function readInstitutes(answer: string, brand: Brand): string[] | null {
+  if (/\b(premium|premier|top|tier.?1|elite|best)\b/i.test(answer))
+    return [PREMIUM_INSTITUTES]
+  if (
+    /\ball\b|no preference|\bany\b|doesn'?t matter/i.test(answer) ||
+    NO.test(answer.trim())
+  )
+    return []
+  const institutes = named(answer, institutesFor(brand))
+  return institutes.length ? institutes : null
 }
 
 // --- The guardrail ------------------------------------------------------------
@@ -444,18 +470,15 @@ const QUESTIONS: RefineQuestion[] = [
   },
   {
     id: "college",
-    ask: () => "Any institutes you'd prefer?",
-    hint: "A preference, not a requirement — it ranks people, it rules nobody out.",
-    options: (_, brand) => institutesFor(brand).slice(0, 5),
-    multiple: true,
+    ask: () => "Only people from premium institutes, or all?",
+    hint: "Premium means the IITs, IIMs, ISB, XLRI, BITS and the like. A preference, not a requirement — it ranks people, it rules nobody out.",
+    options: () => [PREMIUM_INSTITUTES, ALL_INSTITUTES],
     read: (answer, _, brand) => {
-      if (
-        /no preference|\bany\b|doesn'?t matter/i.test(answer) ||
-        NO.test(answer.trim())
-      )
-        return { said: "No institute preference, then." }
-      const institutes = named(answer, institutesFor(brand))
-      return institutes.length ? { brief: { institutes } } : null
+      const institutes = readInstitutes(answer, brand)
+      if (!institutes) return null
+      return institutes.length
+        ? { brief: { institutes } }
+        : { said: "No institute preference, then." }
     },
   },
   {
@@ -517,8 +540,12 @@ export function refineItem(
   // read — and Gemini, left to phrase it, asked "are all of these must-haves,
   // or are some nice-to-have?", which a tick cannot answer. It phrased it
   // clearly on the next run, which is the problem: it varies.
+  // Institutes are the same: two fixed answers, and Gemini offered a list of
+  // five schools instead.
   const phrasing =
-    topic === "skillsSplit" ? undefined : state.phrasings?.[topic]
+    topic === "skillsSplit" || topic === "college"
+      ? undefined
+      : state.phrasings?.[topic]
   return {
     id: topic,
     prompt: phrasing?.ask || question.ask(state.draft),
@@ -591,48 +618,59 @@ export function decodeAnswers(prompt: string): Answers | null {
 
 // --- Reading an answer, by the rules --------------------------------------------
 
-/** What a refinement answer changed, in the words the card prints. */
-export function refineHeard(
+/** What a refinement answer changed, as rows — labelled as the brief is. */
+export function refineNoted(
   before: IntakeState,
   draft: PostingDraft,
   brief: HiringBrief
-) {
-  const bits: string[] = []
+): Noted {
+  const rows: Noted = []
   const changed = <K extends keyof HiringBrief>(key: K) =>
     JSON.stringify(brief[key]) !== JSON.stringify(before.brief[key])
 
   if (
     JSON.stringify(draft.niceSkills) !== JSON.stringify(before.draft.niceSkills)
-  )
-    bits.push(
-      `must-have ${draft.skills.join(", ")}; good to have ${draft.niceSkills.join(", ")}`
-    )
+  ) {
+    rows.push({ label: "Must have", value: draft.skills.join(", ") })
+    rows.push({ label: "Good to have", value: draft.niceSkills.join(", ") })
+  }
   if (changed("adjacentTitles") && brief.adjacentTitles.length)
-    bits.push(`also open to ${brief.adjacentTitles.join(", ")}`)
+    rows.push({
+      label: "Also consider",
+      value: brief.adjacentTitles.join(", "),
+    })
   if (changed("openToMovers"))
-    bits.push(
-      brief.openToMovers
-        ? `open to people who'd move${draft.relocationSupport ? ", relocation supported" : ""}`
-        : "only people already there"
-    )
+    rows.push({
+      label: "Relocation",
+      value: brief.openToMovers
+        ? `Open to people who'd move${draft.relocationSupport ? ", relocation supported" : ""}`
+        : "Only people already there",
+    })
   if (changed("industries") && brief.industries.length)
-    bits.push(`from ${brief.industries.map(industryLabel).join(", ")}`)
+    rows.push({
+      label: "Industry",
+      value: brief.industries.map(industryLabel).join(", "),
+    })
   if (draft.teamScale !== before.draft.teamScale && draft.teamScale)
-    bits.push(draft.teamScale.toLowerCase())
+    rows.push({ label: "Team", value: draft.teamScale })
   if (changed("targetCompanies") && brief.targetCompanies.length)
-    bits.push(`ideally from ${brief.targetCompanies.join(", ")}`)
+    rows.push({
+      label: "Look first at",
+      value: brief.targetCompanies.join(", "),
+    })
   if (changed("institutes") && brief.institutes.length)
-    bits.push(`preferring ${brief.institutes.join(", ")}`)
+    rows.push({ label: "Prefer", value: brief.institutes.join(", ") })
   if (changed("budget") && brief.budget)
-    bits.push(
-      brief.budget.firm
-        ? "the pay is firm"
-        : `stretch to ₹${brief.budget.upTo}L for the right person`
-    )
+    rows.push({
+      label: "Budget",
+      value: brief.budget.firm
+        ? "Firm"
+        : `Can stretch to ₹${brief.budget.upTo}L for the right person`,
+    })
   if (changed("exclusions") && brief.exclusions.length)
-    bits.push(`ruling out ${brief.exclusions.join("; ")}`)
+    rows.push({ label: "Rule out", value: brief.exclusions.join("; ") })
 
-  return bits.length ? `Got it — ${bits.join(" · ")}.` : null
+  return rows
 }
 
 /** Every recorded exclusion, with anything protected taken out. */
@@ -717,7 +755,7 @@ function advanceRefine(
   return next([...state.settled, topic], {
     draft,
     brief,
-    heard: change.said ?? refineHeard(state, draft, brief),
+    heard: change.said ?? null,
     missed: false,
   })
 }
@@ -745,7 +783,7 @@ export function advance(
   brand: Brand
 ): IntakeState {
   // How the posting starts comes first, and is never a model's to read.
-  const start = advanceStart(state, given, brand)
+  const start = advanceStart({ ...state, noted: undefined }, given, brand)
   if (start.done) return start.state
   return advanceRead(start.state, start.input, brand)
 }
@@ -821,7 +859,6 @@ function advanceRead(
       next.brief.industries.length && !before.brief.industries.length
         ? next.brief.industries.map(industryLabel).join(", ")
         : null
-    const said = [heardFrom(changed), newIndustries].filter(Boolean).join(" · ")
     const asking = nextQuestion(next.draft, next.skipped)
     next = {
       ...next,
@@ -829,7 +866,11 @@ function advanceRead(
       asking,
       unread,
       missed: false,
-      heard: said ? `Got it — ${said}.` : null,
+      heard: null,
+      noted: [
+        ...notedFrom(changed),
+        ...(newIndustries ? [{ label: "Industry", value: newIndustries }] : []),
+      ],
     }
     return asking === null ? enterRefine(next, null, { model: false }) : next
   }
@@ -858,7 +899,6 @@ function advanceRead(
     }
 
     const asking = nextTopic(next.plan, next.settled)
-    const diff = refineHeard(before, next.draft, next.brief)
     return {
       ...next,
       ...ruled,
@@ -866,10 +906,8 @@ function advanceRead(
       asking,
       unread,
       missed: false,
-      heard:
-        [refused.length ? refusalFor(refused) : null, diff]
-          .filter(Boolean)
-          .join(" ") || null,
+      heard: refused.length ? refusalFor(refused) : null,
+      noted: refineNoted(before, next.draft, next.brief),
     }
   }
 
@@ -978,7 +1016,12 @@ export function searchHrefFor(state: IntakeState, brand: Brand) {
   for (const skill of draft.niceSkills)
     params.append("crit", `Ideally has ${skill}`)
   for (const institute of brief.institutes)
-    params.append("crit", `Studied at ${institute}`)
+    params.append(
+      "crit",
+      institute === PREMIUM_INSTITUTES
+        ? "Studied at a premium institute"
+        : `Studied at ${institute}`
+    )
   for (const exclusion of brief.exclusions)
     params.append("crit", `Not: ${exclusion}`)
 

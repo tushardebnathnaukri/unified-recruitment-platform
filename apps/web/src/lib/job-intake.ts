@@ -774,8 +774,17 @@ export type IntakeState = {
   settled: RefineId[]
   /** The question being asked, or null once there is nothing left to ask. */
   asking: FieldId | RefineId | null
-  /** What the last answer set, said back. */
+  /**
+   * What the last answer said back in prose — a skip, a refusal, the model's
+   * own words when nothing was recorded. What it RECORDED is `noted`.
+   */
   heard: string | null
+  /**
+   * What the last answer recorded, one row per fact, drawn under "Got it." as
+   * a label and its value. Cleared at the start of every turn (`advance`,
+   * `advanceWithAi`), so a turn that records nothing does not repeat the last.
+   */
+  noted?: Noted
   /** The last answer could not be read, so the question is asked again. */
   missed: boolean
   /**
@@ -862,17 +871,19 @@ export function startIntake(): IntakeState {
   }
 }
 
-/** What an answer changed, in the words the card will print. */
-export function heardFrom(change: Partial<PostingDraft>) {
-  const bits = [
-    change.title,
-    change.locations?.join(", "),
-    change.experience ? yearsLabel(change.experience) : null,
-    change.skills?.join(", "),
-    change.pay ? payLabel(change.pay) : null,
-    change.mode ? modeLabel(change.mode) : null,
-  ].filter(Boolean)
-  return bits.length ? bits.join(" · ") : null
+export type Noted = { label: string; value: string }[]
+
+/** What an answer changed, as rows — labelled the way the summary card is. */
+export function notedFrom(change: Partial<PostingDraft>): Noted {
+  const rows: [string, string | null | undefined][] = [
+    ["Role", change.title],
+    ["Location", change.locations?.join(", ")],
+    ["Experience", change.experience ? yearsLabel(change.experience) : null],
+    ["Skills", change.skills?.join(", ")],
+    ["Pay", change.pay ? payLabel(change.pay) : null],
+    ["Work mode", change.mode ? modeLabel(change.mode) : null],
+  ]
+  return rows.flatMap(([label, value]) => (value ? [{ label, value }] : []))
 }
 
 /**
@@ -932,14 +943,14 @@ export function advanceIntake(
     Object.assign(kept, { [key]: change[key] })
   }
 
-  const said = heardFrom(kept)
   const asking = nextQuestion(draft, state.skipped)
   return {
     ...state,
     draft,
     skipped: state.skipped,
     asking,
-    heard: said ? `Got it — ${said}.` : null,
+    heard: null,
+    noted: notedFrom(kept),
     // Answered around the question rather than to it: what it did say is
     // kept, and the question comes back in its "I couldn't read that" form.
     missed: !document && asking === question.id,

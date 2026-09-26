@@ -13,10 +13,12 @@ this work informs, so prefer the reversible option when a choice would foreclose
 
 ## Commands
 
-Run from the repo root; Turborepo fans out to the workspaces. Scope with `-w web` / `-w @workspace/ui`.
+Run from the repo root; Turborepo fans out to the workspaces. Scope with `-w web` / `-w ai` /
+`-w @workspace/ui`.
 
 ```bash
-npm run dev              # apps/web on :5173
+npm run dev              # apps/web on :5173 AND apps/ai on :8787
+npm run dev -w ai        # the AI server alone
 npm run storybook        # packages/ui on :6006
 npm run build            # apps/web only — packages/ui has no build step
 npm run build-storybook
@@ -32,6 +34,11 @@ binding`, the lockfile lost rolldown's optional deps ([npm bug](https://github.c
 (`~/bud`, an electron-vite app) holds 5173, so the `web` entry in `.claude/launch.json` passes
 `--port 5174 --strictPort`. `npm run dev` from a terminal still asks for 5173 and moves to the next
 free port if it is taken, so check which port it printed before you curl it.
+
+**The Gemini key lives in `apps/ai/.env.local`** (gitignored; `cp apps/ai/.env.example
+apps/ai/.env.local` and fill in `GEMINI_API_KEY`). It is read by the AI server only and never
+reaches the browser. Never print it, commit it, or copy it into a deployment unless asked to.
+`curl -s http://localhost:8787/api/health` says `available: true` once the key is picked up.
 
 ## Verifying a change
 
@@ -75,6 +82,14 @@ Turborepo + npm workspaces:
 - **`apps/web`** — Vite 8 + React 19 SPA, the clickable prototype. `main.tsx` → `BrandProvider` →
   `ThemeProvider` → `TooltipProvider` → `BrowserRouter` → `App`.
 - **`packages/ui`** (`@workspace/ui`) — shadcn/ui components on Base UI primitives, documented in Storybook.
+- **`apps/ai`** — a small Node server that holds the Gemini key, so the page never does. Node ≥
+  22.18 runs its TypeScript directly (type stripping): no dependencies, no build, `tsc --noEmit`
+  only to check. Three routes — `GET /api/health`, `POST /api/intake`, `POST /api/transcribe` —
+  each deliberately narrow (a fixed schema in, a fixed shape out), with a per-IP rate limit
+  (40 per 5 minutes) and CORS from `ALLOWED_ORIGINS` (localhost when unset). Vite's dev and
+  preview servers proxy `/api` to it (`AI_SERVER_URL`, default `http://localhost:8787`); a
+  deployed build points at it with `VITE_AI_URL`. **Everything that calls it has a rules
+  fallback**, so the prototype works with the server down — see the Agent page below.
 
 **`@workspace/ui` is consumed as raw TypeScript source, not a build artifact.** Its `exports` map
 points into `src/`, so there's no build script and edits hit the dev server immediately. Vite
@@ -164,9 +179,9 @@ framework mode. Import from `react-router` (`react-router-dom` is a deprecated s
 
 Designed so far: `/dashboard`, `/jobs` (four status tabs), `/jobs/:jobId` — the response manager,
 the biggest surface in here — `/jobs/:jobId/applicants/:applicantId`, `/insights`, `/database`
-(search box, recent searches, results), `/interviews` and `/my-candidates` (My Lists). Still
-`PlaceholderPage`: `/jobs/new`, `/credits`, `/search`,
-`/projects/new`. `/reference/dashboard` is a hardcoded replica of the live iimjobs dashboard, kept
+(search box, recent searches, results), `/interviews`, `/my-candidates` (My Lists), `/agent`
+(a chat that gathers a posting) and `/jobs/new` (the same posting as a form). Still
+`PlaceholderPage`: `/credits`, `/search`, `/projects/new`. `/reference/dashboard` is a hardcoded replica of the live iimjobs dashboard, kept
 for side-by-side comparison and deliberately outside the design system — see the note at the top of
 `legacy-dashboard.tsx`.
 
@@ -585,9 +600,12 @@ selects whose CV is open. Bare **A** toggles Athena, guarded like the theme's **
 open, the selection and undo bars centre on the content column (`BAR_BESIDE_ATHENA`), because
 centred on the window they ran under the copilot's own edge.
 
-**The nav has two borrowers.** `CandidateList` collapses it below 1400px, and Athena collapses it for
-her pane. Handing it back goes through `restoreNav` on the Athena provider, which defers while she
-is open. Restoring directly used to throw the nav open beside her when you left a job page.
+**The nav has three borrowers.** `CandidateList` collapses it below 1400px, `/agent` collapses it
+at every width once a conversation starts (the landing keeps it), and Athena collapses it for her
+pane. The first two go through `useCollapseNav` (`components/use-collapse-nav.ts`, a media query or
+null), which only gives back a nav it collapsed. Handing it back goes through `restoreNav` on the
+Athena provider, which defers while she is open. Restoring directly used to throw the nav open
+beside her when you left a job page.
 
 **The thread survives navigation, and there is one per product.** Each message records `where` it
 was asked (the page's label), and the "Moved to …" dividers are derived from that at render time
@@ -596,6 +614,75 @@ back leaves none. Old answers keep their live buttons. Switching brand swaps to 
 thread and switching back restores it, because the other product's candidates are not people this
 one has. **There is one copilot**: the Messages page's
 sparkle button opens Athena, and its old assistant thread with its canned replies is gone.
+
+**`/agent` is a second copilot, built beside Athena rather than into her** — a full-page chat,
+first in the nav, whose first skill is **Post a job** (Search people and Get insights answer from
+the page's own data, the way Athena's openers do). Athena is untouched by it; whether the two
+merge is a later call. The transcript is the URL (`?ask=`, repeated, one per turn), so a
+conversation is a link like everything else here, and a submitted questionnaire is ONE turn,
+encoded as `Answers: {json}` (`encodeAnswers` / `decodeAnswers` in `lib/job-refine.ts`).
+`answersFor` in `lib/agent.ts` folds the turns into the replies on every render.
+
+**Posting a job is three stages, and the first question picks the road.** "How would you like
+to start?" — a JD, a form, "let's chat about it", or one of my jobs as a base
+(`lib/job-start.ts`) — because a recruiter holding a JD should not be asked what it already says.
+**A sentence that starts a posting AND describes the role skips the question** ("hire an FMCG
+product manager in Delhi" — `describesRole`): it is read as the from-scratch opener. Free text is
+routed by `routeFor` in `lib/agent.ts` — whole words, a phrase weighing its word count — because
+substring matching let "new" in "New Delhi" send a hiring sentence to "What changed". A base job copies the title,
+the city and `requiredSkillsFor` and asks for the rest, since a posting in `lib/jobs.ts` carries
+no experience, pay or work mode. From scratch opens on one plain ask for title, location, years,
+industry and skills, with a **checklist bar in the composer** (`openerChecks`) ticking as they
+are typed — read by the rules at keystroke speed, never the model, and it leaves skills out
+because a regex cannot tell a skill from a phrase. Then the six posting fields
+(`lib/job-intake.ts`), then **refinement** (`lib/job-refine.ts`): up to four of nine topics
+(industry, adjacent titles, scale, institutes, relocation, exclusions…) chosen by `planFor` and
+dropped when an answer already covered them. Refinement fills a private **hiring brief** that is
+never posted — it becomes Search Resume's filters and criteria (`searchHrefFor`), which is what
+the finish card links to.
+
+**Questions are asked as a questionnaire docked in the composer's place**, the way Claude asks in
+plan mode (`components/agent-questionnaire.tsx`, over `@shadcn/react/questionnaire` in
+`packages/ui`). Number keys pick, not letters, because bare **A** and **D** are global
+shortcuts. The reply box stays under the card, so typing instead of picking always works.
+
+**Gemini reads the answers; the page decides what they mean.** `advanceWithAi`
+(`lib/job-intake-ai.ts`) sends the turn to `/api/intake` with a `responseSchema` in which every
+key is required (an optional key was simply left out), then coerces and validates every field
+against the page's own vocabularies, and falls back to the rules readers (`advance`) on any
+failure or a 25s timeout. Each reply says which reader produced it. Start choices, skips and
+"post now" never go to the model — they are buttons. Readings are cached in sessionStorage
+(`agent:intake-readings:v5`, keyed by brand and the turns) so a re-render does not re-ask, and
+**only Gemini's readings are cached** — a cached rules fallback outlived the key being added.
+
+**Protected traits are refused, by both readers.** An answer asking to screen on age, gender,
+family status, religion or caste and the like is not recorded: `protectedIn` catches it for the
+rules, the schema's `declined` field for Gemini, and `refusalFor` says so in the reply.
+
+**The stage rail beside the chat** (`lib/posting-rail.ts`, `components/posting-rail.tsx`, at
+`@3xl/main`) shows the stages, the posting as it stands, the brief, and **"N people this would
+find"**, counted by `poolFor` over the very search the finish card opens and then **projected
+onto the database** (`DATABASE` per brand — 40 lakh iimjobs, 35 lakh hirist, from their own
+public figures; one dealt person stands for `DATABASE / SAMPLE`, about 250), rounded to two
+figures. **So it no longer matches Search Resume**, which
+still counts its dealt sample — a deliberate rail-only call; scaling Search Resume's own counts is
+how to make them agree again. Each reply also carries a work step — which reader read it, how long it
+took (measured around the call, not a staged delay) and what it recorded — collapsed in a
+`<details>`.
+
+**The mic records and Gemini transcribes, when the AI server is up** (`startRecording` in
+`lib/dictation.ts` → `/api/transcribe` → `gemini-3.5-transcribe` on the Interactions API, with a
+custom vocabulary of the conversation's role, skills and cities plus "lakh", "LPA", "CTC").
+Otherwise it falls back to the browser's `SpeechRecognition` (Chrome and Edge), and it falls back
+the same way when recording cannot start. **The Interactions API returns the text in
+`steps[].content[].text`, not `output_text`** as its docs show, and silence is an empty string
+rather than an error. A page with mic permission can still get a dead track when the *app*
+running it lacks the macOS microphone permission; `startRecording` checks the track first so
+the message says where to look.
+
+**`/jobs/new` is the same posting as a form** (`routes/new-job.tsx`), linked from every question
+in the chat for anyone who would rather fill it in; `postingHref` / `draftFrom` carry the draft
+so far into it through the query string, so leaving half-way loses nothing. Posting only shows a toast.
 
 **Transient confirmations are toasts, mounted once** — `AppToaster` in
 `components/app-toaster.tsx`, inside `AppShell`. The response manager's undo is the one so far:

@@ -20,13 +20,42 @@ import { industryLabel, pendingTopics, searchHrefFor } from "@/lib/job-refine"
  * section the other has no use for (the posting itself). They share the
  * Plan-list idea and nothing that would have to stay in step.
  *
- * EVERY NUMBER IS ONE ANOTHER SCREEN WOULD PRINT. "People this would find" is
- * `poolFor` over the exact link "Find people now" opens — the same filter
- * predicate Search Resume runs over the same dealt people — so the rail and
- * that page cannot disagree. It is a count, not a range: the reference this
- * was designed from shows "550 – 1k", and a range here would be an invention
- * dressed as caution.
+ * "PEOPLE THIS WOULD FIND" IS PROJECTED ONTO THE WHOLE DATABASE. The count
+ * starts as `poolFor` over the exact link "Open the search" opens — the same
+ * filter predicate Search Resume runs over the same dealt people — and is then
+ * scaled up, because a few hundred dealt people read as a tiny product. So the
+ * rail and that page DO disagree: the page still counts its sample. That was
+ * a deliberate call (rail only); scaling Search Resume's own counts would be
+ * the way to make them agree again. It is one rounded number, not a range: a
+ * range here would be an invention dressed as caution.
  */
+
+/**
+ * The candidate database each product searches, from what each says publicly
+ * (checked September 2026): iimjobs "Trusted by 4 million+ jobseekers" (its
+ * App Store listing); hirist "connects more than 35 lacs of jobseekers"
+ * (recruit.hirist.tech/about-us). Registered, not active — a real search
+ * would run over fewer.
+ */
+const DATABASE: Record<Brand, number> = {
+  iimjobs: 40_00_000,
+  hirist: 35_00_000,
+}
+
+/**
+ * The notional sample the mock deals searches from: one dealt person stands
+ * for `DATABASE / SAMPLE` real ones (about 250). Picked so a broad search
+ * finds tens of thousands and a narrow brief a few thousand — around 2% and
+ * 0.2% of the database.
+ */
+const SAMPLE = 15_000
+
+/** Two significant figures, so a projection does not pass for a count. */
+function roughly(n: number) {
+  if (n < 100) return Math.round(n)
+  const step = 10 ** (Math.floor(Math.log10(n)) - 1)
+  return Math.round(n / step) * step
+}
 
 export type RailStep = {
   label: string
@@ -162,7 +191,14 @@ export function railFor(state: IntakeState, brand: Brand): RailModel {
     const href = searchHrefFor(state, brand)
     const params = new URLSearchParams(href.split("?")[1] ?? "")
     const pool = poolFor(brand, params.get("q") ?? "", params)
-    people = { matching: pool.matching.length, total: pool.all.length, href }
+    const base = DATABASE[brand]
+    people = {
+      matching: roughly(
+        Math.min(base, (pool.matching.length * base) / SAMPLE)
+      ),
+      total: base,
+      href,
+    }
   }
 
   return {

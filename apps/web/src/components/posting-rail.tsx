@@ -143,7 +143,7 @@ export function PostingRail({
           <p className="mt-1 text-xs text-muted-foreground">
             {reading
               ? "Updating…"
-              : "In Search Resume, with this brief's filters."}
+              : "Estimated across the database, with this brief's filters."}
           </p>
           <Link
             to={people.href}

@@ -113,7 +113,7 @@ The refinement topics (stage "refine"), and what each fills in brief:
 - industry: industries they should come from. Use ONLY names from vocab.industries.
 - scale: teamScale, a short phrase for the posting ("Leads a team of 8", "Owns a ₹200 Cr P&L"), and ledTeam (must have led a team).
 - targets: targetCompanies, companies they would ideally come from.
-- college: institutes preferred. Use ONLY names from vocab.institutes.
+- college: institutes preferred — "Premium institutes" (any top school) or none at all. Use ONLY names from vocab.institutes. The page asks and reads this one itself.
 - budget: budget {firm: true} if the pay ceiling is firm, or {firm: false, upTo} in lakh if it can stretch.
 - exclusions: exclusions, short phrases for who to rule out ("people who change jobs every year", "only consulting backgrounds").
 

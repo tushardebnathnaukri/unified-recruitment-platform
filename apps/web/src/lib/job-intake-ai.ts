@@ -6,7 +6,7 @@ import {
   askFor,
   canonicalCity,
   filled,
-  heardFrom,
+  notedFrom,
   isSkip,
   nextQuestion,
   remainingFields,
@@ -25,11 +25,12 @@ import {
   enterRefine,
   industriesFor,
   institutesFor,
+  readInstitutes,
   pendingTopics,
   POST_NOW,
   protectedIn,
   refineAsk,
-  refineHeard,
+  refineNoted,
   refusalFor,
   screenExclusions,
   type HiringBrief,
@@ -73,7 +74,7 @@ export async function advanceWithAi(
 ): Promise<IntakeState> {
   // How the posting starts is three buttons and a list of jobs: the page reads
   // it, and a pasted JD comes back from here marked as a document.
-  const start = advanceStart(given, asked, brand)
+  const start = advanceStart({ ...given, noted: undefined }, asked, brand)
   if (start.done) return start.state
   const { state, input } = start
 
@@ -278,22 +279,20 @@ function fromPosting(
     (id) => isField(id) && !filled(draft, id) && !skipped.includes(id)
   )
 
-  // "Got it — …" is built from what the draft ACTUALLY changed, not from the
-  // model's sentence, which can describe a value the checks above corrected or
-  // refused — and then the acknowledgement and the summary card disagree.
+  // What it recorded is built from what the draft ACTUALLY changed, not from
+  // the model's sentence, which can describe a value the checks above
+  // corrected or refused — and then the acknowledgement and the summary card
+  // disagree. The model's sentence is used only when nothing was recorded.
   const changed: Partial<PostingDraft> = {}
   for (const id of FIELD_IDS) {
     if (JSON.stringify(draft[id]) !== JSON.stringify(state.draft[id])) {
       Object.assign(changed, { [id]: draft[id] })
     }
   }
-  const said = heardFrom(changed)
+  const noted = notedFrom(changed)
   const declined = declinedIn(reply, input)
-  const acknowledged = said
-    ? `Got it — ${said}.`
-    : declined.length
-      ? null
-      : text(reply.heard)
+  const acknowledged =
+    noted.length || declined.length ? null : text(reply.heard)
 
   const next: IntakeState = {
     ...state,
@@ -306,6 +305,7 @@ function fromPosting(
       [declined.length ? refusalFor(declined) : null, acknowledged]
         .filter(Boolean)
         .join(" ") || null,
+    noted,
     missed: false,
     engine: "gemini",
     fallback: undefined,
@@ -328,25 +328,21 @@ function fromPosting(
   if (team) early.teamScale = team[0].toUpperCase() + team.slice(1)
   if (typeof raw.relocationSupport === "boolean")
     early.relocationSupport = raw.relocationSupport
-  const also = refineHeard(state, early, brief)?.replace(/^Got it — /, "")
-  const noted: IntakeState = {
+  const withBrief: IntakeState = {
     ...next,
     draft: early,
     brief,
     heard:
-      [
-        next.heard,
-        refused.length ? refusalFor(refused) : null,
-        also ? `Also noted: ${also}` : null,
-      ]
+      [next.heard, refused.length ? refusalFor(refused) : null]
         .filter(Boolean)
         .join(" ") || null,
+    noted: [...noted, ...refineNoted(state, early, brief)],
   }
-  if (asking !== null) return noted
+  if (asking !== null) return withBrief
 
   // The posting is complete. Gemini's picks become the plan — if usable, and
   // less whatever the conversation already covered — with its wording kept.
-  const refining = enterRefine(noted, reply.refine, { model: true })
+  const refining = enterRefine(withBrief, reply.refine, { model: true })
   return {
     ...refining,
     unread: [],
@@ -477,12 +473,18 @@ function fromRefine(
   const reply = result as Record<string, unknown>
 
   const corrected = readDraft(reply.draft, state.draft) ?? state.draft
-  const { brief, refused } = readBrief(
-    reply.brief,
-    state.brief,
-    corrected,
-    brand
-  )
+  const read = readBrief(reply.brief, state.brief, corrected, brand)
+  const { refused } = read
+  let brief = read.brief
+
+  // PREMIUM OR ALL IS A BUTTON, READ BY THE PAGE, like the start choices. The
+  // model gets the rest of the card; what it made of this answer is ignored.
+  const college =
+    "answers" in input && pendingTopics(state).includes("college")
+      ? input.answers.college
+      : null
+  const collegeRead = college ? readInstitutes(college, brand) : null
+  if (collegeRead) brief = { ...brief, institutes: collegeRead }
 
   const raw = (reply.brief ?? {}) as Record<string, unknown>
   const draft: PostingDraft = { ...corrected }
@@ -519,7 +521,11 @@ function fromRefine(
       : touched(state, draft, brief)
   const unread =
     "answers" in input
-      ? answeredTopics.filter((topic) => modelUnread.includes(topic))
+      ? answeredTopics.filter(
+          (topic) =>
+            modelUnread.includes(topic) &&
+            !(topic === "college" && collegeRead)
+        )
       : answeredTopics.length || declined.length
         ? []
         : open.slice(0, 1)
@@ -537,10 +543,12 @@ function fromRefine(
 
   // The refusal comes first and always: the recruiter is told what was left
   // out even when the rest of the answer was recorded.
-  const diff = refineHeard(state, draft, brief)
+  const noted = refineNoted(state, draft, brief)
   const heard = declined.length
-    ? [refusalFor(declined), diff].filter(Boolean).join(" ")
-    : (diff ?? text(reply.heard))
+    ? refusalFor(declined)
+    : noted.length
+      ? null
+      : text(reply.heard)
 
   return {
     ...state,
@@ -551,6 +559,7 @@ function fromRefine(
     asking,
     unread,
     heard,
+    noted,
     missed: false,
     engine: "gemini",
     fallback: undefined,

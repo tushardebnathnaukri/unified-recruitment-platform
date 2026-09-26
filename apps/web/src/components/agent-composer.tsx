@@ -24,6 +24,7 @@ import { cn } from "@workspace/ui/lib/utils"
 
 import { attachmentPrompt, matchCommands, type Command } from "@/lib/agent"
 import { aiHealth, transcribe } from "@/lib/ai-client"
+import { readDocument } from "@/lib/read-document"
 import {
   dictationAvailable,
   MAX_RECORDING_MS,
@@ -51,11 +52,11 @@ import {
  * first thing everyone in a design review clicks, so each of these does the
  * real thing or says plainly that it cannot:
  *
- * - THE PAPERCLIP READS THE FILE. `File.text()` genuinely returns the words of
- *   a `.txt` or `.md`, and the answer quotes what it found in them. A `.pdf`
- *   or `.docx` is accepted, kept as a chip, and answered with "that is bytes,
- *   not words" — the file is real, the reading is the part that is missing,
- *   and the reply says which.
+ * - THE PAPERCLIP READS THE FILE — and so does dropping one anywhere on the
+ *   box. A `.txt`, `.md`, `.pdf` or `.docx` is read in the browser
+ *   (`lib/read-document.ts`), and the answer quotes what it found. An old
+ *   `.doc`, or a scanned PDF with no text layer, is kept as a chip and
+ *   answered with why it could not be read.
  * - THE MICROPHONE RECORDS AND GEMINI TRANSCRIBES — when the AI server is
  *   up. The clip goes to `gemini-3.5-transcribe` with this conversation's
  *   vocabulary, and the transcript is added to the box, not sent. Without the
@@ -93,6 +94,8 @@ export function AgentComposer({
   const [text, setText] = React.useState("")
   const [active, setActive] = React.useState(0)
   const [attached, setAttached] = React.useState<string | null>(null)
+  const [reading, setReading] = React.useState(false)
+  const [dragging, setDragging] = React.useState(false)
 
   /**
    * DICTATION, TWO WAYS. With the AI server up, the mic RECORDS and Gemini
@@ -289,16 +292,35 @@ export function AgentComposer({
    * the answer is about a file that has already been opened.
    */
   const takeFile = async (file: File) => {
-    // Only these two are words in a browser. A `.pdf` or a `.docx` arrives as
-    // bytes, and the answer says so rather than the picker refusing it — a
-    // recruiter's JD really is a .docx, and finding that out from the reply is
-    // more use than a file picker that greys it out.
-    const readable = /\.(txt|md)$/i.test(file.name)
-    const body = readable ? await file.text() : null
-
+    // Anything is accepted and the reply says what could not be read, rather
+    // than a picker that greys out the recruiter's actual JD.
+    setReading(true)
+    const body = await readDocument(file)
+    setReading(false)
     setAttached(file.name)
     onAttach?.({ name: file.name, text: body })
   }
+
+  // A file dropped anywhere on the box is the paperclip, without the dialog.
+  const dropProps = onAttach
+    ? {
+        onDragOver: (event: React.DragEvent) => {
+          if (!event.dataTransfer.types.includes("Files")) return
+          event.preventDefault()
+          setDragging(true)
+        },
+        onDragLeave: (event: React.DragEvent) => {
+          if (!event.currentTarget.contains(event.relatedTarget as Node))
+            setDragging(false)
+        },
+        onDrop: (event: React.DragEvent) => {
+          event.preventDefault()
+          setDragging(false)
+          const file = event.dataTransfer.files[0]
+          if (file) void takeFile(file)
+        },
+      }
+    : {}
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (open) {
@@ -377,13 +399,20 @@ export function AgentComposer({
       ) : null}
 
       <div
+        {...dropProps}
         className={cn(
           // `focus-within` rather than a focus ring on the textarea: the box is
           // what reads as the control, and the textarea inside it has no border
           // of its own.
-          "rounded-3xl border bg-background p-2 shadow-xs transition-shadow focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50"
+          "relative rounded-3xl border bg-background p-2 shadow-xs transition-shadow focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50",
+          dragging && "border-ring ring-[3px] ring-ring/50"
         )}
       >
+        {dragging ? (
+          <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center rounded-3xl bg-background/90 text-sm font-medium text-primary">
+            Drop to attach — PDF, Word (.docx) or text
+          </div>
+        ) : null}
         <Textarea
           ref={box}
           rows={1}
@@ -404,6 +433,11 @@ export function AgentComposer({
         {/* NOTHING ELSE ON SCREEN SAYS A FILE IS THERE — the same reason the
             Smart Hire bar keeps its attachment strip. It is the chip or it is
             invisible, so it sits inside the box, above the controls. */}
+        {reading ? (
+          <p className="px-2.5 pb-1 text-xs text-muted-foreground">
+            Reading the file…
+          </p>
+        ) : null}
         {attached ? (
           <div className="px-1.5 pb-1">
             <button
