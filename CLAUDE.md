@@ -617,11 +617,28 @@ sparkle button opens Athena, and its old assistant thread with its canned replie
 
 **`/agent` is a second copilot, built beside Athena rather than into her** — a full-page chat,
 first in the nav, whose first skill is **Post a job** (Search people and Get insights answer from
-the page's own data, the way Athena's openers do). Athena is untouched by it; whether the two
-merge is a later call. The transcript is the URL (`?ask=`, repeated, one per turn), so a
+the page's own data, the way Athena's openers do). Athena is otherwise untouched by it, but **she
+is off on `/agent`**: `available` on the Athena provider (a `useMatch`) hides the header button,
+ignores the A shortcut and closes an open pane on arrival, because two copilots on one screen
+would be one answering over the other. Whether the two merge is a later call. The transcript is the URL (`?ask=`, repeated, one per turn), so a
 conversation is a link like everything else here, and a submitted questionnaire is ONE turn,
 encoded as `Answers: {json}` (`encodeAnswers` / `decodeAnswers` in `lib/job-refine.ts`).
 `answersFor` in `lib/agent.ts` folds the turns into the replies on every render.
+
+**The landing has two designs, picked on /settings** ("Agent landing", `useAgentLandingVariant` in
+`lib/agent-landing-variant.ts`). **Chat** (the default) is the Aura centred over the cards
+landing's own heading and subheading, four action pills (`HERO_ACTIONS` in `lib/agent.ts`) and `AgentComposer size="hero"` — a
+taller box, attach and quick actions behind a "+", the mic on the right, and a send arrow only once
+there is something to send. **Cards** is the first design. The pills are Create Job, Search Resume,
+Review applicants and Hiring Insights, and every one asks a question a skill already answers.
+Review applicants prints the number its answer opens on ("92 waiting") from `undecidedTotal`,
+which the answer uses too, so the pill and its reply cannot disagree. A "Job updates" pill (new
+since the last visit) was dropped: everyone new is also undecided, so it duplicated the queue. The box's placeholder **types out example
+questions in turn** (`heroExamples` in `lib/agent.ts`, `useTypewriter` in
+`components/use-typewriter.ts`) while it is empty and unfocused, and stops on the whole current one
+when focused; reduced motion swaps whole lines instead. Every example is routed like typed text and
+checked to reach a specific answer — pay, top matches, city value, the diary, a note — because
+copying one in is the likeliest first thing anyone does.
 
 **Posting a job is three stages, and the first question picks the road.** "How would you like
 to start?" — a JD, a form, "let's chat about it", or one of my jobs as a base
@@ -683,6 +700,18 @@ the message says where to look.
 **`/jobs/new` is the same posting as a form** (`routes/new-job.tsx`), linked from every question
 in the chat for anyone who would rather fill it in; `postingHref` / `draftFrom` carry the draft
 so far into it through the query string, so leaving half-way loses nothing. Posting only shows a toast.
+
+**Sounds are six short clips, played only in answer to something the recruiter did**
+(`play()` in `lib/sound.ts`; files in `apps/web/src/assets/sounds/` as `pop`, `tick`, `dismiss`,
+`undo`, `mic-on`, `mic-off`). All from SoundShelfStudio's UI set on Pixabay, one family on purpose,
+under the Pixabay Content License (no attribution; do not redistribute them standalone). Wired so
+far: the Agent's reply lands (`pop`, only for a question asked in this visit and only while the tab
+is visible — a reloaded link is silent), the mic on and off (from the mic's state, so the time
+limit sounds too), and response-manager decisions (`tick` to keep somebody, `dismiss` for Not a fit,
+`undo` from the toast, one sound per batch). **Errors are silent.** Files are found with
+`import.meta.glob`, so a missing one is silence rather than a broken build. The "Sounds" switch on
+/settings is on by default. **Pixabay's CDN refuses scripted downloads (403)** — files come from
+the page's Download button, then get trimmed of trailing silence with ffmpeg.
 
 **Transient confirmations are toasts, mounted once** — `AppToaster` in
 `components/app-toaster.tsx`, inside `AppShell`. The response manager's undo is the one so far:

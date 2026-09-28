@@ -4,12 +4,19 @@ import { ArrowUpRightIcon } from "lucide-react"
 import { buttonVariants } from "@workspace/ui/components/button"
 import { Kbd } from "@workspace/ui/components/kbd"
 import { Separator } from "@workspace/ui/components/separator"
+import { Switch } from "@workspace/ui/components/switch"
 import { BrandSwitcher } from "@/components/brand-switcher"
 import { CardVariantSwitcher } from "@/components/card-variant-switcher"
 import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@workspace/ui/components/toggle-group"
+import { play, useSounds } from "@/lib/sound"
+import {
+  AGENT_LANDING_VARIANTS,
+  useAgentLandingVariant,
+  type AgentLandingVariant,
+} from "@/lib/agent-landing-variant"
 import {
   FILTER_VARIANTS,
   useFilterVariant,
@@ -97,10 +104,44 @@ export function SettingsPage() {
 
         <Separator />
 
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 flex-1 basis-64 flex-col gap-1">
+            <h2 className="text-sm font-medium">Agent landing</h2>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              What the Agent shows before anything is asked. Chat is the
+              Aura, the question, four action pills and one big box that types
+              out example questions; Cards is the first design, six cards
+              naming what it can do with the box under them. The conversation
+              after the first question is the same either way.
+            </p>
+          </div>
+
+          <AgentLandingVariantSwitcher />
+        </div>
+
+        <Separator />
+
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 flex-1 basis-64 flex-col gap-1">
+            <h2 className="text-sm font-medium">Sounds</h2>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Short, quiet sounds for the Agent's reply arriving, the mic
+              starting and stopping, and a decision on an applicant — a tick
+              to keep somebody, a swoosh for Not a fit, and its reverse for
+              Undo. Only ever in answer to something you did.
+            </p>
+          </div>
+
+          <SoundsSwitch />
+        </div>
+
+        <Separator />
+
         <p className="text-xs leading-relaxed text-muted-foreground">
-          All four persist to <code className="font-mono">localStorage</code>{" "}
+          All six persist to <code className="font-mono">localStorage</code>{" "}
           and sync across tabs, so a shared preview link opens on whichever
-          brand, theme, card layout and filters you last picked.
+          brand, theme, card layout, filters, Agent landing and sounds you last
+          picked.
         </p>
       </div>
 
@@ -156,6 +197,46 @@ export function SettingsPage() {
         </p>
       </div>
     </div>
+  )
+}
+
+/** On or off, so a switch rather than a toggle group. */
+function SoundsSwitch() {
+  const { enabled, setEnabled } = useSounds()
+  return (
+    <Switch
+      aria-label="Sounds"
+      checked={enabled}
+      onCheckedChange={(checked) => {
+        setEnabled(checked)
+        // Heard as it is switched on, so the setting proves itself.
+        if (checked) play("tick")
+      }}
+    />
+  )
+}
+
+/** The same shape as the other toggles. */
+function AgentLandingVariantSwitcher() {
+  const { variant, setVariant } = useAgentLandingVariant()
+
+  return (
+    <ToggleGroup
+      variant="outline"
+      spacing={0}
+      aria-label="Agent landing"
+      value={[variant]}
+      onValueChange={(value) => {
+        const next = value[0] as AgentLandingVariant | undefined
+        if (next) setVariant(next)
+      }}
+    >
+      {AGENT_LANDING_VARIANTS.map((option) => (
+        <ToggleGroupItem key={option.value} value={option.value}>
+          {option.label}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
   )
 }
 

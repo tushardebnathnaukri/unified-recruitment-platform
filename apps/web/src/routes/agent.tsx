@@ -40,13 +40,17 @@ import { useCollapseNav } from "@/components/use-collapse-nav"
 import {
   answersFor,
   CARDS,
+  HERO_ACTIONS,
+  heroExamples,
   type Answer,
   type Block,
   type WorkStep,
 } from "@/lib/agent"
+import { useAgentLandingVariant } from "@/lib/agent-landing-variant"
 import { dictationVocabulary } from "@/lib/dictation"
 import { openerChecks } from "@/lib/job-start"
 import { railFor } from "@/lib/posting-rail"
+import { play } from "@/lib/sound"
 import type { IntakeState } from "@/lib/job-intake"
 import { advanceWithAi } from "@/lib/job-intake-ai"
 import { decodeAnswers, LABELS } from "@/lib/job-refine"
@@ -89,6 +93,7 @@ export function AgentPage() {
 
   const asked = params.getAll(ASK)
   const started = asked.length > 0
+  const { variant: landing } = useAgentLandingVariant()
   // A conversation wants the room at every width — the transcript plus the
   // posting rail beside it. The landing keeps the nav; its cards fit.
   useCollapseNav(started ? "all" : null)
@@ -121,7 +126,11 @@ export function AgentPage() {
     return () => clearTimeout(timer)
   }, [transcript, settled])
 
+  // Asked in THIS visit — a reply to it pops; a transcript rebuilt from a
+  // link or a reload arrives silently, because nobody is waiting for it.
+  const askedHere = React.useRef(false)
   const ask = (prompt: string) => {
+    askedHere.current = true
     const next = new URLSearchParams(params)
     next.append(ASK, prompt)
     setParams(next)
@@ -198,6 +207,16 @@ export function AgentPage() {
    * a new turn brings a new card up on its own.
    */
   const last = turns[turns.length - 1]
+
+  // The reply's pop: once per turn, when its answer is on screen, and only
+  // while the tab is being looked at.
+  const landed = last?.answer && !thinking ? last.id : null
+  const announced = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    if (!landed || landed === announced.current) return
+    announced.current = landed
+    if (askedHere.current && document.visibilityState === "visible") play("pop")
+  }, [landed])
   const docked =
     last?.answer && !thinking
       ? last.answer.blocks.find(
@@ -241,7 +260,12 @@ export function AgentPage() {
   const attach = (file: { name: string; text: string | null }) =>
     setFiles((current) => ({ ...current, [file.name]: file.text }))
 
-  if (!started) return <Landing onAsk={ask} onAttach={attach} />
+  if (!started)
+    return landing === "chat" ? (
+      <ChatLanding onAsk={ask} onAttach={attach} />
+    ) : (
+      <Landing onAsk={ask} onAttach={attach} />
+    )
 
   return (
     // The conversation owns the screen below the header: a transcript that
@@ -327,10 +351,10 @@ export function AgentPage() {
           </MessageScroller>
         </MessageScrollerProvider>
 
-        {/* The card needs no rule above it — it has its own border and a
-          shadow, and a line under the transcript plus the card's edge reads
-          as a box drawn twice. */}
-        <div className={cn("bg-background", !showCard && "border-t")}>
+        {/* No band of its own — no white fill, no rule above. The box and the
+          card have their own edges, so the transcript's canvas runs under
+          them and a strip around them would be a box drawn twice. */}
+        <div>
           <div className="mx-auto w-full max-w-3xl px-4 py-4 lg:px-6">
             {/* The card sits ON the reply box, not instead of it: answering the
               questions is the likeliest next thing, but saying something else
@@ -366,6 +390,7 @@ export function AgentPage() {
             <AgentComposer
               vocabulary={vocabulary}
               checklist={waitingForRole ? checklist : undefined}
+              peekOnFocus={!showCard && !waitingForJd && !waitingForRole}
               className={showCard ? "mt-3" : undefined}
               placeholder={
                 showCard
@@ -431,6 +456,90 @@ function WorkStepRow({ step }: { step: WorkStep }) {
 }
 
 /**
+ * The chat landing: the Aura, the question, five action pills, and one big box.
+ *
+ * THE BOX IS THE INVITATION. The cards landing is an inventory first and a box
+ * second; this one says hello, offers five shortcuts, and puts an example
+ * question in the box — so the first thing it asks for is a sentence. Each
+ * pill asks a question the agent answers (`HERO_ACTIONS`); nothing here is a
+ * mock-up of a button.
+ *
+ * THE GLOW IS THE AURA'S OWN PALETTE, not a brand's — the same three colours
+ * as the face above it (`lib/aura/presets.js`), so it does not turn orange on
+ * hirist, and it is faint enough to sit behind either theme.
+ */
+function ChatLanding({
+  onAsk,
+  onAttach,
+}: {
+  onAsk: (prompt: string) => void
+  onAttach: (file: { name: string; text: string | null }) => void
+}) {
+  const { brand } = useBrand()
+  const vocabulary = React.useMemo(
+    () => dictationVocabulary(brand, null),
+    [brand]
+  )
+  const examples = React.useMemo(() => heroExamples(brand), [brand])
+  return (
+    <div className="relative isolate flex min-h-[calc(100svh-var(--header-height)-3rem)] flex-col items-center justify-center px-4 pb-[10svh] lg:px-6">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-1/2 -z-10 mx-auto h-[28rem] max-w-5xl -translate-y-1/4 blur-3xl dark:opacity-50"
+        style={{
+          background: [
+            "radial-gradient(ellipse 40% 50% at 25% 55%, rgb(212 44 240 / 0.10), transparent)",
+            "radial-gradient(ellipse 45% 55% at 75% 50%, rgb(90 134 255 / 0.16), transparent)",
+            "radial-gradient(ellipse 50% 45% at 50% 70%, rgb(95 230 234 / 0.12), transparent)",
+          ].join(", "),
+        }}
+      />
+
+      <Aura size={112} />
+
+      <h1 className="mt-8 text-center text-3xl font-semibold tracking-tight text-balance sm:text-4xl">
+        Who are you hiring today?
+      </h1>
+      <p className="mt-2 flex items-center gap-1.5 text-center text-sm text-muted-foreground">
+        <SparklesIcon className="size-4 shrink-0 text-primary" />
+        Ask about your postings, your applicants, your diary or the market.
+      </p>
+
+      <div className="mt-10 flex max-w-4xl flex-wrap justify-center gap-3">
+        {HERO_ACTIONS.map((action) => {
+          const count = action.count?.(brand)
+          return (
+            <button
+              key={action.label}
+              type="button"
+              onClick={() => onAsk(action.prompt)}
+              className="flex items-center gap-2 rounded-full border bg-background px-4 py-2 text-sm font-medium shadow-xs transition-colors outline-none hover:bg-muted focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+            >
+              <action.icon className="size-4 text-muted-foreground" />
+              {action.label}
+              {count ? (
+                <span className="-mr-1.5 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary tabular-nums">
+                  {count}
+                </span>
+              ) : null}
+            </button>
+          )
+        })}
+      </div>
+
+      <AgentComposer
+        size="hero"
+        vocabulary={vocabulary}
+        examples={examples}
+        className="mt-6 w-full max-w-4xl"
+        onSubmit={onAsk}
+        onAttach={onAttach}
+      />
+    </div>
+  )
+}
+
+/**
  * The first screen: what it is, what it can do, and the box.
  *
  * The cards are the six things it can answer, so the hero is also the honest
@@ -482,7 +591,6 @@ function Landing({
       </div>
 
       <AgentComposer
-        autoFocus
         vocabulary={landingVocabulary}
         className="mt-10 w-full"
         onSubmit={onAsk}

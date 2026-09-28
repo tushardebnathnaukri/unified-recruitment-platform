@@ -10,6 +10,30 @@ diff.
 
 ## Pending
 
+### Agent: a chat landing beside the cards
+
+- **Date:** 2026-09-28
+- **App:** `ChatLanding` in `routes/agent.tsx`, `HERO_ACTIONS` / `heroPlaceholder` in
+  `lib/agent.ts`, `size="hero"` on `components/agent-composer.tsx`, the switch in
+  `lib/agent-landing-variant.ts` and on `/settings`.
+  - **The Aura centred on top**, then the cards landing's own "Who are you hiring
+    today?" and its subheading, over four pills — Create Job,
+    Search Resume, Review applicants, Hiring Insights — and one big
+    box whose placeholder types out example questions in turn — pay, top
+    matches on the busiest posting, city value, the diary, a note — and stops on
+    the whole current one when the box is focused.
+  - **Review applicants carries a count** in a small brand-tinted chip — "92
+    waiting" — the number its answer opens on. Nothing is drawn at zero.
+  - **The hero box:** "+" on the left (Attach a JD or a CV · Quick actions), the mic
+    on the right as a filled circle, and the send arrow only once there is text or
+    a file. A softer focus ring, because the box is focused on arrival.
+  - **A faint glow** in the Aura's own cyan, blue and magenta behind the box — not
+    a brand colour, so hirist does not turn it orange.
+- **Storybook:** on `Compositions → Agent` when it is written — both landings.
+- **Figma:** no node yet.
+- [ ] Storybook
+- [ ] Figma
+
 ### Post a job: what an answer recorded, as rows
 
 - **Date:** 2026-09-26

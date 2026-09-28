@@ -7,11 +7,19 @@ import {
   LoaderIcon,
   MicIcon,
   PaperclipIcon,
+  PlusIcon,
   SparklesIcon,
   XIcon,
 } from "lucide-react"
 
 import { Button } from "@workspace/ui/components/button"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "@workspace/ui/components/dropdown-menu"
 import { Kbd } from "@workspace/ui/components/kbd"
 import { Textarea } from "@workspace/ui/components/textarea"
 import {
@@ -25,6 +33,8 @@ import { cn } from "@workspace/ui/lib/utils"
 import { attachmentPrompt, matchCommands, type Command } from "@/lib/agent"
 import { aiHealth, transcribe } from "@/lib/ai-client"
 import { readDocument } from "@/lib/read-document"
+import { play } from "@/lib/sound"
+import { useTypewriter } from "@/components/use-typewriter"
 import {
   dictationAvailable,
   MAX_RECORDING_MS,
@@ -41,10 +51,10 @@ import {
  * document and wrong for a conversation, and everything typed in here is one
  * or two sentences.
  *
- * THE MENU IS OPEN WHEN THE TEXT IS A SLASH QUERY, AND THAT IS THE WHOLE OF
- * THE STATE. `/`, `/int`, `/interviews` — a slash and no spaces — is the
- * condition, so there is no second boolean saying whether the list is showing
- * and no way for the two to disagree. The sparkle does not toggle anything: it
+ * THE MENU IS OPEN WHEN THE TEXT IS A SLASH QUERY — `/`, `/int`,
+ * `/interviews`, a slash and no spaces — OR when the recruiter has just
+ * clicked or tabbed into an empty box (`peek`). The second shows the whole
+ * list without typing anything, and the first letter typed closes it. The sparkle does not toggle anything: it
  * types the slash, which is why it reads as pressed afterwards. A space closes
  * the menu, because "/5 people in Pune" is a sentence and not a command.
  *
@@ -64,17 +74,20 @@ import {
  *   neither, it is disabled and says why.
  * - THE SPARKLE TYPES THE SLASH, which is the one gesture the `/` menu needs.
  */
+const NO_EXAMPLES: string[] = []
+
 export function AgentComposer({
   placeholder = "Ask about your postings, your applicants or the market… (press / for quick actions)",
-  autoFocus,
   onSubmit,
   onAttach,
   vocabulary = [],
   checklist,
+  size = "default",
+  peekOnFocus = true,
+  examples,
   className,
 }: {
   placeholder?: string
-  autoFocus?: boolean
   onSubmit: (text: string) => void
   /** A file that has been read, handed up for the page to answer about. */
   onAttach?: (file: { name: string; text: string | null }) => void
@@ -86,8 +99,27 @@ export function AgentComposer({
    * own text on every keystroke, so it is a function, not a list.
    */
   checklist?: (text: string) => { label: string; done: boolean }[]
+  /**
+   * `hero` is the chat landing's box: taller, attach and quick actions behind
+   * a "+" on the left, the mic on the right, and a send arrow that appears
+   * only once there is something to send.
+   */
+  size?: "default" | "hero"
+  /**
+   * Whether focusing the empty box shows the quick actions. Off while the
+   * conversation waits for a posting answer, where the list would cover the
+   * question card or the opener's checklist.
+   */
+  peekOnFocus?: boolean
+  /**
+   * Example questions typed out in turn as the placeholder while the box is
+   * empty and unfocused (`useTypewriter`); focusing it stops on the whole of
+   * the current one. Replaces `placeholder` when given.
+   */
+  examples?: string[]
   className?: string
 }) {
+  const hero = size === "hero"
   const navigate = useNavigate()
   const box = React.useRef<HTMLTextAreaElement>(null)
   const fileInput = React.useRef<HTMLInputElement>(null)
@@ -96,6 +128,26 @@ export function AgentComposer({
   const [attached, setAttached] = React.useState<string | null>(null)
   const [reading, setReading] = React.useState(false)
   const [dragging, setDragging] = React.useState(false)
+
+  /**
+   * THE LIST ALSO OPENS WHEN YOU CLICK OR TAB INTO AN EMPTY BOX — shown, not
+   * typed, so the box stays empty and the first letter typed closes it. Only a
+   * focus the RECRUITER made opens it: the mic taking the box, or the "+" menu
+   * handing focus back, are the page moving focus, and a list popping open for
+   * those would be the page talking over them. `quiet` marks those.
+   *
+   * NOTHING FOCUSES THE BOX ON ARRIVAL. A page that opens with the caret
+   * already blinking reads as a form waiting to be filled in; this one opens
+   * on the greeting and the pills, and the box is one click away.
+   */
+  const [peek, setPeek] = React.useState(false)
+  const [focused, setFocused] = React.useState(false)
+  const quiet = React.useRef(false)
+  const focusBox = () => {
+    quiet.current = true
+    box.current?.focus()
+    quiet.current = false
+  }
 
   /**
    * DICTATION, TWO WAYS. With the AI server up, the mic RECORDS and Gemini
@@ -168,7 +220,7 @@ export function AgentComposer({
       return
     }
     before.current = text ? `${text.trimEnd()} ` : ""
-    box.current?.focus()
+    focusBox()
 
     if (engine === "gemini") {
       setSeconds(0)
@@ -189,7 +241,7 @@ export function AgentComposer({
                       "I didn't hear anything — try again a little closer to the mic.",
                   })
                 setMic("idle")
-                box.current?.focus()
+                focusBox()
               })
               .catch((error: unknown) =>
                 fail(
@@ -233,9 +285,19 @@ export function AgentComposer({
   }
   const listening = mic === "listening"
 
+  // On and off as the mic's own state changes, so the button, the time limit
+  // and an error all sound the same way — not only the click.
+  const wasListening = React.useRef(false)
+  React.useEffect(() => {
+    if (listening === wasListening.current) return
+    wasListening.current = listening
+    play(listening ? "mic-on" : "mic-off")
+  }, [listening])
+
   // A slash and no whitespace. The capture is everything typed after it, which
   // is what filters the list.
-  const query = /^\/(\S*)$/.exec(text)?.[1]
+  const typed = /^\/(\S*)$/.exec(text)?.[1]
+  const query = typed ?? (peek && text === "" && peekOnFocus ? "" : undefined)
   const matches = React.useMemo(
     () => (query === undefined ? [] : matchCommands(query)),
     [query]
@@ -279,6 +341,7 @@ export function AgentComposer({
 
   const run = (command: Command) => {
     setText("")
+    setPeek(false)
     if (command.kind === "go") navigate(command.to)
     else onSubmit(command.prompt)
   }
@@ -342,6 +405,7 @@ export function AgentComposer({
       if (event.key === "Escape") {
         event.preventDefault()
         setText("")
+        setPeek(false)
         return
       }
     }
@@ -351,6 +415,83 @@ export function AgentComposer({
       send()
     }
   }
+
+  // It types the slash rather than opening a panel, so the menu has one way
+  // in and the box shows what happened.
+  const openCommands = () => {
+    setText("/")
+    focusBox()
+  }
+
+  const micButton = (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Button
+            variant="ghost"
+            size={hero ? "icon" : "icon-sm"}
+            disabled={engine === "none" || mic === "transcribing"}
+            aria-pressed={listening}
+            onClick={() => void toggleDictation()}
+            className={cn(
+              "text-muted-foreground",
+              hero && "rounded-full bg-muted hover:bg-muted/70",
+              // A live microphone is the one control here with a consequence
+              // outside the page, so it says so in colour rather than only in
+              // a tooltip.
+              listening && "bg-destructive/10 text-destructive"
+            )}
+          />
+        }
+      >
+        {mic === "transcribing" ? (
+          <LoaderIcon className="animate-spin" />
+        ) : (
+          <MicIcon />
+        )}
+        <span className="sr-only">
+          {listening
+            ? "Stop and transcribe"
+            : mic === "transcribing"
+              ? "Transcribing"
+              : "Dictate"}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>
+        {engine === "none"
+          ? "This browser can't record or recognise speech"
+          : listening
+            ? engine === "gemini"
+              ? "Stop — Gemini will transcribe it"
+              : "Stop dictating"
+            : engine === "gemini"
+              ? "Dictate — transcribed by Gemini"
+              : "Dictate (the browser's speech recognition)"}
+      </TooltipContent>
+    </Tooltip>
+  )
+
+  // Said beside the mic, not in a toast: while it records, the timer is the
+  // proof it is listening, and after, that something is coming back.
+  const micTimer =
+    via === "gemini" && mic !== "idle" ? (
+      <span
+        aria-live="polite"
+        className={cn(
+          "text-xs tabular-nums",
+          listening ? "text-destructive" : "text-muted-foreground"
+        )}
+      >
+        {listening
+          ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")} · ${MAX_RECORDING_MS / 1000 - seconds}s left`
+          : "Transcribing…"}
+      </span>
+    ) : null
+
+  const example = useTypewriter(
+    examples ?? NO_EXAMPLES,
+    Boolean(examples?.length) && !focused && text === ""
+  )
 
   const checks = checklist?.(text)
 
@@ -405,6 +546,9 @@ export function AgentComposer({
           // what reads as the control, and the textarea inside it has no border
           // of its own.
           "relative rounded-3xl border bg-background p-2 shadow-xs transition-shadow focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/50",
+          // A softer ring on the big box: at this size the full one reads as
+          // an error state rather than a caret.
+          hero && "p-3 shadow-lg focus-within:ring-ring/20",
           dragging && "border-ring ring-[3px] ring-ring/50"
         )}
       >
@@ -416,18 +560,44 @@ export function AgentComposer({
         <Textarea
           ref={box}
           rows={1}
-          autoFocus={autoFocus}
           value={text}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => {
+            setText(event.target.value)
+            setPeek(false)
+          }}
+          onFocus={() => {
+            setFocused(true)
+            if (!quiet.current) setPeek(true)
+          }}
+          onBlur={() => {
+            setFocused(false)
+            setPeek(false)
+          }}
           onKeyDown={onKeyDown}
-          placeholder={placeholder}
+          data-fading={
+            examples?.length && !focused && example.fading ? "" : undefined
+          }
+          placeholder={
+            examples?.length
+              ? focused
+                ? example.full
+                : example.typed
+              : placeholder
+          }
           role="combobox"
           aria-expanded={open}
           aria-controls={open ? "agent-commands" : undefined}
           aria-activedescendant={
             open ? `agent-command-${matches[active]?.token}` : undefined
           }
-          className="max-h-48 min-h-10 border-0 bg-transparent px-2.5 py-2 focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
+          className={cn(
+            "max-h-48 min-h-10 border-0 bg-transparent px-2.5 py-2 focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent",
+            hero && "min-h-28 text-base md:text-base",
+            // The rotating examples fade out rather than backspace; the
+            // duration matches `FADE_MS` in `use-typewriter.ts`.
+            examples?.length &&
+              "placeholder:transition-opacity placeholder:duration-300 data-fading:placeholder:opacity-0"
+          )}
         />
 
         {/* NOTHING ELSE ON SCREEN SAYS A FILE IS THERE — the same reason the
@@ -468,124 +638,116 @@ export function AgentComposer({
             }}
           />
 
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => fileInput.current?.click()}
-                  className="text-muted-foreground"
-                />
-              }
+          {hero ? (
+            // Focus goes back to the box, not the "+", once the menu has
+            // finished closing: quick actions are driven by arrow keys in it.
+            // Focusing it from the item does nothing — while the menu is open
+            // the rest of the page is inert — and `finalFocus` did not take.
+            <DropdownMenu
+              onOpenChangeComplete={(isOpen) => {
+                if (!isOpen) focusBox()
+              }}
             >
-              <PaperclipIcon />
-              <span className="sr-only">Attach a file</span>
-            </TooltipTrigger>
-            <TooltipContent>Attach a JD or a CV</TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  disabled={engine === "none" || mic === "transcribing"}
-                  aria-pressed={listening}
-                  onClick={() => void toggleDictation()}
-                  className={cn(
-                    "text-muted-foreground",
-                    // A live microphone is the one control here with a
-                    // consequence outside the page, so it says so in colour
-                    // rather than only in a tooltip.
-                    listening && "bg-destructive/10 text-destructive"
-                  )}
-                />
-              }
-            >
-              {mic === "transcribing" ? (
-                <LoaderIcon className="animate-spin" />
-              ) : (
-                <MicIcon />
-              )}
-              <span className="sr-only">
-                {listening
-                  ? "Stop and transcribe"
-                  : mic === "transcribing"
-                    ? "Transcribing"
-                    : "Dictate"}
-              </span>
-            </TooltipTrigger>
-            <TooltipContent>
-              {engine === "none"
-                ? "This browser can't record or recognise speech"
-                : listening
-                  ? engine === "gemini"
-                    ? "Stop — Gemini will transcribe it"
-                    : "Stop dictating"
-                  : engine === "gemini"
-                    ? "Dictate — transcribed by Gemini"
-                    : "Dictate (the browser's speech recognition)"}
-            </TooltipContent>
-          </Tooltip>
-
-          {/* Said beside the mic, not in a toast: while it records, the timer
-              is the proof it is listening, and after, that something is
-              coming back. */}
-          {via === "gemini" && mic !== "idle" ? (
-            <span
-              aria-live="polite"
-              className={cn(
-                "text-xs tabular-nums",
-                listening ? "text-destructive" : "text-muted-foreground"
-              )}
-            >
-              {listening
-                ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")} · ${MAX_RECORDING_MS / 1000 - seconds}s left`
-                : "Transcribing…"}
-            </span>
-          ) : null}
-
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-pressed={open}
-                  onClick={() => {
-                    // It types the slash rather than opening a panel, so the
-                    // menu has one way in and the box shows what happened.
-                    setText("/")
-                    box.current?.focus()
-                  }}
-                  className={cn(
-                    "text-muted-foreground",
-                    open && "bg-muted text-primary"
-                  )}
-                />
-              }
-            >
-              <SparklesIcon />
-              <span className="sr-only">Quick actions</span>
-            </TooltipTrigger>
-            <TooltipContent>
-              Quick actions <Kbd>/</Kbd>
-            </TooltipContent>
-          </Tooltip>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="secondary"
+                    size="icon"
+                    className="rounded-full"
+                  />
+                }
+              >
+                <PlusIcon />
+                <span className="sr-only">Add</span>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56">
+                <DropdownMenuItem onClick={() => fileInput.current?.click()}>
+                  <PaperclipIcon />
+                  Attach a JD or a CV
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={openCommands}>
+                  <SparklesIcon />
+                  Quick actions
+                  <DropdownMenuShortcut>/</DropdownMenuShortcut>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => fileInput.current?.click()}
+                      className="text-muted-foreground"
+                    />
+                  }
+                >
+                  <PaperclipIcon />
+                  <span className="sr-only">Attach a file</span>
+                </TooltipTrigger>
+                <TooltipContent>Attach a JD or a CV</TooltipContent>
+              </Tooltip>
+              {micButton}
+              {micTimer}
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-pressed={open}
+                      onClick={openCommands}
+                      className={cn(
+                        "text-muted-foreground",
+                        open && "bg-muted text-primary"
+                      )}
+                    />
+                  }
+                >
+                  <SparklesIcon />
+                  <span className="sr-only">Quick actions</span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Quick actions <Kbd>/</Kbd>
+                </TooltipContent>
+              </Tooltip>
+            </>
+          )}
 
           <div className="flex-1" />
 
-          <Button
-            size="icon"
-            disabled={!ready}
-            onClick={send}
-            className="rounded-full"
-          >
-            <ArrowUpIcon />
-            <span className="sr-only">Send</span>
-          </Button>
+          {hero ? (
+            <>
+              {micTimer}
+              {micButton}
+              {/* The box is the invitation, so the arrow waits until there is
+                  something to send rather than sitting there greyed out. */}
+              {ready ? (
+                <Button
+                  size="icon"
+                  disabled={!ready}
+                  onClick={send}
+                  className="rounded-full"
+                >
+                  <ArrowUpIcon />
+                  <span className="sr-only">Send</span>
+                </Button>
+              ) : null}
+            </>
+          ) : (
+            <Button
+              size="icon"
+              disabled={!ready}
+              onClick={send}
+              className="rounded-full"
+            >
+              <ArrowUpIcon />
+              <span className="sr-only">Send</span>
+            </Button>
+          )}
         </div>
       </div>
     </div>

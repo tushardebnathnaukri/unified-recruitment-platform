@@ -29,13 +29,9 @@ import {
 } from "@workspace/ui/components/sidebar"
 import { photoFor } from "@/lib/avatars"
 import { SECONDARY_ITEMS } from "@/lib/nav"
+import { RECRUITER } from "@/lib/recruiter"
 
-/** Mock recruiter. There is no auth in this prototype. */
-const USER = {
-  name: "Anurag Yadav",
-  email: "anurag.yadav@infoedge.com",
-  avatar: photoFor("Anurag Yadav"),
-}
+const USER = { ...RECRUITER, avatar: photoFor(RECRUITER.name) }
 
 function initials(name: string) {
   return name

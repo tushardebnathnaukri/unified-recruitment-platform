@@ -1,6 +1,7 @@
 /* eslint-disable react-refresh/only-export-components -- provider and its hook
    belong in one file; splitting them to satisfy fast refresh is not worth it. */
 import * as React from "react"
+import { useMatch } from "react-router"
 
 import { useSidebar } from "@workspace/ui/components/sidebar"
 import type { AthenaPageContext, Opener } from "@/lib/athena"
@@ -26,6 +27,12 @@ import type { AthenaPageContext, Opener } from "@/lib/athena"
  * data imported into one file.
  */
 type AthenaState = {
+  /**
+   * False on a page with a copilot of its own — `/agent`. There the header
+   * button and the A shortcut are gone, and an open pane closes on arrival:
+   * two assistants on one screen would be one of them answering over the other.
+   */
+  available: boolean
   open: boolean
   setOpen: (open: boolean) => void
   /** The page's context, or `null` on a page that has not registered one. */
@@ -53,6 +60,8 @@ export function AthenaProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpenState] = React.useState(false)
   const [context, setContext] = React.useState<AthenaPageContext | null>(null)
   const [pending, setPending] = React.useState<Opener | null>(null)
+  const available = useMatch("/agent") === null
+  const availableRef = React.useRef(available)
 
   /**
    * What the nav was doing before Athena borrowed its room. A ref rather than
@@ -111,9 +120,14 @@ export function AthenaProvider({ children }: { children: React.ReactNode }) {
     setOpenRef.current = setOpen
   }, [setOpen])
   React.useEffect(() => {
+    availableRef.current = available
+    if (!available && openRef.current) setOpenRef.current(false)
+  }, [available])
+  React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.repeat || event.metaKey || event.ctrlKey || event.altKey) return
       if (event.key.toLowerCase() !== "a") return
+      if (!availableRef.current) return
       const target = event.target
       if (
         target instanceof HTMLElement &&
@@ -129,6 +143,7 @@ export function AthenaProvider({ children }: { children: React.ReactNode }) {
 
   const value = React.useMemo(
     () => ({
+      available,
       open,
       setOpen,
       context,
@@ -138,7 +153,7 @@ export function AthenaProvider({ children }: { children: React.ReactNode }) {
       pending,
       clearPending,
     }),
-    [open, setOpen, context, restoreNav, ask, pending, clearPending]
+    [available, open, setOpen, context, restoreNav, ask, pending, clearPending]
   )
 
   return <Context.Provider value={value}>{children}</Context.Provider>

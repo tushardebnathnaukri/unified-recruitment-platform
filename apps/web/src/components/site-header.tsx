@@ -38,7 +38,7 @@ import { usePageHeaderSlot } from "@/components/page-header"
  * see `page-header.tsx`.
  */
 export function SiteHeader({ title }: { title: string }) {
-  const { open, setOpen } = useAthena()
+  const { available, open, setOpen } = useAthena()
   const { ref, filled } = usePageHeaderSlot()
 
   return (
@@ -70,8 +70,9 @@ export function SiteHeader({ title }: { title: string }) {
             carries its own close and two controls for one thing is one of them
             spending header room to say what the other already says. That also
             makes this a plain button rather than a toggle — there is no pressed
-            state to announce when the pressed state is invisible. */}
-        {!open && (
+            state to announce when the pressed state is invisible. Nor is it on
+            `/agent`, which is a copilot of its own (`available`). */}
+        {available && !open && (
           <Tooltip>
             <TooltipTrigger
               render={

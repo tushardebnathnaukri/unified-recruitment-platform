@@ -3,6 +3,7 @@ import {
   BellIcon,
   BriefcaseIcon,
   CalendarCheckIcon,
+  ChartPieIcon,
   ClipboardCheckIcon,
   DatabaseIcon,
   EraserIcon,
@@ -211,6 +212,17 @@ function busiestJob(brand: Brand): LiveJob | undefined {
   return [...liveJobsFor(brand)].sort((a, b) => b.applicants - a.applicants)[0]
 }
 
+/**
+ * Everybody waiting on a decision — what the Review applicants pill prints and
+ * its answer opens on, one function for both, so "92 waiting" is the 92.
+ */
+function undecidedTotal(brand: Brand) {
+  return undecidedByJob(brand).reduce(
+    (sum, row) => sum + row.counts.undecided,
+    0
+  )
+}
+
 /** Everybody waiting on a decision, posting by posting, worst first. */
 function undecidedByJob(brand: Brand) {
   return liveJobsFor(brand)
@@ -313,6 +325,8 @@ export const CARDS: Skill[] = [
     keywords: [
       "pay",
       "salary",
+      "earn",
+      "earns",
       "market",
       "ctc",
       "cost",
@@ -401,7 +415,7 @@ export const CARDS: Skill[] = [
     },
     answer: (brand) => {
       const rows = undecidedByJob(brand)
-      const total = rows.reduce((sum, row) => sum + row.counts.undecided, 0)
+      const total = undecidedTotal(brand)
       const fresh = rows.reduce((sum, row) => sum + row.counts.newSinceVisit, 0)
 
       if (!total) {
@@ -594,6 +608,8 @@ export const CHIPS: Skill[] = [
       "anything new",
       "new applicants",
       "new applications",
+      "applied",
+      "applied to",
       "since",
       "latest",
       "yesterday",
@@ -857,6 +873,70 @@ const byId = (id: string) => {
   const skill = ALL.find((entry) => entry.id === id)
   if (!skill) throw new Error(`No agent skill "${id}"`)
   return skill
+}
+
+/**
+ * The chat landing's action row — four pills over the box.
+ *
+ * START SOMETHING, THEN WORK IN FLIGHT, THEN HOW IT IS GOING. Every pill asks a
+ * question a skill already answers, because a dead pill in a hero is the first
+ * thing clicked in a review. Review applicants is the decision queue — the
+ * recruiter's daily question. A "Job updates" pill (who applied since the last
+ * visit) was tried beside it and dropped: everyone new is also undecided, so
+ * it was the front of the same queue under a second name.
+ *
+ * A COUNT IS A REASON TO CLICK. Review applicants prints the number its answer
+ * opens on ("92 waiting"), and nothing at zero rather than a "0" to ignore.
+ */
+export const HERO_ACTIONS: {
+  label: string
+  icon: LucideIcon
+  prompt: string
+  count?: (brand: Brand) => string | null
+}[] = [
+  { label: "Create Job", icon: BriefcaseIcon, prompt: byId("posting").prompt },
+  // The nav's own name and icon, so the pill and the page it leads to agree.
+  { label: "Search Resume", icon: DatabaseIcon, prompt: byId("find").prompt },
+  {
+    label: "Review applicants",
+    icon: ClipboardCheckIcon,
+    prompt: byId("decisions").prompt,
+    count: (brand) => {
+      const total = undecidedTotal(brand)
+      return total ? `${total} waiting` : null
+    },
+  },
+  {
+    label: "Hiring Insights",
+    icon: ChartPieIcon,
+    prompt: byId("funnel").prompt,
+  },
+]
+
+/**
+ * The example questions the chat landing's box types out, one after another.
+ *
+ * EVERY ONE IS A QUESTION THE BOX ANSWERS, routed by the same keywords as
+ * anything typed, so copying one in gets a real reply. They lead with what no
+ * pill covers — pay, top matches, the diary, a note — and name this product's
+ * own busiest posting and its own kind of hire, because a hirist recruiter is
+ * not hiring a Head of Marketing.
+ */
+const EXAMPLE_PAY: Record<Brand, [title: string, city: string]> = {
+  iimjobs: ["Head of Marketing", "Mumbai"],
+  hirist: ["Senior Backend Engineer", "Bengaluru"],
+}
+
+export function heroExamples(brand: Brand): string[] {
+  const [title, city] = EXAMPLE_PAY[brand]
+  const job = busiestJob(brand)
+  return [
+    `What does a ${title} earn in ${city}?`,
+    ...(job ? [`Show me the top matches for my ${job.title} role`] : []),
+    byId("cheapest").prompt,
+    byId("week").prompt,
+    byId("outreach").prompt,
+  ]
 }
 
 export const COMMANDS: Command[] = [

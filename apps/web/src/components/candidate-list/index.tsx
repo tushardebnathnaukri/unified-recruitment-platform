@@ -49,6 +49,7 @@ import {
   queueOrder,
 } from "@/components/candidate-list/shared"
 import { useCollapseNavBelow } from "@/components/use-collapse-nav"
+import { play, soundForDecision } from "@/lib/sound"
 import { SelectionBar } from "@/components/candidate-list/selection"
 import { ApplicantList } from "@/components/candidate-list/applicant-list"
 import {
@@ -422,6 +423,7 @@ function CandidateListBody({
       actionProps: {
         children: "Undo",
         onClick() {
+          play("undo")
           moved.forEach((entry) => decide(entry.id, entry.from))
           toast.close(id)
         },
@@ -446,6 +448,7 @@ function CandidateListBody({
         status
       )
     }
+    play(soundForDecision(status))
     decide(id, status)
   }
 
@@ -464,6 +467,8 @@ function CandidateListBody({
         from: person.status,
       }))
     if (moved.length === 0) return
+    // One sound for the batch — the player restarts rather than stacking.
+    play(soundForDecision(status))
     moved.forEach((entry) => decide(entry.id, status))
     undoDecision(moved, status)
   }
