@@ -80,11 +80,24 @@ what lands after it.
 Turborepo + npm workspaces:
 
 - **`apps/web`** — Vite 8 + React 19 SPA, the clickable prototype. `main.tsx` → `BrandProvider` →
-  `ThemeProvider` → `TooltipProvider` → `BrowserRouter` → `App`.
+  `ThemeSync` + `TooltipProvider` → `BrowserRouter` → `App`.
+
+**Shared state is Jotai atoms (v3), not providers** — in the default store, so nothing wraps the
+app for it. The session overlays (`useDecisions`, `useSavedLists`, `useInterviews`, `useMessages`)
+hold this session's changes in an atom, and where many components read one (every card's Save
+menu, every card's interview slot) the merged view is a **derived atom per brand**, worked out once
+per change rather than once per card. Per-viewer settings (theme, the /settings variants, sounds)
+are `persistedAtom` (`lib/persisted.ts`): raw strings in `localStorage`, read on init, never
+throwing when storage is blocked, and synced across tabs. **The URL still holds anything a reviewer
+should be able to link to** (see Routing) — atoms are for what is not worth a link. The files kept
+their `*-provider.tsx` names so no import moved. Still Context, on purpose: `BrandProvider` (it is
+`packages/ui`'s, and Storybook drives it), `AthenaProvider` (it borrows the sidebar's own context)
+and `PageHeaderProvider` (a portal slot, not state).
 - **`packages/ui`** (`@workspace/ui`) — shadcn/ui components on Base UI primitives, documented in Storybook.
 - **`apps/ai`** — a small Node server that holds the Gemini key, so the page never does. Node ≥
   22.18 runs its TypeScript directly (type stripping): no dependencies, no build, `tsc --noEmit`
-  only to check. Three routes — `GET /api/health`, `POST /api/intake`, `POST /api/transcribe` —
+  only to check. Four routes — `GET /api/health`, `POST /api/intake`, `POST /api/transcribe`, and
+  `GET|PUT /api/sessions/:id` (an Agent conversation's turns, no key needed) —
   each deliberately narrow (a fixed schema in, a fixed shape out), with a per-IP rate limit
   (40 per 5 minutes) and CORS from `ALLOWED_ORIGINS` (localhost when unset). Vite's dev and
   preview servers proxy `/api` to it (`AI_SERVER_URL`, default `http://localhost:8787`); a
@@ -166,8 +179,9 @@ Tailwind v4, configured entirely in CSS — there is no `tailwind.config`.
 `packages/ui/src/styles/globals.css` is the single source of truth: `@theme inline` token map,
 oklch `:root`/`.dark` palettes, brand layers, and `@source` globs pulling `apps/**` into the scan.
 
-Theming is class-based. `theme-provider.tsx` toggles `light`/`dark` on `<html>`, persists to
-`localStorage`, syncs across tabs, and binds a bare `d` keypress. It is **two-state on purpose —
+Theming is class-based. `theme-provider.tsx` holds the theme in a persisted atom, and its
+`ThemeSync` (mounted once in `main.tsx`) toggles `light`/`dark` on `<html>` and binds a bare `d`
+keypress; it syncs across tabs. It is **two-state on purpose —
 no `system` mode**: this is a design-review tool, so the mode must be unambiguous from the icon
 and a shared preview link must render identically for everyone. Storybook's switcher matches.
 
@@ -414,13 +428,13 @@ candidate linking to their applicant page or to their profile over the search), 
 the card icon, the overflow item, the panel, the candidate page). An applicant's job is fixed; a
 sourced person picks one of the live postings. It warns on a calendar clash, lands as Awaiting
 Candidate Response, and booking again reschedules (one interview per person per posting). State is
-`InterviewsProvider`, the same seeded-plus-overlay shape as the other providers, and /interviews
+`useInterviews` (atoms), the same seeded-plus-overlay shape as the other overlays, and /interviews
 reads it. **Booking moves the person to Contacted only when the dialog closes**: on a queue the
 decision takes the card away, and the dialog lives inside the card. The overflow item's dialog sits
 around the whole menu for the same reason — menu items unmount when the menu closes.
 
 On /interviews, **Reschedule** opens the same form (`RescheduleDialog`) and **Cancel interview**
-asks first, then takes the slot off (`cancel` in `InterviewsProvider`). Both dialogs are held by the
+asks first, then takes the slot off (`cancel` in `useInterviews`). Both dialogs are held by the
 page, not the row: rescheduling makes a slot Awaiting Candidate Response, which filters its row out
 of the table while the confirmation is still showing. Completed rows have no actions.
 
@@ -440,8 +454,8 @@ is `lib/lists.ts`, dealt from the same generators as the screens the people came
 
 **Saving is `SaveToList`** — a menu of the lists, ticked where the person already is, on every card
 and in the split view and profile panel of both the response manager and Search Resume's results.
-Ticking files, unticking the last list unsaves. State is `SavedListsProvider` (in `main.tsx`, an
-overlay over the seeded pile like `DecisionsProvider`, per brand, reset on reload). Where somebody
+Ticking files, unticking the last list unsaves. State is `useSavedLists` (atoms, an
+overlay over the seeded pile like the decisions, per brand, reset on reload). Where somebody
 was saved from comes from `CandidateList`'s `savedFrom` prop through `SavedFromContext`; My Lists
 passes none, because everybody there already has one.
 
@@ -495,7 +509,7 @@ document instead of the bottom of the screen. Below `md` it covers the page. The
 **Athena answers what the page can compute, and nothing else.** A page calls `useAthenaContext`
 (in `athena-provider.tsx`) with a label, a detail and its **openers**. Each opener is a prompt plus
 an `answer()` run at the moment it is asked, against the page's current data. The answers are built
-in `lib/athena.ts` from the same mock data and `DecisionsProvider` overlay the screen reads, so "the
+in `lib/athena.ts` from the same mock data and decisions overlay (`useDecisions`) the screen reads, so "the
 strongest five" are Best match's top five, and shortlisting from the pane moves the tab count
 behind it. Free text gets `CANNOT_ANSWER`, never a plausible invention. Replies are **blocks**
 (`athena-blocks.tsx`): text, candidate rows with Shortlist/Maybe, a **proposal** (a batch decision
@@ -570,8 +584,8 @@ question is "clear out people with none of the skills" instead. **Ask the genera
 (`applicantsFor`, `requiredSkillsFor`, `tagsFor`) for the distribution first** — count it across the
 whole pool, not the first page, because a rule that fires on one card in ten looks broken on twenty.
 
-**Athena writes messages; she never sends them.** Messages' state is `MessagesProvider`
-(`components/messages-provider.tsx`, mounted in `AppShell`), so Athena can read the live threads
+**Athena writes messages; she never sends them.** Messages' state is `useMessages`
+(`components/messages-provider.tsx`, atoms), so Athena can read the live threads
 ("which threads are waiting" drops somebody the moment you reply) and fill drafts. A draft card puts
 text into each recipient's composer and goes to `/messages` — one recipient lands on that thread,
 several on the list. The recruiter sends it from the thread, and
@@ -620,10 +634,18 @@ first in the nav, whose first skill is **Post a job** (Search people and Get ins
 the page's own data, the way Athena's openers do). Athena is otherwise untouched by it, but **she
 is off on `/agent`**: `available` on the Athena provider (a `useMatch`) hides the header button,
 ignores the A shortcut and closes an open pane on arrival, because two copilots on one screen
-would be one answering over the other. Whether the two merge is a later call. The transcript is the URL (`?ask=`, repeated, one per turn), so a
-conversation is a link like everything else here, and a submitted questionnaire is ONE turn,
-encoded as `Answers: {json}` (`encodeAnswers` / `decodeAnswers` in `lib/job-refine.ts`).
-`answersFor` in `lib/agent.ts` folds the turns into the replies on every render.
+would be one answering over the other. Whether the two merge is a later call. **A conversation is its turns, kept under a short id: `/agent/c/<id>`**
+(`lib/agent-sessions.ts`). The page makes the id on the first question and writes every turn to
+this browser's `localStorage` first and the AI server second (`PUT /api/sessions/:id`), so a
+reload works with the server down and the link opens for anyone who can reach the server. Opening
+a link reads this browser's copy at once and takes the server's when it has more turns; a link
+neither has says so ("This conversation isn't here") rather than showing an empty landing. On the
+preview the server keeps them in `SESSIONS_FILE`, which survives a restart but not a redeploy.
+**An old `?ask=` link still opens** — the same turns, moved into a session, the address replaced.
+Back no longer walks the turns one at a time; it leaves the conversation. A submitted
+questionnaire is ONE turn, encoded as `Answers: {json}` (`encodeAnswers` / `decodeAnswers` in
+`lib/job-refine.ts`). `answersFor` in `lib/agent.ts` folds the turns into the replies on every
+render.
 
 **The landing has two designs, picked on /settings** ("Agent landing", `useAgentLandingVariant` in
 `lib/agent-landing-variant.ts`). **Chat** (the default) is the Aura centred over the cards
@@ -700,6 +722,9 @@ the message says where to look.
 **`/jobs/new` is the same posting as a form** (`routes/new-job.tsx`), linked from every question
 in the chat for anyone who would rather fill it in; `postingHref` / `draftFrom` carry the draft
 so far into it through the query string, so leaving half-way loses nothing. Posting only shows a toast.
+Every link from the chat into the form also carries the chat's own URL as `?chat=` (`withChat`),
+and the form then offers **Back to the chat** to that exact conversation instead of "Talk it
+through instead" (a fresh one). `chatFrom` honours only an `/agent` URL, so it is not a redirect.
 
 **Sounds are six short clips, played only in answer to something the recruiter did**
 (`play()` in `lib/sound.ts`; files in `apps/web/src/assets/sounds/` as `pop`, `tick`, `dismiss`,
@@ -763,7 +788,7 @@ branching inside one component.
 
 **The theme toggle lives on `/settings`**, leaving the top bar as title only — the sidebar owns the
 collapse trigger, beside the wordmark. That was a deliberate call against keeping controls in the
-header for side-by-side comparison; the bare `d` keypress bound in `ThemeProvider` is the only
+header for side-by-side comparison; the bare `d` keypress bound in `ThemeSync` is the only
 global way to change theme.
 
 **Brand is different, because it is a product and not a preference.** `ProductSwitcher` sits in the
@@ -792,6 +817,9 @@ commit last deployed — update that project rather than creating another. Its u
 on itself — no `VITE_AI_URL`, no `ALLOWED_ORIGINS`; the server always accepts the page it serves.
 `GEMINI_API_KEY` is in the Launchpad project's environment, set from `apps/ai/.env.local` on the
 user's say-so; a PATCH without `env` keeps it, and one with `env` replaces the whole environment.
+Agent conversations (`/agent/c/<id>`) are kept in `/app/data/sessions.json` inside the container
+(`SESSIONS_FILE`, set in the Dockerfile): a restart keeps them, a redeploy starts empty, and a
+recruiter's own browser still has theirs either way.
 
 **Build from the committed tree, not the working copy**, which usually holds WIP: a detached
 `git worktree` in a scratch directory, `npm ci`, `npm run build -w web`, then a bundle of
