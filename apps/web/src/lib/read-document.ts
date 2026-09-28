@@ -32,11 +32,17 @@ export async function readDocument(file: File): Promise<string | null> {
 }
 
 async function readPdf(file: File) {
-  const [{ getDocument, GlobalWorkerOptions }, worker] = await Promise.all([
-    import("pdfjs-dist"),
-    import("pdfjs-dist/build/pdf.worker.min.mjs?url"),
-  ])
-  GlobalWorkerOptions.workerSrc = worker.default
+  const [{ getDocument, GlobalWorkerOptions }, { default: PdfWorker }] =
+    await Promise.all([
+      import("pdfjs-dist"),
+      import("pdfjs-dist/build/pdf.worker.min.mjs?worker"),
+    ])
+  // A WORKER VITE BUNDLES, NOT THE `.mjs` AS A URL. The Launchpad's static
+  // server sends `.mjs` as `application/octet-stream`, and a browser will not
+  // start a module worker of that type — so every PDF read as "no text" on the
+  // deployed site while working locally. `?worker` emits it as a `.js`. One
+  // worker for the page; pdf.js leaves a port it was handed running.
+  GlobalWorkerOptions.workerPort ??= new PdfWorker()
 
   const task = getDocument({ data: new Uint8Array(await file.arrayBuffer()) })
   const pdf = await task.promise
