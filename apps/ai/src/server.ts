@@ -1,8 +1,10 @@
+import { readFile, stat } from "node:fs/promises"
 import {
   createServer,
   type IncomingMessage,
   type ServerResponse,
 } from "node:http"
+import { extname, join, resolve, sep } from "node:path"
 
 import { geminiBody, parseRequest, resultFrom } from "./intake.ts"
 import {
@@ -33,6 +35,12 @@ import {
  *
  * The page asks /api/health once, before its first question, so a missing key
  * becomes "the rules answered" up front rather than a failed call mid-flow.
+ *
+ * AND, WHEN `STATIC_DIR` IS SET, THE SITE. The Launchpad preview is one
+ * container: this server answers `/api/*` and serves the built `apps/web`
+ * from `STATIC_DIR`, falling back to `index.html` for app routes. One origin,
+ * so the page calls `/api` on itself and needs no `VITE_AI_URL`. Unset (local
+ * dev), Vite serves the page and this serves only the API.
  */
 
 const PORT = Number(process.env.PORT) || 8787
@@ -59,8 +67,12 @@ const ALLOWED = (process.env.ALLOWED_ORIGINS ?? "")
   .map((origin) => origin.trim())
   .filter(Boolean)
 
-function originAllowed(origin: string | undefined) {
+function originAllowed(origin: string | undefined, host: string | undefined) {
   if (!origin) return true
+  // The page this server itself serves (`STATIC_DIR`) is always allowed: a
+  // browser sends Origin on a same-origin POST too.
+  if (host && (origin === `http://${host}` || origin === `https://${host}`))
+    return true
   if (ALLOWED.length) return ALLOWED.includes(origin)
   return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)
 }
@@ -85,7 +97,7 @@ function overLimit(address: string) {
 
 const server = createServer(async (req, res) => {
   const origin = req.headers.origin
-  if (!originAllowed(origin))
+  if (!originAllowed(origin, req.headers.host))
     return send(res, 403, { error: "Origin not allowed" })
   if (origin) {
     res.setHeader("Access-Control-Allow-Origin", origin)
@@ -212,6 +224,8 @@ const server = createServer(async (req, res) => {
     }
   }
 
+  if (await serveStatic(req, path, res)) return
+
   send(res, 404, { error: "Not found" })
 })
 
@@ -219,9 +233,101 @@ server.listen(PORT, () => {
   console.log(
     `AI server on http://localhost:${PORT} · ${MODEL} · ${
       KEY ? "key configured" : "NO KEY — the page will use its rules"
-    }`
+    }${STATIC_DIR ? ` · serving the site from ${STATIC_DIR}` : ""}`
   )
 })
+
+// --- The site, when this server is the whole preview ------------------------
+
+const STATIC_DIR = process.env.STATIC_DIR
+  ? resolve(process.env.STATIC_DIR)
+  : null
+
+/** By extension — `.mjs` included, which a server that guesses gets wrong. */
+const TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".json": "application/json",
+  ".map": "application/json",
+  ".svg": "image/svg+xml",
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".webp": "image/webp",
+  ".gif": "image/gif",
+  ".ico": "image/x-icon",
+  ".woff": "font/woff",
+  ".woff2": "font/woff2",
+  ".mp3": "audio/mpeg",
+  ".txt": "text/plain; charset=utf-8",
+}
+
+async function isFile(path: string) {
+  try {
+    return (await stat(path)).isFile()
+  } catch {
+    return false
+  }
+}
+
+/**
+ * A file from `STATIC_DIR`, or `index.html` for a path with no extension (an
+ * app route like `/jobs/i1`). A missing path WITH an extension is a real 404,
+ * so a broken asset link fails loudly instead of returning the page.
+ */
+async function serveStatic(
+  req: IncomingMessage,
+  path: string,
+  res: ServerResponse
+): Promise<boolean> {
+  if (!STATIC_DIR || path.startsWith("/api/")) return false
+  if (req.method !== "GET" && req.method !== "HEAD") return false
+
+  let decoded: string
+  try {
+    decoded = decodeURIComponent(path)
+  } catch {
+    send(res, 400, { error: "Bad path" })
+    return true
+  }
+  const file = resolve(STATIC_DIR, `.${decoded}`)
+  // Nothing outside the site, whatever `..` the path carries.
+  if (file !== STATIC_DIR && !file.startsWith(STATIC_DIR + sep)) {
+    send(res, 404, { error: "Not found" })
+    return true
+  }
+
+  let target = (await isFile(file))
+    ? file
+    : (await isFile(join(file, "index.html")))
+      ? join(file, "index.html")
+      : null
+  if (!target) {
+    if (extname(decoded)) {
+      send(res, 404, { error: "Not found" })
+      return true
+    }
+    target = join(STATIC_DIR, "index.html")
+  }
+
+  const body = await readFile(target)
+  res.statusCode = 200
+  res.setHeader(
+    "Content-Type",
+    TYPES[extname(target).toLowerCase()] ?? "application/octet-stream"
+  )
+  // Hashed build assets never change under the same name; the page does.
+  res.setHeader(
+    "Cache-Control",
+    target.startsWith(join(STATIC_DIR, "assets") + sep)
+      ? "public, max-age=31536000, immutable"
+      : "no-cache"
+  )
+  res.end(req.method === "HEAD" ? undefined : body)
+  return true
+}
 
 function send(res: ServerResponse, status: number, body: unknown) {
   res.statusCode = status
