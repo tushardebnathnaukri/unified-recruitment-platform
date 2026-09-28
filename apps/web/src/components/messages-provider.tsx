@@ -1,6 +1,5 @@
-/* eslint-disable react-refresh/only-export-components -- provider and its hook
-   belong in one file, as in `decisions-provider.tsx`. */
 import * as React from "react"
+import { atom, useAtom } from "jotai"
 import { useNavigate } from "react-router"
 
 import { useDecisions } from "@/components/decisions-provider"
@@ -27,7 +26,11 @@ import { CONVERSATIONS, type Conversation, type Message } from "@/lib/messages"
  * carries the applicant's id, so the first message sent moves them to Contacted:
  * the same thing the candidate page's Message button does.
  *
- * Resets on reload, like every other provider here.
+ * Resets on reload, like the other overlays here.
+ *
+ * ATOMS, NOT A PROVIDER (it was `MessagesProvider` in `AppShell`). The hook
+ * brings its own `navigate` and `decide`, which the provider used to take
+ * from where it was mounted.
  */
 export type Recipient = {
   /** The applicant's id, which becomes the thread's id. */
@@ -38,59 +41,37 @@ export type Recipient = {
   photo?: string
 }
 
-type MessagesState = {
-  conversations: Conversation[]
-  threads: Record<string, Message[]>
-  unread: Record<string, number>
-  drafts: Record<string, string>
-  /** A thread's last activity, humanised — this session's sends over the fixtures'. */
-  lastAtFor: (conversation: Conversation) => string
-  /**
-   * Goes to /messages on that thread and marks it read.
-   *
-   * IT NAVIGATES NOW, because messages are a page rather than a dock in the
-   * corner. Which thread is open is `?thread=` and belongs to the page, so
-   * this provider no longer holds an `open` or an `activeId` — there is
-   * nothing to open, only somewhere to go.
-   */
-  openThread: (id: string) => void
-  setDraft: (id: string, body: string) => void
-  send: (id: string, body: string) => void
-  /**
-   * Puts a draft in each recipient's thread, starting threads that do not
-   * exist. One recipient lands on that thread; several land on the list,
-   * where each row says it holds a draft.
-   */
-  fillDrafts: (drafts: { to: Recipient; body: string }[]) => void
-}
-
-const MessagesContext = React.createContext<MessagesState | undefined>(
-  undefined
-)
-
 /** Where a draft or a thread link sends you. */
 const MESSAGES_PATH = "/messages"
 
-export function MessagesProvider({ children }: { children: React.ReactNode }) {
+const startedAtom = atom<Conversation[]>([])
+const threadsAtom = atom<Record<string, Message[]>>(
+  Object.fromEntries(CONVERSATIONS.map((c) => [c.id, c.messages]))
+)
+const unreadAtom = atom<Record<string, number>>(
+  Object.fromEntries(CONVERSATIONS.map((c) => [c.id, c.unread]))
+)
+const draftsAtom = atom<Record<string, string>>({})
+const lastAtAtom = atom<Record<string, string>>({})
+
+export function useMessages() {
   const { decide } = useDecisions()
   const navigate = useNavigate()
-  const [started, setStarted] = React.useState<Conversation[]>([])
-  const [threads, setThreads] = React.useState<Record<string, Message[]>>(() =>
-    Object.fromEntries(CONVERSATIONS.map((c) => [c.id, c.messages]))
-  )
-  const [unread, setUnread] = React.useState<Record<string, number>>(() =>
-    Object.fromEntries(CONVERSATIONS.map((c) => [c.id, c.unread]))
-  )
-  const [drafts, setDrafts] = React.useState<Record<string, string>>({})
-  const [lastAt, setLastAt] = React.useState<Record<string, string>>({})
+  const [started, setStarted] = useAtom(startedAtom)
+  const [threads, setThreads] = useAtom(threadsAtom)
+  const [unread, setUnread] = useAtom(unreadAtom)
+  const [drafts, setDrafts] = useAtom(draftsAtom)
+  const [lastAt, setLastAt] = useAtom(lastAtAtom)
 
-  // Newest first: a thread you just started belongs at the top of the list.
-  const conversations = React.useMemo(
-    () => [...started, ...CONVERSATIONS],
-    [started]
-  )
+  return React.useMemo(() => {
+    // Newest first: a thread you just started belongs at the top of the list.
+    const conversations = [...started, ...CONVERSATIONS]
 
-  const value = React.useMemo<MessagesState>(() => {
+    /**
+     * Goes to /messages on that thread and marks it read. Which thread is open
+     * is `?thread=` and belongs to the page, so there is no `open` or
+     * `activeId` here — there is nothing to open, only somewhere to go.
+     */
     const openThread = (id: string) => {
       // Opening is what marks read, which is why the count lives here and not
       // in the fixtures.
@@ -103,12 +84,13 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
       threads,
       unread,
       drafts,
-      lastAtFor: (conversation) =>
+      /** A thread's last activity, humanised — this session's sends over the fixtures'. */
+      lastAtFor: (conversation: Conversation) =>
         lastAt[conversation.id] ?? conversation.lastAt,
       openThread,
-      setDraft: (id, body) =>
+      setDraft: (id: string, body: string) =>
         setDrafts((previous) => ({ ...previous, [id]: body })),
-      send: (id, body) => {
+      send: (id: string, body: string) => {
         const text = body.trim()
         if (!text) return
 
@@ -132,7 +114,12 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
         // Nobody answers. A candidate replying on a timer would be pretending
         // the prototype has people in it.
       },
-      fillDrafts: (entries) => {
+      /**
+       * Puts a draft in each recipient's thread, starting threads that do not
+       * exist. One recipient lands on that thread; several land on the list,
+       * where each row says it holds a draft.
+       */
+      fillDrafts: (entries: { to: Recipient; body: string }[]) => {
         if (entries.length === 0) return
         const known = new Set(conversations.map((c) => c.id))
 
@@ -161,29 +148,19 @@ export function MessagesProvider({ children }: { children: React.ReactNode }) {
       },
     }
   }, [
-    conversations,
+    started,
     threads,
     unread,
     drafts,
     lastAt,
-    started,
     decide,
     navigate,
+    setStarted,
+    setThreads,
+    setUnread,
+    setDrafts,
+    setLastAt,
   ])
-
-  return (
-    <MessagesContext.Provider value={value}>
-      {children}
-    </MessagesContext.Provider>
-  )
-}
-
-export function useMessages() {
-  const context = React.useContext(MessagesContext)
-  if (!context) {
-    throw new Error("useMessages must be used within a MessagesProvider")
-  }
-  return context
 }
 
 function now() {

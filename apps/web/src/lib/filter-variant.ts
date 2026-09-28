@@ -1,4 +1,6 @@
-import * as React from "react"
+import { useAtom } from "jotai"
+
+import { persistedAtom } from "@/lib/persisted"
 
 /**
  * Which filter design the database's results use.
@@ -15,9 +17,8 @@ import * as React from "react"
  *   edit and save, ranked plain-English criteria, and "Expand pool" chips that
  *   say how many more people loosening each filter would find.
  *
- * A hook over `localStorage` rather than a provider: nothing but the results
- * page and the setting read it, and `useSyncExternalStore` keeps both — and
- * other tabs — in step without a component in `main.tsx`.
+ * A persisted atom (`lib/persisted.ts`): nothing but the results page and the
+ * setting read it, and it stays in step across tabs.
  */
 export type FilterVariant = "juicebox" | "panel"
 
@@ -39,52 +40,13 @@ export const FILTER_VARIANTS: {
   },
 ]
 
-const KEY = "database-filter-variant"
-const DEFAULT: FilterVariant = "panel"
-/** `storage` only fires in OTHER tabs, so this tab announces its own writes. */
-const LOCAL = "database-filter-variant-change"
-
-/**
- * The last choice made in this tab. Storage can be unavailable — a private
- * window, a browser set to block site data, an embedded preview — and a switch
- * that silently does nothing there reads as broken, so the choice is kept here
- * too and outlives the page only when storage lets it.
- */
-let chosen: FilterVariant | null = null
-
-const isVariant = (value: unknown): value is FilterVariant =>
-  FILTER_VARIANTS.some((option) => option.value === value)
-
-function read(): FilterVariant {
-  try {
-    const stored = localStorage.getItem(KEY)
-    if (isVariant(stored)) return stored
-  } catch {
-    // Storage is blocked; fall through to this tab's own choice.
-  }
-  return chosen ?? DEFAULT
-}
-
-function subscribe(onChange: () => void) {
-  window.addEventListener("storage", onChange)
-  window.addEventListener(LOCAL, onChange)
-  return () => {
-    window.removeEventListener("storage", onChange)
-    window.removeEventListener(LOCAL, onChange)
-  }
-}
+const variantAtom = persistedAtom<FilterVariant>(
+  "database-filter-variant",
+  "panel",
+  FILTER_VARIANTS.map((option) => option.value)
+)
 
 export function useFilterVariant() {
-  const variant = React.useSyncExternalStore(subscribe, read, () => DEFAULT)
-  const setVariant = React.useCallback((next: FilterVariant) => {
-    chosen = next
-    try {
-      localStorage.setItem(KEY, next)
-    } catch {
-      // Kept for this tab only — see `chosen`.
-    }
-    window.dispatchEvent(new Event(LOCAL))
-  }, [])
-
+  const [variant, setVariant] = useAtom(variantAtom)
   return { variant, setVariant }
 }

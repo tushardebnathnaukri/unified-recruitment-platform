@@ -1,17 +1,20 @@
-/* eslint-disable react-refresh/only-export-components -- provider and its hook
-   belong in one file; splitting them to satisfy fast refresh is not worth it. */
 import * as React from "react"
+import { atom, useAtom } from "jotai"
 
 import type { Applicant, ApplicantStatus } from "@/lib/applicants"
 
 /**
  * Decisions taken in this session, laid over the generated applicants.
  *
- * IT IS A PROVIDER BECAUSE TWO SCREENS SHARE IT. The response manager held
- * this in component state, which was fine while it was the only place you
- * could shortlist somebody. A profile page you can decide from makes that a
- * lie: you would shortlist a candidate on their profile, go back, and find
- * them unshortlisted, because the list had never heard about it.
+ * SHARED BECAUSE TWO SCREENS DECIDE. The response manager held this in
+ * component state, which was fine while it was the only place you could
+ * shortlist somebody. A profile page you can decide from makes that a lie:
+ * you would shortlist a candidate on their profile, go back, and find them
+ * unshortlisted, because the list had never heard about it.
+ *
+ * AN ATOM, NOT A PROVIDER. It was `DecisionsProvider` in `main.tsx`; the state
+ * is the same, it just lives in Jotai's store rather than a component, and
+ * this file keeps its name so nothing that imports `useDecisions` moved.
  *
  * AN OVERLAY, NOT A MUTATED COPY. The applicants are derived from the job, so
  * only what a recruiter actually changed needs storing — a map of id to status,
@@ -21,46 +24,21 @@ import type { Applicant, ApplicantStatus } from "@/lib/applicants"
  * otherwise; the point is that a review can shortlist twenty people and watch
  * the counts move, not that the twenty survive a refresh.
  */
-type DecisionsState = {
-  /** The applicant with any decision taken in this session applied to it. */
-  decided: (applicant: Applicant) => Applicant
-  decide: (id: string, status: ApplicantStatus) => void
-}
+const decisionsAtom = atom<Record<string, ApplicantStatus>>({})
 
-const DecisionsContext = React.createContext<DecisionsState | undefined>(
-  undefined
-)
+export function useDecisions() {
+  const [decisions, setDecisions] = useAtom(decisionsAtom)
 
-export function DecisionsProvider({ children }: { children: React.ReactNode }) {
-  const [decisions, setDecisions] = React.useState<
-    Record<string, ApplicantStatus>
-  >({})
-
-  const value = React.useMemo<DecisionsState>(
+  return React.useMemo(
     () => ({
-      decided: (applicant) =>
+      /** The applicant with any decision taken in this session applied to it. */
+      decided: (applicant: Applicant): Applicant =>
         decisions[applicant.id]
           ? { ...applicant, status: decisions[applicant.id] }
           : applicant,
-      decide: (id, status) =>
+      decide: (id: string, status: ApplicantStatus) =>
         setDecisions((current) => ({ ...current, [id]: status })),
     }),
-    [decisions]
+    [decisions, setDecisions]
   )
-
-  return (
-    <DecisionsContext.Provider value={value}>
-      {children}
-    </DecisionsContext.Provider>
-  )
-}
-
-export function useDecisions() {
-  const context = React.useContext(DecisionsContext)
-
-  if (!context) {
-    throw new Error("useDecisions must be used within a DecisionsProvider")
-  }
-
-  return context
 }

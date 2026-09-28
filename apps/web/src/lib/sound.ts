@@ -1,4 +1,7 @@
 import * as React from "react"
+import { getDefaultStore, useAtom } from "jotai"
+
+import { persistedAtom } from "@/lib/persisted"
 
 /**
  * The prototype's sounds — six short clips from one family (SoundShelfStudio's
@@ -51,42 +54,24 @@ export function soundForDecision(status: string): Sound {
 }
 
 // --- The switch on /settings --------------------------------------------------
-// The same localStorage pattern as `filter-variant.ts`. ON by default: the
-// point of the prototype is to hear them in a review.
+// ON by default: the point of the prototype is to hear them in a review.
 
-const KEY = "sounds"
-const LOCAL = "sounds-change"
-let chosen: boolean | null = null
+const soundsAtom = persistedAtom("sounds", "on", ["on", "off"] as const)
 
-function read(): boolean {
-  try {
-    const stored = localStorage.getItem(KEY)
-    if (stored === "on" || stored === "off") return stored === "on"
-  } catch {
-    // Storage is blocked; fall through to this tab's own choice.
-  }
-  return chosen ?? true
-}
+// Kept mounted from the start, so a switch flipped in another tab reaches
+// `play()` even when nothing on this page shows the setting.
+getDefaultStore().sub(soundsAtom, () => {})
 
-function subscribe(onChange: () => void) {
-  window.addEventListener("storage", onChange)
-  window.addEventListener(LOCAL, onChange)
-  return () => {
-    window.removeEventListener("storage", onChange)
-    window.removeEventListener(LOCAL, onChange)
-  }
+/** Outside React, for `play()`: the same atom the switch writes. */
+function read() {
+  return getDefaultStore().get(soundsAtom) === "on"
 }
 
 export function useSounds() {
-  const enabled = React.useSyncExternalStore(subscribe, read, () => true)
-  const setEnabled = React.useCallback((next: boolean) => {
-    chosen = next
-    try {
-      localStorage.setItem(KEY, next ? "on" : "off")
-    } catch {
-      // Kept for this tab only — see `chosen`.
-    }
-    window.dispatchEvent(new Event(LOCAL))
-  }, [])
-  return { enabled, setEnabled }
+  const [value, setValue] = useAtom(soundsAtom)
+  const setEnabled = React.useCallback(
+    (next: boolean) => setValue(next ? "on" : "off"),
+    [setValue]
+  )
+  return { enabled: value === "on", setEnabled }
 }
