@@ -779,6 +779,30 @@ The switcher is also the unification question made concrete, and reversible in t
 asks for: delete the component and they are two apps again, with no token, route or component
 having taken a position.
 
+## Deploying
+
+A preview is on the internal **UED Launchpad** (`http://10.120.2.26:6001`, office network or VPN),
+at `http://10.120.2.26:6100`. `.ued-launchpad.json` at the root holds the project id, port and the
+commit last deployed — update that project rather than creating another. Its update key is in
+`~/.config/ued-launchpad/keys/<id>`, never in the repo.
+
+**It is one Docker container: the AI server serving the site too.** With `STATIC_DIR` set,
+`apps/ai/src/server.ts` answers `/api/*` and serves the built `apps/web` (right types for `.mjs`,
+`index.html` for app routes, a real 404 for a missing asset). One origin, so the page calls `/api`
+on itself — no `VITE_AI_URL`, no `ALLOWED_ORIGINS`; the server always accepts the page it serves.
+`GEMINI_API_KEY` is in the Launchpad project's environment, set from `apps/ai/.env.local` on the
+user's say-so; a PATCH without `env` keeps it, and one with `env` replaces the whole environment.
+
+**Build from the committed tree, not the working copy**, which usually holds WIP: a detached
+`git worktree` in a scratch directory, `npm ci`, `npm run build -w web`, then a bundle of
+`apps/ai/Dockerfile` at the root, `apps/ai` (no `.env*`) as `server/` and `apps/web/dist` as
+`public/`. ZIP it, upload, PATCH the `uploadId`, deploy. It used to be a static build of `dist`
+alone, which is why the old static server sent `.mjs` as `application/octet-stream` and broke
+PDF reading there.
+
+**The mic still does not work on the preview**: it is plain `http` on an IP, and Chrome allows
+the microphone only on `https` or `localhost`.
+
 ## Authoring components
 
 `cva` for variants + `cn()` for merging — `packages/ui/src/components/button.tsx` is the reference
