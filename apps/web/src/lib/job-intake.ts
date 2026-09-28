@@ -573,7 +573,7 @@ export function postingHref(draft: PostingDraft) {
 
 /**
  * A link to the form that remembers the chat it came from, as `?chat=` — the
- * chat's own URL, `/agent/c/<id>`, which opens that conversation. Any other
+ * chat's own URL, `/dashboard/c/<id>`, which opens that conversation. Any other
  * link passes through untouched.
  */
 export function withChat(to: string, chat: string) {
@@ -586,12 +586,15 @@ export function withChat(to: string, chat: string) {
 
 /**
  * The chat to go back to, if the form was opened from one. Only ever this
- * app's Agent page — a `?chat=` pointing anywhere else is ignored, so the
+ * app's Dashboard (the Agent) — a `?chat=` pointing anywhere else is ignored, so the
  * link cannot be turned into a redirect to another site.
  */
 export function chatFrom(params: URLSearchParams) {
   const chat = params.get("chat")
-  return chat && /^\/agent(\/c\/[a-z0-9]+)?(\?|$)/.test(chat) ? chat : null
+  // `/agent…` too: a form link from before the rename, which now redirects.
+  return chat && /^\/(dashboard|agent)(\/c\/[a-z0-9]+)?(\?|$)/.test(chat)
+    ? chat
+    : null
 }
 
 export function draftFrom(params: URLSearchParams): PostingDraft {

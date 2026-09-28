@@ -10,6 +10,22 @@ diff.
 
 ## Pending
 
+### The Agent is the Dashboard; the old Dashboard is gone
+
+- **Date:** 2026-09-28
+- **App:** `routes/dashboard.tsx` deleted; `/dashboard` renders `routes/agent.tsx`
+  (conversations at `/dashboard/c/<id>`, `/agent…` redirects); one "Dashboard" nav
+  item in `lib/nav.ts`; the tiles, Live jobs and Recent searches are
+  `components/overview.tsx`, under the Agent's box.
+- **Storybook:** `Compositions → Dashboard` now draws a page that no longer
+  exists (the green aurora band, the greeting, the Smart Hire box over the tiles).
+  Redo it as the Agent landing with the overview under it, or retire it. The
+  sidebar stories' nav should read Dashboard, Jobs… with no "Agent" item.
+- **Figma:** the Dashboard composition frame, the same way; the Sidebar page's
+  nav frames lose the Agent row.
+- [ ] Storybook
+- [ ] Figma
+
 ### Agent: a chat landing beside the cards
 
 - **Date:** 2026-09-28
@@ -29,6 +45,9 @@ diff.
     a file. A softer focus ring, because the box is focused on arrival.
   - **A faint glow** in the Aura's own cyan, blue and magenta behind the box — not
     a brand colour, so hirist does not turn it orange.
+  - **The Dashboard's overview under the box** (2026-09-28): the four stat tiles,
+    then Live jobs beside Recent searches — the same parts the Dashboard draws
+    (`components/overview.tsx`), so its frame and this one share them.
 - **Storybook:** on `Compositions → Agent` when it is written — both landings.
 - **Figma:** no node yet.
 - [ ] Storybook

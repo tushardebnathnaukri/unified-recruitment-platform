@@ -191,10 +191,10 @@ React Router v8 **declarative mode** — plain `<Routes>`/`<Route>`, no loaders,
 framework mode. Import from `react-router` (`react-router-dom` is a deprecated shim). Routes in
 `src/App.tsx`, pages in `src/routes/`.
 
-Designed so far: `/dashboard`, `/jobs` (four status tabs), `/jobs/:jobId` — the response manager,
+Designed so far: `/dashboard` (the Agent — a chat that gathers a posting, over the recruiter's
+overview), `/jobs` (four status tabs), `/jobs/:jobId` — the response manager,
 the biggest surface in here — `/jobs/:jobId/applicants/:applicantId`, `/insights`, `/database`
-(search box, recent searches, results), `/interviews`, `/my-candidates` (My Lists), `/agent`
-(a chat that gathers a posting) and `/jobs/new` (the same posting as a form). Still
+(search box, recent searches, results), `/interviews`, `/my-candidates` (My Lists) and `/jobs/new` (the same posting as a form). Still
 `PlaceholderPage`: `/credits`, `/search`, `/projects/new`. `/reference/dashboard` is a hardcoded replica of the live iimjobs dashboard, kept
 for side-by-side comparison and deliberately outside the design system — see the note at the top of
 `legacy-dashboard.tsx`.
@@ -409,7 +409,10 @@ it; a missing file just falls back to initials.
 Jobs carry `newSinceVisit`, not `unread`, and that is what "N new" means on the Jobs list
 and the Dashboard.
 
-**The Dashboard's requirement box only searches** (`/database?q=`). Projects are meant to file
+**The old Dashboard is gone** (2026-09-28): the Agent took its name and its place, with the tiles,
+Live jobs and Recent searches moved under the box. Its requirement box (which only searched,
+`/database?q=`) went with it, and so did the "Dashboard bar" Form variant, which is kept in a git
+stash ("Dashboard bar (Form variant) — saved before the old Dashboard was removed"). Projects are meant to file
 themselves by role rather than be created, and two pieces from shapes that were tried and pulled are
 **parked — written, unused, kept on purpose**: `projectForRole` in `lib/dashboard.ts` (which project
 a role would land in) and `requirementParts` in `lib/requirement.ts` (which of location, title,
@@ -614,7 +617,7 @@ selects whose CV is open. Bare **A** toggles Athena, guarded like the theme's **
 open, the selection and undo bars centre on the content column (`BAR_BESIDE_ATHENA`), because
 centred on the window they ran under the copilot's own edge.
 
-**The nav has three borrowers.** `CandidateList` collapses it below 1400px, `/agent` collapses it
+**The nav has three borrowers.** `CandidateList` collapses it below 1400px, the Dashboard collapses it
 at every width once a conversation starts (the landing keeps it), and Athena collapses it for her
 pane. The first two go through `useCollapseNav` (`components/use-collapse-nav.ts`, a media query or
 null), which only gives back a nav it collapsed. Handing it back goes through `restoreNav` on the
@@ -629,12 +632,14 @@ thread and switching back restores it, because the other product's candidates ar
 one has. **There is one copilot**: the Messages page's
 sparkle button opens Athena, and its old assistant thread with its canned replies is gone.
 
-**`/agent` is a second copilot, built beside Athena rather than into her** — a full-page chat,
-first in the nav, whose first skill is **Post a job** (Search people and Get insights answer from
+**The Dashboard is the Agent: a second copilot, built beside Athena rather than into her** — a
+full-page chat at `/dashboard`, first in the nav, with the recruiter's overview under its box. It
+was `/agent` until it replaced the old Dashboard; `/agent` and `/agent/c/<id>` redirect, keeping the
+id and any `?ask=`. Its first skill is **Post a job** (Search people and Get insights answer from
 the page's own data, the way Athena's openers do). Athena is otherwise untouched by it, but **she
-is off on `/agent`**: `available` on the Athena provider (a `useMatch`) hides the header button,
+is off on the Dashboard**: `available` on the Athena provider (a `useMatch`) hides the header button,
 ignores the A shortcut and closes an open pane on arrival, because two copilots on one screen
-would be one answering over the other. Whether the two merge is a later call. **A conversation is its turns, kept under a short id: `/agent/c/<id>`**
+would be one answering over the other. Whether the two merge is a later call. **A conversation is its turns, kept under a short id: `/dashboard/c/<id>`**
 (`lib/agent-sessions.ts`). The page makes the id on the first question and writes every turn to
 this browser's `localStorage` first and the AI server second (`PUT /api/sessions/:id`), so a
 reload works with the server down and the link opens for anyone who can reach the server. Opening
@@ -647,11 +652,13 @@ questionnaire is ONE turn, encoded as `Answers: {json}` (`encodeAnswers` / `deco
 `lib/job-refine.ts`). `answersFor` in `lib/agent.ts` folds the turns into the replies on every
 render.
 
-**The landing has two designs, picked on /settings** ("Agent landing", `useAgentLandingVariant` in
+**The landing has two designs, picked on /settings** ("Dashboard landing", `useAgentLandingVariant` in
 `lib/agent-landing-variant.ts`). **Chat** (the default) is the Aura centred over the cards
 landing's own heading and subheading, four action pills (`HERO_ACTIONS` in `lib/agent.ts`) and `AgentComposer size="hero"` — a
 taller box, attach and quick actions behind a "+", the mic on the right, and a send arrow only once
-there is something to send. **Cards** is the first design. The pills are Create Job, Search Resume,
+there is something to send. Under the box it shows **the Dashboard's own overview** — the four
+tiles, Live jobs and Recent searches — from `components/overview.tsx`, which the Dashboard now
+draws too, so the two cannot disagree. **Cards** is the first design. The pills are Create Job, Search Resume,
 Review applicants and Hiring Insights, and every one asks a question a skill already answers.
 Review applicants prints the number its answer opens on ("92 waiting") from `undecidedTotal`,
 which the answer uses too, so the pill and its reply cannot disagree. A "Job updates" pill (new
@@ -724,7 +731,7 @@ in the chat for anyone who would rather fill it in; `postingHref` / `draftFrom` 
 so far into it through the query string, so leaving half-way loses nothing. Posting only shows a toast.
 Every link from the chat into the form also carries the chat's own URL as `?chat=` (`withChat`),
 and the form then offers **Back to the chat** to that exact conversation instead of "Talk it
-through instead" (a fresh one). `chatFrom` honours only an `/agent` URL, so it is not a redirect.
+through instead" (a fresh one). `chatFrom` honours only a `/dashboard` (or old `/agent`) URL, so it is not a redirect.
 
 **Sounds are six short clips, played only in answer to something the recruiter did**
 (`play()` in `lib/sound.ts`; files in `apps/web/src/assets/sounds/` as `pop`, `tick`, `dismiss`,
@@ -817,7 +824,7 @@ commit last deployed — update that project rather than creating another. Its u
 on itself — no `VITE_AI_URL`, no `ALLOWED_ORIGINS`; the server always accepts the page it serves.
 `GEMINI_API_KEY` is in the Launchpad project's environment, set from `apps/ai/.env.local` on the
 user's say-so; a PATCH without `env` keeps it, and one with `env` replaces the whole environment.
-Agent conversations (`/agent/c/<id>`) are kept in `/app/data/sessions.json` inside the container
+Agent conversations (`/dashboard/c/<id>`) are kept in `/app/data/sessions.json` inside the container
 (`SESSIONS_FILE`, set in the Dockerfile): a restart keeps them, a redeploy starts empty, and a
 recruiter's own browser still has theirs either way.
 
@@ -926,9 +933,11 @@ The assembled app shell — sidebar, header and content column — is **not** in
 in `sidebar.stories.tsx` as `Components/Sidebar → App shell`, `→ Collapsed to the icon rail` and
 `→ App shell with Athena open`, because it is what the Sidebar component looks like in situ. Check there before adding a screen that shows the nav.
 
-The dashboard route in `apps/web` and "Compositions → Dashboard" are the same tree; a change to a
-row's *shape* belongs in the pattern, a change to its *content* in the app. Below the stat tiles,
-Live jobs and Recent searches share a row (`@5xl/main:grid-cols-2`) and stack under it.
+"Compositions → Dashboard" still draws the OLD Dashboard (aurora band, greeting, Smart Hire box),
+which the app no longer has — see `DESIGN-SYNC.md`. The overview it shares with the new one lives
+in `components/overview.tsx`: a change to a row's *shape* belongs in the pattern, a change to its
+*content* in the app. Below the stat tiles, Live jobs and Recent searches share a row
+(`@5xl/main:grid-cols-2`) and stack under it.
 
 **Storybook and Figma are synced in batches, not per change.** When an app change affects a story
 or a Figma frame, add an entry to `DESIGN-SYNC.md` at the repo root: the app file, the story, the

@@ -28,7 +28,7 @@ import type { AthenaPageContext, Opener } from "@/lib/athena"
  */
 type AthenaState = {
   /**
-   * False on a page with a copilot of its own — `/agent`. There the header
+   * False on a page with a copilot of its own — the Dashboard, which is the Agent. There the header
    * button and the A shortcut are gone, and an open pane closes on arrival:
    * two assistants on one screen would be one of them answering over the other.
    */
@@ -60,7 +60,7 @@ export function AthenaProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpenState] = React.useState(false)
   const [context, setContext] = React.useState<AthenaPageContext | null>(null)
   const [pending, setPending] = React.useState<Opener | null>(null)
-  const available = useMatch("/agent/*") === null
+  const available = useMatch("/dashboard/*") === null
   const availableRef = React.useRef(available)
 
   /**

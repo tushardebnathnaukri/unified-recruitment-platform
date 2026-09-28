@@ -1013,7 +1013,7 @@ export const COMMANDS: Command[] = [
     title: "Start fresh",
     detail: "A blank slate — back still has this conversation",
     icon: EraserIcon,
-    to: "/agent",
+    to: "/dashboard",
   },
 ]
 

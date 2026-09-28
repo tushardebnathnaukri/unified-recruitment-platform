@@ -134,7 +134,7 @@ export function NewJobPage() {
             where the values came from rather than repeating the name. */}
         <p className="text-sm text-muted-foreground">
           {fromAgent
-            ? "Filled in from your conversation with the Agent. Change anything."
+            ? "Filled in from your conversation on the Dashboard. Change anything."
             : "The role, and what a candidate should read about it. Only the title is required."}
         </p>
         {/* The door back. Opened from a chat, it is THAT chat — its URL is the
@@ -157,7 +157,7 @@ export function NewJobPage() {
             nativeButton={false}
             variant="outline"
             size="sm"
-            render={<Link to="/agent?ask=Help+me+post+a+job" />}
+            render={<Link to="/dashboard?ask=Help+me+post+a+job" />}
           >
             <SparklesIcon data-icon="inline-start" />
             Talk it through instead

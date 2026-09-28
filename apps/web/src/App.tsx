@@ -1,10 +1,9 @@
-import { Navigate, Route, Routes } from "react-router"
+import { Navigate, Route, Routes, useLocation, useParams } from "react-router"
 
 import { AppShell } from "@/components/app-shell"
 import { BrandUrlSync } from "@/components/brand-url-sync"
 import { ScrollToTop } from "@/components/scroll-to-top"
 import { AgentPage } from "@/routes/agent"
-import { DashboardPage } from "@/routes/dashboard"
 import { JobDetailPage } from "@/routes/job"
 import { CandidatePage } from "@/routes/candidate"
 import { DatabasePage } from "@/routes/database"
@@ -55,14 +54,18 @@ export function App() {
             rather than bouncing through "/". */}
           <Route index element={<Navigate to="/dashboard" replace />} />
 
-          {/* One box over the whole product — the questions a recruiter
-            arrives with, before they have picked a screen to ask them on.
-            Deliberately separate from the Athena pane, which answers for
-            whatever page it is docked beside. */}
-          <Route path="agent" element={<AgentPage />} />
-          <Route path="agent/c/:id" element={<AgentPage />} />
+          {/* The Agent IS the Dashboard now. Its old addresses redirect, keeping
+              the conversation id and any `?ask=`, so a link already shared
+              from the preview still opens what it pointed at. */}
+          <Route path="agent" element={<AgentRedirect />} />
+          <Route path="agent/c/:id" element={<AgentRedirect />} />
 
-          <Route path="dashboard" element={<DashboardPage />} />
+          {/* One box over the whole product — the questions a recruiter
+            arrives with, before they have picked a screen to ask them on,
+            with their overview under it. Deliberately separate from the
+            Athena pane, which answers for whatever page it is docked beside. */}
+          <Route path="dashboard" element={<AgentPage />} />
+          <Route path="dashboard/c/:id" element={<AgentPage />} />
           {/* One description, read as a search and as a posting. The bar is
             all there is so far — see the note in the page. */}
           <Route path="smart-hire" element={<SmartHirePage />} />
@@ -126,4 +129,11 @@ export function App() {
       </Routes>
     </>
   )
+}
+
+/** `/agent…` → `/dashboard…`, the same conversation and the same query. */
+function AgentRedirect() {
+  const { id } = useParams()
+  const { search } = useLocation()
+  return <Navigate to={`/dashboard${id ? `/c/${id}` : ""}${search}`} replace />
 }

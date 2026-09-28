@@ -13,7 +13,6 @@ import {
   LibraryBigIcon,
   SearchIcon,
   Settings2Icon,
-  SparklesIcon,
   SwatchBookIcon,
   UsersIcon,
 } from "lucide-react"
@@ -40,20 +39,25 @@ export type SecondaryItem = {
  * `react-refresh/only-export-components` is on in this app.
  */
 export const NAV_ITEMS: NavItem[] = [
-  // FIRST, AND ON ITS OWN. It is the one item that is not a place — every
-  // other row opens a screen about a thing the recruiter already has, and
-  // this one takes a question before they have decided which screen it is
-  // about. The divider under it says that rather than filing it with the
-  // objects.
-  { to: "/agent", label: "Agent", icon: SparklesIcon, end: false },
+  // FIRST, AND ON ITS OWN. The Dashboard is the Agent: one box that takes a
+  // question before the recruiter has decided which screen it is about, with
+  // their overview under it. Every other row opens a screen about a thing
+  // they already have, and the divider under this one says so rather than
+  // filing it with the objects. (It was two items, Agent and Dashboard,
+  // until the overview moved under the box.)
   {
     to: "/dashboard",
     label: "Dashboard",
     icon: LayoutDashboardIcon,
     end: false,
+  },
+  {
+    to: "/jobs",
+    label: "Jobs",
+    icon: BriefcaseIcon,
+    end: false,
     separatorBefore: true,
   },
-  { to: "/jobs", label: "Jobs", icon: BriefcaseIcon, end: false },
   // Sits next to Jobs because it is the other way into a candidate: Jobs is
   // who came to you, Search Resume is who you go and find.
   {

@@ -1,7 +1,7 @@
 import { aiUrl } from "@/lib/ai-client"
 
 /**
- * Agent conversations by id — what `/agent/c/<id>` opens.
+ * Agent conversations by id — what `/dashboard/c/<id>` opens (`/agent/c/<id>`, its first address, redirects).
  *
  * A CONVERSATION IS STILL ITS TURNS, the same strings the old `?ask=` links
  * carried, and everything else is worked out from them on every render
@@ -31,7 +31,7 @@ export function newSessionId() {
   return Array.from(bytes, (byte) => (byte % 36).toString(36)).join("")
 }
 
-export const sessionPath = (id: string) => `/agent/c/${id}`
+export const sessionPath = (id: string) => `/dashboard/c/${id}`
 
 /** This browser's copy, or null if it has none. */
 export function localTurns(id: string): string[] | null {

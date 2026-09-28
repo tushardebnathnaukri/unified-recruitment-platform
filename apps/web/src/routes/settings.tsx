@@ -106,13 +106,14 @@ export function SettingsPage() {
 
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 flex-1 basis-64 flex-col gap-1">
-            <h2 className="text-sm font-medium">Agent landing</h2>
+            <h2 className="text-sm font-medium">Dashboard landing</h2>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              What the Agent shows before anything is asked. Chat is the
+              What the Dashboard shows before anything is asked. Chat is the
               Aura, the question, four action pills and one big box that types
-              out example questions; Cards is the first design, six cards
-              naming what it can do with the box under them. The conversation
-              after the first question is the same either way.
+              out example questions, with your overview under it; Cards is the
+              first design, six cards naming what it can do with the box under
+              them. The conversation after the first question is the same either
+              way.
             </p>
           </div>
 
@@ -125,10 +126,10 @@ export function SettingsPage() {
           <div className="flex min-w-0 flex-1 basis-64 flex-col gap-1">
             <h2 className="text-sm font-medium">Sounds</h2>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              Short, quiet sounds for the Agent's reply arriving, the mic
-              starting and stopping, and a decision on an applicant — a tick
-              to keep somebody, a swoosh for Not a fit, and its reverse for
-              Undo. Only ever in answer to something you did.
+              Short, quiet sounds for a reply arriving on the Dashboard, the mic
+              starting and stopping, and a decision on an applicant — a tick to
+              keep somebody, a swoosh for Not a fit, and its reverse for Undo.
+              Only ever in answer to something you did.
             </p>
           </div>
 
@@ -138,9 +139,9 @@ export function SettingsPage() {
         <Separator />
 
         <p className="text-xs leading-relaxed text-muted-foreground">
-          All six persist to <code className="font-mono">localStorage</code>{" "}
-          and sync across tabs, so a shared preview link opens on whichever
-          brand, theme, card layout, filters, Agent landing and sounds you last
+          All six persist to <code className="font-mono">localStorage</code> and
+          sync across tabs, so a shared preview link opens on whichever brand,
+          theme, card layout, filters, Dashboard landing and sounds you last
           picked.
         </p>
       </div>
@@ -224,7 +225,7 @@ function AgentLandingVariantSwitcher() {
     <ToggleGroup
       variant="outline"
       spacing={0}
-      aria-label="Agent landing"
+      aria-label="Dashboard landing"
       value={[variant]}
       onValueChange={(value) => {
         const next = value[0] as AgentLandingVariant | undefined

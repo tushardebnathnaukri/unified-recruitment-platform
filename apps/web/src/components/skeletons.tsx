@@ -74,62 +74,6 @@ export function ApplicantListSkeleton({ rows = 4 }: { rows?: number }) {
   )
 }
 
-/** One row of a list card — used by the dashboard's projects and searches. */
-function RowSkeleton() {
-  return (
-    <div className="flex items-center justify-between gap-3 px-4 py-3.5">
-      <Skeleton className="h-4 w-48" />
-      <Skeleton className="h-3.5 w-32" />
-    </div>
-  )
-}
-
-/**
- * The dashboard below the hero. The greeting and the requirement box stay put:
- * they are the same on both products, so blanking them would be inventing a
- * load that is not happening.
- */
-export function DashboardSkeleton() {
-  return (
-    <div className="flex flex-col gap-6" aria-hidden="true">
-      <div className="grid grid-cols-2 gap-3 @3xl:grid-cols-4 @3xl:gap-4">
-        {Array.from({ length: 4 }, (_, index) => (
-          <div
-            key={index}
-            className="flex flex-col gap-3 rounded-2xl bg-card p-4 ring-1 ring-foreground/10"
-          >
-            <Skeleton className="h-3.5 w-24" />
-            <Skeleton className="h-7 w-16" />
-            <Skeleton className="h-3 w-32" />
-          </div>
-        ))}
-      </div>
-
-      <div className="flex flex-col gap-3">
-        <Skeleton className="h-4 w-36" />
-        <div className="rounded-2xl bg-card ring-1 ring-foreground/10">
-          {Array.from({ length: 3 }, (_, index) => (
-            <RowSkeleton key={index} />
-          ))}
-        </div>
-      </div>
-
-      <div className="grid gap-6 @3xl/main:grid-cols-2">
-        {Array.from({ length: 2 }, (_, column) => (
-          <div key={column} className="flex flex-col gap-3">
-            <Skeleton className="h-4 w-32" />
-            <div className="rounded-2xl bg-card ring-1 ring-foreground/10">
-              {Array.from({ length: 3 }, (_, index) => (
-                <RowSkeleton key={index} />
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 /**
  * The candidate profile: header, then the career column beside the facts
  * column, in the same two-column shape the real page uses.
