@@ -1,14 +1,16 @@
 {
   "baseUrl": "http://10.120.2.26:6001",
-  "projectId": "316794a57f8ea695",
+  "projectId": "ccde703cc71b9052",
   "name": "Unified Recruitment Platform",
   "source": "zip",
   "sitePort": 6100,
   "root": ".",
-  "builder": "static",
-  "publish": ".",
-  "spa": true,
-  "archiveSha256": "1e45ec1bfd77d423151f3e1ff0b89fc99063d441ba41d2beacf44f2af0d0ed82",
-  "lastDeployedAt": "2026-09-23T08:58:31.914Z",
-  "notes": "Static build of apps/web (npm run build -> apps/web/dist). Guest-created, so updates need an owner/administrator session."
+  "builder": "dockerfile",
+  "archiveSha256": "085f8a0315be4df36344f2c97465b277fd13a6a9e5607376f99322fa91387075",
+  "notes": "One Docker container: apps/ai serves /api and the built apps/web (STATIC_DIR). Bundle = apps/ai/Dockerfile at the root, apps/ai as server/, apps/web/dist as public/. GEMINI_API_KEY is in the project env (not here). Guest-created; updates use the key in ~/.config/ued-launchpad/keys/<id>.",
+  "status": "running",
+  "submittedCommit": "194b9a2",
+  "lastDeployedAt": "2026-09-28T09:29:27.164Z",
+  "dockerfile": "Dockerfile",
+  "port": 3000
 }
