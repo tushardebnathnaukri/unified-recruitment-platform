@@ -10,6 +10,7 @@ import {
 
 import { cn } from "@workspace/ui/lib/utils"
 
+import { Aura } from "@/components/aura"
 import type { RailModel } from "@/lib/posting-rail"
 
 /**
@@ -37,14 +38,16 @@ export function PostingRail({
   const { people } = model
   return (
     <aside className="flex h-full w-72 shrink-0 flex-col gap-5 overflow-y-auto border-l bg-background p-4">
-      <p className="flex items-center gap-2 text-sm font-medium">
-        {reading ? (
-          <LoaderIcon className="size-4 shrink-0 animate-spin text-primary" />
-        ) : (
-          <span className="size-2 shrink-0 rounded-full bg-primary" />
-        )}
-        {reading ? "Reading your answer…" : model.status}
-      </p>
+      {/* The face above the status, and the status itself: it turns to
+          "thinking" while an answer is read, which is the spinner this line
+          used to carry. Room above it for the glow, which spills past the orb
+          and would otherwise be clipped by the rail's own scroll. */}
+      <div className="flex flex-col items-center gap-3 pt-6">
+        <Aura size={56} state={reading ? "thinking" : "idle"} />
+        <p className="text-center text-sm font-medium" aria-live="polite">
+          {reading ? "Reading your answer…" : model.status}
+        </p>
+      </div>
 
       <Section title="Plan">
         <ol className="flex flex-col gap-2">

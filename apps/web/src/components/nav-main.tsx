@@ -54,7 +54,14 @@ export function NavMain({ items }: { items: NavItem[] }) {
       <SidebarGroupContent className="flex flex-col gap-2">
         {groupBySeparator(items).map((group, index) => (
           <Fragment key={group[0].to}>
-            {index > 0 && <SidebarSeparator />}
+            {/* Edge to edge: `-mx-2` replaces the separator's own inset and
+                cancels the group's `p-2`, and the width is widened by the same
+                1rem — `Separator` pins horizontal rules to `w-full` of the
+                padded group, which only shifted the line left. Now it meets
+                the rail's border like the header's and footer's do. */}
+            {index > 0 && (
+              <SidebarSeparator className="-mx-2 data-horizontal:w-[calc(100%+1rem)]" />
+            )}
             <SidebarMenu>
               {group.map((item) => (
                 <NavMenuItem key={item.to} item={item} />
