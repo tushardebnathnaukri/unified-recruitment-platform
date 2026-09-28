@@ -60,6 +60,7 @@ export function App() {
             Deliberately separate from the Athena pane, which answers for
             whatever page it is docked beside. */}
           <Route path="agent" element={<AgentPage />} />
+          <Route path="agent/c/:id" element={<AgentPage />} />
 
           <Route path="dashboard" element={<DashboardPage />} />
           {/* One description, read as a search and as a posting. The bar is

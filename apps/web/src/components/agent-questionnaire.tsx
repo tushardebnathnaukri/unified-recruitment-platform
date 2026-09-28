@@ -1,5 +1,5 @@
 import * as React from "react"
-import { Link } from "react-router"
+import { Link, useLocation } from "react-router"
 import { Questionnaire } from "@shadcn/react/questionnaire"
 import {
   ArrowRightIcon,
@@ -14,7 +14,7 @@ import { Button } from "@workspace/ui/components/button"
 import { Kbd } from "@workspace/ui/components/kbd"
 import { cn } from "@workspace/ui/lib/utils"
 
-import type { AskedItem } from "@/lib/job-intake"
+import { withChat, type AskedItem } from "@/lib/job-intake"
 import { encodeAnswers, type Answers } from "@/lib/job-refine"
 
 /**
@@ -67,6 +67,8 @@ export function AgentQuestionnaire({
   aside?: React.ReactNode
 }) {
   const root = React.useRef<HTMLFormElement>(null)
+  // The form link carries this chat's address, so the form can come back.
+  const { pathname, search } = useLocation()
   // A single question needs no pager, and "1 of 1" is only noise. Nor does a
   // card with nothing optional offer Esc to skip.
   const paged = items.length > 1
@@ -334,7 +336,7 @@ export function AgentQuestionnaire({
             variant="link"
             size="sm"
             className="h-auto px-0 text-xs"
-            render={<Link to={form.to} />}
+            render={<Link to={withChat(form.to, pathname + search)} />}
           >
             <ClipboardListIcon data-icon="inline-start" />
             {form.label}

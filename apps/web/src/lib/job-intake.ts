@@ -571,6 +571,29 @@ export function postingHref(draft: PostingDraft) {
   return query ? `/jobs/new?${query}` : "/jobs/new"
 }
 
+/**
+ * A link to the form that remembers the chat it came from, as `?chat=` — the
+ * chat's own URL, `/agent/c/<id>`, which opens that conversation. Any other
+ * link passes through untouched.
+ */
+export function withChat(to: string, chat: string) {
+  if (!to.startsWith("/jobs/new")) return to
+  const [path, query = ""] = to.split("?")
+  const params = new URLSearchParams(query)
+  params.set("chat", chat)
+  return `${path}?${params}`
+}
+
+/**
+ * The chat to go back to, if the form was opened from one. Only ever this
+ * app's Agent page — a `?chat=` pointing anywhere else is ignored, so the
+ * link cannot be turned into a redirect to another site.
+ */
+export function chatFrom(params: URLSearchParams) {
+  const chat = params.get("chat")
+  return chat && /^\/agent(\/c\/[a-z0-9]+)?(\?|$)/.test(chat) ? chat : null
+}
+
 export function draftFrom(params: URLSearchParams): PostingDraft {
   const mode = params.get("mode")
   return {

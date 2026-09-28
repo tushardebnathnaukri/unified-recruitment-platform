@@ -1,10 +1,10 @@
-import { readFile, stat } from "node:fs/promises"
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises"
 import {
   createServer,
   type IncomingMessage,
   type ServerResponse,
 } from "node:http"
-import { extname, join, resolve, sep } from "node:path"
+import { dirname, extname, join, resolve, sep } from "node:path"
 
 import { geminiBody, parseRequest, resultFrom } from "./intake.ts"
 import {
@@ -28,10 +28,12 @@ import {
  * from the repo root starts it beside the web app, and `npm start` in this
  * folder is the whole of a deployment.
  *
- * THREE ROUTES.
- *   GET  /api/health      — whether a key is configured, and which models.
- *   POST /api/intake      — one answer read into a job posting (`intake.ts`).
- *   POST /api/transcribe  — a short recording, as text (`transcribe.ts`).
+ * FOUR ROUTES.
+ *   GET  /api/health       — whether a key is configured, and which models.
+ *   POST /api/intake       — one answer read into a job posting (`intake.ts`).
+ *   POST /api/transcribe   — a short recording, as text (`transcribe.ts`).
+ *   GET|PUT /api/sessions/:id — an Agent conversation's turns, by id, so a
+ *                            `/agent/c/<id>` link opens for anyone (no key needed).
  *
  * The page asks /api/health once, before its first question, so a missing key
  * becomes "the rules answered" up front rather than a failed call mid-flow.
@@ -87,12 +89,89 @@ const WINDOW_MS = 5 * 60 * 1000
 const LIMIT = 40
 const calls = new Map<string, number[]>()
 
-function overLimit(address: string) {
+function overLimit(address: string, limit = LIMIT, log = calls) {
   const now = Date.now()
-  const recent = (calls.get(address) ?? []).filter((at) => now - at < WINDOW_MS)
+  const recent = (log.get(address) ?? []).filter((at) => now - at < WINDOW_MS)
   recent.push(now)
-  calls.set(address, recent)
-  return recent.length > LIMIT
+  log.set(address, recent)
+  return recent.length > limit
+}
+
+function callerOf(req: IncomingMessage) {
+  return (
+    String(req.headers["x-forwarded-for"] ?? "")
+      .split(",")[0]
+      .trim() ||
+    req.socket.remoteAddress ||
+    "unknown"
+  )
+}
+
+// --- Agent conversations ------------------------------------------------------
+
+/**
+ * WHAT A `/agent/c/<id>` LINK OPENS. The page makes the id and keeps its own
+ * copy in localStorage, so the chat works with this server down; this is the
+ * copy that lets somebody ELSE open the link. The body is only the turns —
+ * the same strings the old `?ask=` links carried — and nothing is derived
+ * from them here.
+ *
+ * In memory, and in `SESSIONS_FILE` when that is set (the preview sets it), so
+ * a restart keeps them; a redeploy is a new container and does not. Capped in
+ * every direction: a session's turns, a turn's length, the body, the number
+ * of sessions (oldest dropped), and writes per caller.
+ */
+const SESSION_ID = /^[a-z0-9]{8,32}$/
+const MAX_TURNS = 200
+const MAX_TURN = 20_000
+const MAX_SESSION_BODY = 256 * 1024
+const MAX_SESSIONS = 5_000
+const SESSION_WRITES = 240
+const sessionWrites = new Map<string, number[]>()
+const sessions = new Map<string, string[]>()
+const SESSIONS_FILE = process.env.SESSIONS_FILE
+  ? resolve(process.env.SESSIONS_FILE)
+  : null
+
+if (SESSIONS_FILE) {
+  try {
+    const saved = JSON.parse(await readFile(SESSIONS_FILE, "utf8")) as Record<
+      string,
+      string[]
+    >
+    for (const [id, turns] of Object.entries(saved)) sessions.set(id, turns)
+  } catch {
+    // First run, or an unreadable file: start empty rather than refuse to boot.
+  }
+}
+
+let saving: ReturnType<typeof setTimeout> | null = null
+function persistSessions() {
+  if (!SESSIONS_FILE || saving) return
+  // Batched: a conversation writes on every turn, the disk does not need to.
+  saving = setTimeout(async () => {
+    saving = null
+    try {
+      await mkdir(dirname(SESSIONS_FILE), { recursive: true })
+      await writeFile(
+        SESSIONS_FILE,
+        JSON.stringify(Object.fromEntries(sessions))
+      )
+    } catch (error) {
+      console.error(`[sessions] could not save: ${String(error)}`)
+    }
+  }, 1000)
+}
+
+function readTurns(body: unknown): string[] | string {
+  const turns = (body as { turns?: unknown })?.turns
+  if (!Array.isArray(turns) || turns.length === 0) return "turns must be a list"
+  if (turns.length > MAX_TURNS) return "Too many turns"
+  if (
+    !turns.every((turn) => typeof turn === "string" && turn.length <= MAX_TURN)
+  )
+    return "Each turn must be text"
+  return turns as string[]
 }
 
 const server = createServer(async (req, res) => {
@@ -105,7 +184,7 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.method === "OPTIONS") {
-    res.setHeader("Access-Control-Allow-Methods", "GET, POST")
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT")
     res.setHeader("Access-Control-Allow-Headers", "Content-Type")
     res.statusCode = 204
     return res.end()
@@ -130,13 +209,7 @@ const server = createServer(async (req, res) => {
     }
     // Behind Vite's proxy every call is from localhost; the forwarded header
     // is the real caller when this is deployed behind one of its own.
-    const address =
-      String(req.headers["x-forwarded-for"] ?? "")
-        .split(",")[0]
-        .trim() ||
-      req.socket.remoteAddress ||
-      "unknown"
-    if (overLimit(address))
+    if (overLimit(callerOf(req)))
       return send(res, 429, { error: "Too many requests" })
 
     try {
@@ -179,13 +252,7 @@ const server = createServer(async (req, res) => {
           "GEMINI_API_KEY is not set. Put it in apps/ai/.env.local and restart.",
       })
     }
-    const address =
-      String(req.headers["x-forwarded-for"] ?? "")
-        .split(",")[0]
-        .trim() ||
-      req.socket.remoteAddress ||
-      "unknown"
-    if (overLimit(address))
+    if (overLimit(callerOf(req)))
       return send(res, 429, { error: "Too many requests" })
 
     try {
@@ -222,6 +289,44 @@ const server = createServer(async (req, res) => {
       console.error(`[transcribe] ${message}`)
       return send(res, 502, { error: message })
     }
+  }
+
+  const session = /^\/api\/sessions\/([^/]+)$/.exec(path)?.[1]
+  if (session !== undefined) {
+    if (!SESSION_ID.test(session))
+      return send(res, 400, { error: "Bad session id" })
+
+    if (req.method === "GET") {
+      const turns = sessions.get(session)
+      return turns
+        ? send(res, 200, { turns })
+        : send(res, 404, { error: "No such conversation" })
+    }
+
+    if (req.method === "PUT") {
+      if (overLimit(callerOf(req), SESSION_WRITES, sessionWrites))
+        return send(res, 429, { error: "Too many requests" })
+      try {
+        const turns = readTurns(
+          JSON.parse(await readBody(req, MAX_SESSION_BODY))
+        )
+        if (typeof turns === "string") return send(res, 400, { error: turns })
+        // Re-inserted so the map's order is least recently written first.
+        sessions.delete(session)
+        sessions.set(session, turns)
+        while (sessions.size > MAX_SESSIONS)
+          sessions.delete(sessions.keys().next().value!)
+        persistSessions()
+        res.statusCode = 204
+        return res.end()
+      } catch (error) {
+        return send(res, 400, {
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+    }
+
+    return send(res, 405, { error: "GET or PUT" })
   }
 
   if (await serveStatic(req, path, res)) return

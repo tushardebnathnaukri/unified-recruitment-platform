@@ -1,5 +1,5 @@
 import * as React from "react"
-import { useSearchParams } from "react-router"
+import { Link, useNavigate, useParams, useSearchParams } from "react-router"
 import {
   ChevronRightIcon,
   CircleCheckIcon,
@@ -47,6 +47,14 @@ import {
   type WorkStep,
 } from "@/lib/agent"
 import { useAgentLandingVariant } from "@/lib/agent-landing-variant"
+import {
+  isSessionId,
+  localTurns,
+  newSessionId,
+  remoteTurns,
+  saveSession,
+  sessionPath,
+} from "@/lib/agent-sessions"
 import { dictationVocabulary } from "@/lib/dictation"
 import { openerChecks } from "@/lib/job-start"
 import { railFor } from "@/lib/posting-rail"
@@ -66,15 +74,14 @@ import { decodeAnswers, LABELS } from "@/lib/job-refine"
  * moment anything is asked the hero goes and the transcript takes the screen —
  * the same box, now at the bottom of a conversation.
  *
- * THE TRANSCRIPT IS IN THE URL, AS `?ask=`, ONE PER TURN. It can be, because
- * there is no model here: every answer is computed from the prompt and the
- * brand's own data at the moment it is drawn (see `lib/agent.ts`), so the list
- * of questions IS the conversation and a reload, a back button or a link
- * pasted to a colleague rebuilds it exactly. It is the trick the rest of this
- * prototype plays with `?tab=` and `?picked=`, and it means a reply worth
- * showing someone in a review can be sent as a link. Back walks the
- * conversation backwards one turn at a time, which is the right thing for it
- * to do here.
+ * A CONVERSATION IS ITS TURNS, AND ITS LINK IS AN ID. Every answer is
+ * computed from the prompts and the brand's own data at the moment it is drawn
+ * (see `lib/agent.ts`), so the list of questions IS the conversation. The
+ * list lives under a short id (`lib/agent-sessions.ts`) — kept in this browser
+ * and on the AI server — and the address is `/agent/c/<id>`, so a reply worth
+ * showing someone is still a link they can open, just not a paragraph long.
+ * It used to be the turns themselves, `?ask=` once per turn; such a link still
+ * opens, and becomes a session as it does.
  *
  * THE FACE IS THE AURA FROM `avatar-kit/` (`components/aura.tsx`). It is not
  * named on this screen and the older copilot is untouched — whether these are
@@ -85,14 +92,81 @@ import { decodeAnswers, LABELS } from "@/lib/job-refine"
 /** Long enough to read as listening, short enough not to be waiting. */
 const THINKING_MS = 450
 
-const ASK = "ask"
+/** What an old, pre-session link carried: the turns, one `?ask=` each. */
+const LEGACY_ASK = "ask"
+
+type Session = {
+  id: string | null
+  turns: string[]
+  /** `loading` — waiting on the server's copy; `missing` — nobody has one. */
+  status: "ready" | "loading" | "missing"
+}
+
+function sessionFor(id: string | null): Session {
+  if (!id) return { id: null, turns: [], status: "ready" }
+  const local = localTurns(id)
+  return local
+    ? { id, turns: local, status: "ready" }
+    : { id, turns: [], status: "loading" }
+}
 
 export function AgentPage() {
   const { brand } = useBrand()
-  const [params, setParams] = useSearchParams()
+  const navigate = useNavigate()
+  const [params] = useSearchParams()
+  const { id: routeId } = useParams()
+  const id = isSessionId(routeId) ? routeId : null
 
-  const asked = params.getAll(ASK)
-  const started = asked.length > 0
+  /**
+   * THE TURNS, AND WHOSE THEY ARE. This browser's copy is read at once, so a
+   * reload or "Back to the chat" draws with no wait; the server's copy is
+   * asked for below, and wins when it has more — somebody else's link, or
+   * this conversation continued in another tab. Following the route id is
+   * derived during render, like the rest of this page's state.
+   */
+  const [session, setSession] = React.useState<Session>(() => sessionFor(id))
+  if (id && session.id !== id) setSession(sessionFor(id))
+  const sessionRef = React.useRef(session)
+  React.useEffect(() => {
+    sessionRef.current = session
+  }, [session])
+
+  React.useEffect(() => {
+    if (!id) return
+    let live = true
+    void remoteTurns(id).then((remote) => {
+      const current = sessionRef.current
+      if (!live || current.id !== id) return
+      if (remote && remote.length > current.turns.length) {
+        setSession({ id, turns: remote, status: "ready" })
+        saveSession(id, remote)
+      } else if (current.status === "loading") {
+        setSession({ ...current, status: "missing" })
+      } else if (remote === null && current.turns.length) {
+        // The server lost it (a redeploy) but this browser has it: put it back.
+        saveSession(id, current.turns)
+      }
+    })
+    return () => {
+      live = false
+    }
+  }, [id])
+
+  // An old `?ask=` link: the same turns, moved into a session, and the
+  // address replaced so the next link copied is the short one.
+  const legacy = id ? [] : params.getAll(LEGACY_ASK)
+  const legacyKey = legacy.join("\u0000")
+  React.useEffect(() => {
+    if (!legacyKey) return
+    const turns = legacyKey.split("\u0000")
+    const next = newSessionId()
+    // Saved first, so the session page reads it from this browser at once.
+    saveSession(next, turns)
+    navigate(sessionPath(next), { replace: true })
+  }, [legacyKey, navigate])
+
+  const asked = id ? (session.id === id ? session.turns : []) : legacy
+  const started = asked.length > 0 || Boolean(id)
   const { variant: landing } = useAgentLandingVariant()
   // A conversation wants the room at every width — the transcript plus the
   // posting rail beside it. The landing keeps the nav; its cards fit.
@@ -131,9 +205,17 @@ export function AgentPage() {
   const askedHere = React.useRef(false)
   const ask = (prompt: string) => {
     askedHere.current = true
-    const next = new URLSearchParams(params)
-    next.append(ASK, prompt)
-    setParams(next)
+    const turns = [...asked, prompt]
+    if (id && session.id === id) {
+      setSession({ ...session, turns })
+      saveSession(id, turns)
+      return
+    }
+    // The first question: the conversation gets its id, and its address.
+    const next = newSessionId()
+    saveSession(next, turns)
+    setSession({ id: next, turns, status: "ready" })
+    navigate(sessionPath(next))
   }
 
   /**
@@ -266,6 +348,9 @@ export function AgentPage() {
     ) : (
       <Landing onAsk={ask} onAttach={attach} />
     )
+
+  if (id && session.id === id && session.status !== "ready")
+    return <SessionState status={session.status} />
 
   return (
     // The conversation owns the screen below the header: a transcript that
@@ -415,6 +500,47 @@ export function AgentPage() {
           <PostingRail model={rail} reading={Boolean(pending)} />
         </div>
       ) : null}
+    </div>
+  )
+}
+
+/**
+ * A link to a conversation this browser does not have: waiting on the AI
+ * server's copy, or neither has it — an id from before the preview was
+ * redeployed, or the server is not running locally. Said plainly, with the way
+ * on, rather than an empty landing that looks like the link was ignored.
+ */
+function SessionState({ status }: { status: "loading" | "missing" }) {
+  return (
+    <div className="mx-auto flex w-full max-w-md flex-col items-center gap-3 px-4 py-24 text-center">
+      {status === "loading" ? (
+        <Marker>
+          <MarkerIcon>
+            <Spinner />
+          </MarkerIcon>
+          <MarkerContent>Opening the conversation…</MarkerContent>
+        </Marker>
+      ) : (
+        <>
+          <p className="text-base font-semibold">
+            This conversation isn't here
+          </p>
+          <p className="text-sm text-muted-foreground">
+            It isn't saved in this browser, and the AI server that keeps shared
+            conversations doesn't have it — it may be from before the preview
+            was last deployed.
+          </p>
+          <Button
+            nativeButton={false}
+            variant="outline"
+            size="sm"
+            className="mt-2"
+            render={<Link to="/agent" />}
+          >
+            Start a new conversation
+          </Button>
+        </>
+      )}
     </div>
   )
 }

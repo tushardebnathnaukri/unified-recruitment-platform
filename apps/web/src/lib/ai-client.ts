@@ -9,6 +9,9 @@
  */
 const BASE = String(import.meta.env.VITE_AI_URL ?? "").replace(/\/$/, "")
 
+/** An AI-server path, wherever the server is. */
+export const aiUrl = (path: string) => `${BASE}${path}`
+
 export type AiHealth = { available: boolean; model?: string }
 
 /**

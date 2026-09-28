@@ -60,7 +60,7 @@ export function AthenaProvider({ children }: { children: React.ReactNode }) {
   const [open, setOpenState] = React.useState(false)
   const [context, setContext] = React.useState<AthenaPageContext | null>(null)
   const [pending, setPending] = React.useState<Opener | null>(null)
-  const available = useMatch("/agent") === null
+  const available = useMatch("/agent/*") === null
   const availableRef = React.useRef(available)
 
   /**

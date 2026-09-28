@@ -1,6 +1,11 @@
 import * as React from "react"
 import { Link, useSearchParams } from "react-router"
-import { PlusIcon, RefreshCwIcon, SparklesIcon } from "lucide-react"
+import {
+  ArrowLeftIcon,
+  PlusIcon,
+  RefreshCwIcon,
+  SparklesIcon,
+} from "lucide-react"
 
 import { useBrand } from "@workspace/ui/components/brand-provider"
 import { Button } from "@workspace/ui/components/button"
@@ -18,6 +23,7 @@ import { LocationPicker } from "@/components/location-picker"
 import { TagInput } from "@/components/tag-input"
 import {
   describePosting,
+  chatFrom,
   draftFrom,
   REMOTE,
   WORK_MODES,
@@ -59,7 +65,9 @@ export function NewJobPage() {
   const [params] = useSearchParams()
 
   const [initial] = React.useState(() => draftFrom(params))
-  const fromAgent = Array.from(params.keys()).length > 0
+  const chat = chatFrom(params)
+  // Anything besides the way back is a value the chat had gathered.
+  const fromAgent = Array.from(params.keys()).some((key) => key !== "chat")
 
   const [title, setTitle] = React.useState(initial.title ?? "")
   const [locations, setLocations] = React.useState(initial.locations)
@@ -129,18 +137,32 @@ export function NewJobPage() {
             ? "Filled in from your conversation with the Agent. Change anything."
             : "The role, and what a candidate should read about it. Only the title is required."}
         </p>
-        {/* The door back. It starts a fresh conversation rather than carrying
-            the form's values into one, because a chat that opened already
-            answered would have nothing left to ask. */}
-        <Button
-          nativeButton={false}
-          variant="outline"
-          size="sm"
-          render={<Link to="/agent?ask=Help+me+post+a+job" />}
-        >
-          <SparklesIcon data-icon="inline-start" />
-          Talk it through instead
-        </Button>
+        {/* The door back. Opened from a chat, it is THAT chat — its URL is the
+            conversation, so every turn comes back as it was. Opened cold, it
+            starts a fresh one rather than carrying the form's values in,
+            because a chat that opened already answered would have nothing
+            left to ask. */}
+        {chat ? (
+          <Button
+            nativeButton={false}
+            variant="outline"
+            size="sm"
+            render={<Link to={chat} />}
+          >
+            <ArrowLeftIcon data-icon="inline-start" />
+            Back to the chat
+          </Button>
+        ) : (
+          <Button
+            nativeButton={false}
+            variant="outline"
+            size="sm"
+            render={<Link to="/agent?ask=Help+me+post+a+job" />}
+          >
+            <SparklesIcon data-icon="inline-start" />
+            Talk it through instead
+          </Button>
+        )}
       </div>
 
       <div className="flex flex-col gap-6 rounded-2xl border bg-background p-4 sm:p-6">

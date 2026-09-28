@@ -1321,14 +1321,10 @@ export function intakeReply(state: IntakeState, brand: Brand): Answer {
   if (state.stage === "posting" && state.opener && state.origin === "jd") {
     return {
       said: "Paste the job description below, or drop a PDF or Word doc on the box.",
-      blocks: [
-        {
-          kind: "question",
-          hint: "I'll read the role, city, experience, pay and skills out of it, and only ask about what it leaves out.",
-          options: [],
-          form: { label: "Fill in a form instead", to },
-        },
-      ],
+      // The sentence alone. The recruiter picked "I have a JD" a moment ago,
+      // so a line promising to read it and a way out to the form were only
+      // saying the choice back to them.
+      blocks: [],
     }
   }
 

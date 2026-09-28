@@ -1,5 +1,5 @@
 import type * as React from "react"
-import { Link } from "react-router"
+import { Link, useLocation } from "react-router"
 import {
   ArrowRightIcon,
   ChevronRightIcon,
@@ -16,6 +16,7 @@ import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
 import type { Block } from "@/lib/agent"
+import { withChat } from "@/lib/job-intake"
 
 /**
  * How the Agent page draws an answer.
@@ -66,6 +67,7 @@ function AgentBlock({
   onAsk: (prompt: string) => void
   live: boolean
 }) {
+  const toForm = useToForm()
   if (block.kind === "text") {
     return <p className="text-sm leading-relaxed">{block.text}</p>
   }
@@ -179,7 +181,7 @@ function AgentBlock({
             variant="link"
             size="sm"
             className="h-auto self-start px-0 text-xs"
-            render={<Link to={block.form.to} />}
+            render={<Link to={toForm(block.form.to)} />}
           >
             <ClipboardListIcon data-icon="inline-start" />
             {block.form.label}
@@ -238,7 +240,7 @@ function AgentBlock({
           <Button
             nativeButton={false}
             size="sm"
-            render={<Link to={block.to} />}
+            render={<Link to={toForm(block.to)} />}
           >
             Review and post
             <ArrowRightIcon data-icon="inline-end" />
@@ -300,6 +302,15 @@ function AgentBlock({
 }
 
 /**
+ * Links into the form carry this chat's own address, so the form can offer
+ * the way back to exactly this conversation (`withChat`).
+ */
+function useToForm() {
+  const { pathname, search } = useLocation()
+  return (to: string) => withChat(to, pathname + search)
+}
+
+/**
  * A row that goes somewhere — or, with an empty `to`, one that does not.
  *
  * The refusal lists the questions it CAN take, and those are prompts rather
@@ -314,6 +325,7 @@ function Row({
   detail: string
   to: string
 }) {
+  const toForm = useToForm()
   const inside = (
     <>
       <div className="min-w-0 flex-1">
@@ -334,7 +346,7 @@ function Row({
   )
 
   return to ? (
-    <Link to={to} className={className}>
+    <Link to={toForm(to)} className={className}>
       {inside}
     </Link>
   ) : (
