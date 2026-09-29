@@ -6,11 +6,11 @@
   "sitePort": 6100,
   "root": ".",
   "builder": "dockerfile",
-  "archiveSha256": "f03874d4cd3d7121f874352066f3fffd07f9241b9140a6a2a38abad03b968a7f",
+  "archiveSha256": "2829aa7feca60d3c1d11891d8bb327ebdb734771b74e64167f4785f1c25415dd",
   "notes": "One Docker container: apps/ai serves /api and the built apps/web (STATIC_DIR). Bundle = apps/ai/Dockerfile at the root, apps/ai as server/, apps/web/dist as public/. GEMINI_API_KEY is in the project env (not here). Guest-created; updates use the key in ~/.config/ued-launchpad/keys/<id>.",
   "status": "running",
-  "submittedCommit": "c5919f7",
-  "lastDeployedAt": "2026-09-28T11:48:00.435Z",
+  "submittedCommit": "00b2ac1",
+  "lastDeployedAt": "2026-09-29T08:09:43.661Z",
   "dockerfile": "Dockerfile",
   "port": 3000
 }
