@@ -99,7 +99,7 @@ Rules:
 4. A null answer, or "skip", "doesn't matter", "no preference" and the like, means the recruiter is skipping that question: add it to skipped. The title can never be skipped.
 5. unread lists the ids of questions that got an answer you could not use. They will be asked again.
 6. heard is one short sentence saying back what you recorded, starting "Got it — ". If nothing was recorded, say briefly what you could not use.
-7. questions phrases EVERY question the recruiter should be asked next: in stage "posting", every field still empty and not skipped, in this order — title, locations, experience, skills, pay, mode. They are shown together, one step at a time, in one card. When no field is left, the posting is complete: see "Finishing the posting".
+7. questions phrases EVERY question the recruiter should be asked next: in stage "posting", every field still empty and not skipped, in this order — title, locations, pay, mode, experience, skills (the job, then what the candidate must have). They are shown together, one step at a time, in one card. When no field is left, the posting is complete: see "Finishing the posting".
 8. Each question's ask is one conversational sentence; hint is one short line on why it matters or how to answer; options are up to 6 short answers the recruiter could pick exactly as written, suited to this role and seniority — suggestions, not facts. Locations and skills can take several at once, so offer them as separate options (each skill on its own), not joined.
 
 Finishing the posting (stage "posting", nothing left to ask):
@@ -121,7 +121,7 @@ In stage "posting" too, record in brief anything an answer says about the refine
 
 Always return the whole brief, every key, carrying over what it already holds — an empty list or null for anything not yet said. refine is an empty list except when finishing the posting.
 
-In stage "refine" you get the brief so far and the topics being asked (asking). Update brief (and the draft, if the recruiter corrects the posting). questions phrases only the topics in unread — the ones to ask again — or is an empty list. For skillsSplit, offer each listed skill as its own option; the recruiter ticks the must-haves.
+In stage "refine" you get the brief so far and the topics being asked (asking). Update brief (and the draft, if the recruiter corrects the posting). questions phrases only the topics in unread — the ones to ask again — or is an empty list. Skills and skillsSplit are answered on a card as a ranking, written "Must have: … · Good to have: …"; the page reads that split itself, so copy it as written.
 
 Never screen on who someone is. Do not record, suggest or phrase anything based on age, gender, marital or family status, pregnancy or maternity, religion, caste or community, disability, nationality, or stand-ins for them such as graduation year or batch, or career gaps. If the recruiter asks for one, leave it out, list each kind you left out in declined (${DECLINED.join(", ")}), and record the rest of the answer. declined is an empty list otherwise.`
 }

@@ -1,15 +1,40 @@
+import {
+  BriefcaseIcon,
+  ListChecksIcon,
+  SearchIcon,
+  SendIcon,
+  SlidersHorizontalIcon,
+  ThumbsUpIcon,
+  type LucideIcon,
+} from "lucide-react"
+
 import type { Brand } from "@workspace/ui/lib/brands"
 
 import { poolFor } from "@/lib/calibration"
 import {
   filled,
+  JOB_FIELDS,
   modeLabel,
   payLabel,
+  REQUIREMENT_FIELDS,
   yearsLabel,
   type FieldId,
   type IntakeState,
+  type PostingDraft,
 } from "@/lib/job-intake"
-import { industryLabel, pendingTopics, searchHrefFor } from "@/lib/job-refine"
+import { briefRows, pendingTopics, searchHrefFor } from "@/lib/job-refine"
+import {
+  pendingQuestions,
+  personOf,
+  searchCriteria,
+  searchHrefFor as searchHrefOf,
+  searchPool,
+  searchReviewees,
+  searchRows,
+  searchSummary,
+  type SearchPerson,
+  type SearchState,
+} from "@/lib/search-intake"
 
 /**
  * What the rail beside the posting conversation shows — worked out from the
@@ -59,79 +84,169 @@ function roughly(n: number) {
 
 export type RailStep = {
   label: string
+  /** For the bar across the top ("Chat with rail v2"); the column uses glyphs. */
+  icon: LucideIcon
+  /** Never shown to candidates — drawn with a lock. */
+  private?: boolean
   /** Said quietly beside it — "4 of 6", "2 of 4", the role. */
   detail?: string
-  state: "done" | "active" | "waiting"
+  /** `skipped` is an optional stage waved past — drawn muted, not ticked. */
+  state: "done" | "active" | "waiting" | "skipped"
+}
+
+/**
+ * One fact, labelled. A null value is a field the posting still needs; `id`
+ * is the question that set it, for the pencil that asks it again.
+ */
+export type RailRow = {
+  label: string
+  value: string | null
+  /** The question that set it — a posting field, a topic, or a search question. */
+  id?: string
+}
+
+/**
+ * A section of the rail's Details view, for a conversation that is not a
+ * posting: a heading tied to a step, rows with pencils, chips, or a list.
+ */
+export type RailSection = {
+  id: string
+  title: string
+  /** Which step it belongs to — its icon and status chip come from there. */
+  step?: number
+  private?: boolean
+  rows?: RailRow[]
+  /** `empty` is what an answered-but-empty set says ("None named"); without
+   *  it an empty set draws a dash, meaning the answer is still owed. */
+  chips?: { label: string; items: string[]; editId?: string; empty?: string }[]
+  list?: { label: string; items: string[]; editId?: string; empty: string }
 }
 
 export type RailModel = {
+  kind: "posting" | "search"
   status: string
   steps: RailStep[]
-  /** The posting so far, as chips, in the order the card lists it. */
-  posting: string[]
+  /** The posting itself, for the rail's card view (`PostingCard`); null for a search. */
+  draft: PostingDraft | null
+  /** A search's Details view — generic sections where a posting has its own. */
+  sections?: RailSection[]
+  /** A search's Preview: the three people it ranks first. */
+  preview?: SearchPerson[]
+  /**
+   * THE POSTING AS LABELLED ROWS, NOT CHIPS, IN THE STEPPER'S TWO GROUPS. "Mumbai", "8–12 years" and
+   * "Hybrid" as three identical chips had to be decoded one by one; a label
+   * beside each says what it is at a glance. Rows also show what is still
+   * MISSING — a dash where the answer will go — which a chip cannot, so the
+   * rail is the checklist as well as the record. `job` is always the four
+   * job fields, plus team and relocation once said; `requirements` is the
+   * experience row — the skills beside it are `must` and `nice`.
+   */
+  job: RailRow[]
+  requirements: RailRow[]
   must: string[]
   nice: string[]
-  /** The private brief so far, as chips. */
-  brief: string[]
+  /** The private brief so far — `briefRows`, the same rows the finish card prints. */
+  brief: RailRow[]
+  /** The screening questions, once the step has been reached; null before. */
+  screening: string[] | null
   /** Null until there is a role to count people for. */
   people: { matching: number; total: number; href: string } | null
 }
 
-const FIELDS: FieldId[] = [
-  "title",
-  "locations",
-  "experience",
-  "skills",
-  "pay",
-  "mode",
-]
-
-const plural = (n: number, one: string, many = `${one}s`) =>
-  `${n} ${n === 1 ? one : many}`
-
 export function railFor(state: IntakeState, brand: Brand): RailModel {
-  const { draft, brief } = state
+  const { draft } = state
   const stage = state.opener ? "opener" : state.stage
+  // A base job copies its own title, and the card names it "Title — City",
+  // so "Title · From Title — City" said one thing twice. When the base's
+  // name already starts with the title, the base is the whole detail.
   const from = state.basedOn
     ? `From ${state.basedOn}`
     : state.origin === "jd"
       ? "From a JD"
       : null
-  const filledCount = FIELDS.filter((id) => filled(draft, id)).length
+  const titled =
+    state.basedOn && draft.title && state.basedOn.startsWith(draft.title)
+      ? null
+      : draft.title
+  const settled = (id: FieldId) =>
+    filled(draft, id) || state.skipped.includes(id)
+  const jobFilled = JOB_FIELDS.filter(settled).length
+  const reqFilled = REQUIREMENT_FIELDS.filter(settled).length
+  const jobDone = jobFilled === JOB_FIELDS.length
+  const reqDone = reqFilled === REQUIREMENT_FIELDS.length
   const answered = state.plan.length - pendingTopics(state).length
 
+  /**
+   * FIVE STEPS, NAMED FOR WHAT A RECRUITER TELLS APART: what the job is,
+   * what the candidate must have, how to pick between the ones who do
+   * (private — it becomes Search Resume's criteria, and its optional tail
+   * is the screening questions candidates answer when they apply), and
+   * posting. The chat gathers the first three; the last is the form's,
+   * and is never ticked here.
+   */
   const steps: RailStep[] = [
     {
-      label: "Understand the role",
+      icon: BriefcaseIcon,
+      label: "Job details",
       detail:
-        [draft.title, from].filter(Boolean).join(" · ") ||
-        (state.origin === "scratch" ? "From scratch" : undefined),
-      state: stage === "opener" ? "active" : "done",
+        stage === "opener"
+          ? [titled, from].filter(Boolean).join(" · ") ||
+            (state.origin === "scratch" ? "From scratch" : undefined)
+          : `${jobFilled} of ${JOB_FIELDS.length}`,
+      state:
+        stage === "opener" || (stage === "posting" && !jobDone)
+          ? "active"
+          : "done",
     },
     {
-      label: "Fill in the posting",
-      detail: stage === "opener" ? undefined : `${filledCount} of 6`,
+      icon: ListChecksIcon,
+      label: "Candidate details",
+      detail:
+        stage === "opener"
+          ? undefined
+          : `${reqFilled} of ${REQUIREMENT_FIELDS.length}`,
       state:
         stage === "opener"
           ? "waiting"
           : stage === "posting"
-            ? "active"
+            ? reqDone
+              ? "done"
+              : jobDone
+                ? "active"
+                : "waiting"
             : "done",
     },
     {
-      label: "Sharpen the search",
+      icon: SlidersHorizontalIcon,
+      label: "Selection criteria",
+      private: true,
+      // Two asks in one step: the refinement topics, then — optional — the
+      // screening questions. The count is the topics'; the questions are
+      // said once they are set.
       detail:
-        stage === "refine" || stage === "done"
-          ? state.plan.length
-            ? `${answered} of ${state.plan.length}`
-            : "Nothing to ask"
+        stage === "refine" || stage === "screen" || stage === "done"
+          ? [
+              state.plan.length
+                ? `${answered} of ${state.plan.length}`
+                : "Nothing to ask",
+              stage === "done" && draft.screening.length
+                ? `${draft.screening.length} screening question${draft.screening.length === 1 ? "" : "s"}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · ")
           : undefined,
       state:
-        stage === "refine" ? "active" : stage === "done" ? "done" : "waiting",
+        stage === "refine" || stage === "screen"
+          ? "active"
+          : stage === "done"
+            ? "done"
+            : "waiting",
     },
     {
       // Never ticked in the chat: posting happens on the form, and a tick
       // here would say the job is up when it is not.
+      icon: SendIcon,
       label: "Review and post",
       state: stage === "done" ? "active" : "waiting",
     },
@@ -145,46 +260,50 @@ export function railFor(state: IntakeState, brand: Brand): RailModel {
           ? "Waiting for the JD"
           : state.origin === "job"
             ? "Choosing a job to start from"
-            : "Understanding the role",
-    posting: "Filling in the posting",
-    refine: "Sharpening the search",
+            : "Starting the job details",
+    posting: jobDone
+      ? "Filling in the candidate details"
+      : "Filling in the job details",
+    refine: "Setting selection criteria",
+    screen: "Setting selection criteria",
     done: "Ready to review",
   }[stage]
 
-  const posting = [
-    draft.title,
-    draft.locations.length ? draft.locations.join(", ") : null,
-    draft.experience ? yearsLabel(draft.experience) : null,
-    draft.pay ? payLabel(draft.pay).replace(/ a year$/, "") : null,
-    draft.mode ? modeLabel(draft.mode) : null,
-    draft.teamScale,
-    draft.relocationSupport ? "Relocation supported" : null,
-  ].filter((chip): chip is string => Boolean(chip))
-
-  const briefChips = [
-    brief.adjacentTitles.length
-      ? `+ ${plural(brief.adjacentTitles.length, "neighbouring title")}`
-      : null,
-    brief.openToMovers === true
-      ? "Open to people who'd move"
-      : brief.openToMovers === false
-        ? "Locals only"
-        : null,
-    ...brief.industries.map(industryLabel),
-    brief.ledTeam ? "Has led a team" : null,
-    brief.targetCompanies.length
-      ? `Look first at ${plural(brief.targetCompanies.length, "company", "companies")}`
-      : null,
-    brief.institutes.length ? `Prefers ${brief.institutes.join(", ")}` : null,
-    brief.budget
-      ? brief.budget.firm
-        ? "Firm budget"
-        : `Stretch to ₹${brief.budget.upTo}L`
-      : null,
-    brief.exclusions.length
-      ? plural(brief.exclusions.length, "rule-out")
-      : null,
-  ].filter((chip): chip is string => Boolean(chip))
+  const job: RailRow[] = [
+    { id: "title", label: "Role", value: draft.title },
+    {
+      id: "locations",
+      label: "Location",
+      value: draft.locations.length ? draft.locations.join(", ") : null,
+    },
+    {
+      id: "pay",
+      label: "Pay",
+      value: draft.pay
+        ? payLabel(draft.pay).replace(/ a year$/, "")
+        : state.skipped.includes("pay")
+          ? "Not disclosed"
+          : null,
+    },
+    {
+      id: "mode",
+      label: "Work mode",
+      value: draft.mode ? modeLabel(draft.mode) : null,
+    },
+    ...(draft.teamScale
+      ? [{ id: "scale" as const, label: "Team", value: draft.teamScale }]
+      : []),
+    ...(draft.relocationSupport
+      ? [{ id: "relocation" as const, label: "Relocation", value: "Supported" }]
+      : []),
+  ]
+  const requirements: RailRow[] = [
+    {
+      id: "experience",
+      label: "Experience",
+      value: draft.experience ? yearsLabel(draft.experience) : null,
+    },
+  ]
 
   let people: RailModel["people"] = null
   if (draft.title) {
@@ -193,21 +312,163 @@ export function railFor(state: IntakeState, brand: Brand): RailModel {
     const pool = poolFor(brand, params.get("q") ?? "", params)
     const base = DATABASE[brand]
     people = {
-      matching: roughly(
-        Math.min(base, (pool.matching.length * base) / SAMPLE)
-      ),
+      matching: roughly(Math.min(base, (pool.matching.length * base) / SAMPLE)),
       total: base,
       href,
     }
   }
 
   return {
+    kind: "posting",
     status,
     steps,
-    posting,
+    draft,
+    job,
+    requirements,
     must: draft.skills,
     nice: draft.niceSkills,
-    brief: briefChips,
+    brief: briefRows(state).map(({ topic, ...row }) => ({ ...row, id: topic })),
+    screening: stage === "screen" || stage === "done" ? draft.screening : null,
     people,
+  }
+}
+
+// --- The search conversation's rail ---------------------------------------------------
+
+/**
+ * The rail for a search — the same shape as a posting's, so the bar, the
+ * panels and the pencils are one piece of furniture, with the search's own
+ * four steps and its own sections: the requirement, the criteria, the
+ * calibration, and how many people it finds. The count here is the sample's
+ * own, not projected onto the database: Search Resume counts its sample, and
+ * a search's rail should say what its results page will.
+ */
+export function searchRailFor(state: SearchState, brand: Brand): RailModel {
+  const rows = searchRows(state, brand)
+  const answeredCount =
+    Object.keys(state.answered).length + state.skipped.length
+  const left =
+    state.stage === "opener" ? 0 : pendingQuestions(state, brand).length
+  const judged = Object.values(state.judged)
+  const kept = judged.filter((j) => j === "kept").length
+
+  const steps: RailStep[] = [
+    {
+      icon: SearchIcon,
+      label: "Requirement",
+      detail:
+        state.stage === "opener" ? undefined : searchSummary(state, brand),
+      state: state.stage === "opener" ? "active" : "done",
+    },
+    {
+      icon: SlidersHorizontalIcon,
+      label: "Search criteria",
+      detail:
+        state.stage === "opener"
+          ? undefined
+          : `${answeredCount} of ${answeredCount + left}`,
+      state:
+        state.stage === "opener"
+          ? "waiting"
+          : state.stage === "criteria"
+            ? "active"
+            : "done",
+    },
+    {
+      icon: ThumbsUpIcon,
+      label: "Calibrate",
+      detail:
+        state.stage === "calibrate"
+          ? "Optional"
+          : state.stage === "done"
+            ? judged.length
+              ? `${kept} kept, ${judged.length - kept} not a fit`
+              : "Skipped"
+            : undefined,
+      state:
+        state.stage === "calibrate"
+          ? "active"
+          : state.stage === "done"
+            ? judged.length
+              ? "done"
+              : "skipped"
+            : "waiting",
+    },
+    {
+      icon: SendIcon,
+      label: "Open the search",
+      state: state.stage === "done" ? "active" : "waiting",
+    },
+  ]
+
+  const status = {
+    opener: "Describing who you're looking for",
+    criteria: "Setting search criteria",
+    calibrate: "Calibrating the search",
+    done: "Ready to search",
+  }[state.stage]
+
+  const started = state.stage !== "opener"
+  const pool = started ? searchPool(state, brand) : null
+  const criteria = started ? searchCriteria(state, brand) : []
+
+  const sections: RailSection[] = [
+    {
+      id: "requirement",
+      title: "Requirement",
+      step: 0,
+      rows: rows.requirement,
+      chips: [
+        {
+          label: "Skills",
+          items: rows.skills,
+          editId: "skills",
+          empty: state.skipped.includes("skills") ? "None named" : undefined,
+        },
+      ],
+    },
+    {
+      id: "criteria",
+      title: "Search criteria",
+      step: 1,
+      rows: rows.criteria,
+    },
+    ...(state.stage === "calibrate" || state.stage === "done"
+      ? [
+          {
+            id: "calibration",
+            title: "Calibration",
+            step: 2,
+            private: true,
+            list: {
+              label: "Criteria, most important first",
+              items: criteria,
+              empty: "Nothing to rank yet.",
+            },
+          },
+        ]
+      : []),
+  ]
+
+  return {
+    kind: "search",
+    status,
+    steps,
+    draft: null,
+    sections,
+    preview: started ? searchReviewees(state, brand).map(personOf) : undefined,
+    job: [],
+    requirements: [],
+    must: [],
+    nice: [],
+    brief: [],
+    screening: null,
+    people: pool
+      ? {
+          matching: pool.matching.length,
+          total: pool.all.length,
+          href: searchHrefOf(state, brand),
+        }
+      : null,
   }
 }

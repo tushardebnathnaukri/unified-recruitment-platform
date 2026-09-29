@@ -1,4 +1,4 @@
-import { Outlet, useLocation } from "react-router"
+import { Outlet, useLocation, useMatch } from "react-router"
 
 import { SidebarInset, SidebarProvider } from "@workspace/ui/components/sidebar"
 import { AppSidebar } from "@/components/app-sidebar"
@@ -11,6 +11,10 @@ import { titleForPath } from "@/lib/nav"
 
 export function AppShell() {
   const { pathname } = useLocation()
+  // THE DASHBOARD HAS NO TOP BAR. It is one conversation filling the column,
+  // and a bar saying "Dashboard" over it named the only page with the Aura on
+  // it — Athena's button, the other thing the bar carries, is off there too.
+  const bare = useMatch("/dashboard/*") !== null
 
   return (
     // Shell dimensions are CSS variables rather than utility classes so the
@@ -37,7 +41,7 @@ export function AppShell() {
               renders no DOM, so the sidebar's sibling selectors are unmoved. */}
         <PageHeaderProvider>
           <SidebarInset className="bg-canvas">
-            <SiteHeader title={titleForPath(pathname)} />
+            <SiteHeader title={titleForPath(pathname)} bare={bare} />
 
             {/* `@container/main` lets pages respond to the content column
                 rather than the viewport, which is what actually changes when

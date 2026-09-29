@@ -22,6 +22,11 @@ import {
   useFilterVariant,
   type FilterVariant,
 } from "@/lib/filter-variant"
+import {
+  POSTING_VARIANTS,
+  usePostingVariant,
+  type PostingVariant,
+} from "@/lib/posting-variant"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { PROTOTYPE_ITEMS, PROTOTYPE_LINKS } from "@/lib/nav"
 
@@ -118,6 +123,28 @@ export function SettingsPage() {
           </div>
 
           <AgentLandingVariantSwitcher />
+        </div>
+
+        <Separator />
+
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 flex-1 basis-64 flex-col gap-1">
+            <h2 className="text-sm font-medium">Post a job</h2>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Where the posting goes while the Dashboard's chat gathers it. Chat
+              with rail keeps the conversation in the middle with the steps, the
+              posting and the brief as a rail beside it; v2 lifts the steps out
+              of the rail and lays them across the top of the page. Form beside
+              chat puts the post-a-job form on the left, filled in as each
+              answer is read and editable by hand, with the chat as a panel on
+              the right; Chat, then form is the rail while the chat is asking
+              and the form once it has — "Review and post" brings the form in
+              beside the chat instead of sending you to it. Whichever it is,
+              every change is a turn in the conversation.
+            </p>
+          </div>
+
+          <PostingVariantSwitcher />
         </div>
 
         <Separator />
@@ -233,6 +260,29 @@ function AgentLandingVariantSwitcher() {
       }}
     >
       {AGENT_LANDING_VARIANTS.map((option) => (
+        <ToggleGroupItem key={option.value} value={option.value}>
+          {option.label}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  )
+}
+
+function PostingVariantSwitcher() {
+  const { variant, setVariant } = usePostingVariant()
+
+  return (
+    <ToggleGroup
+      variant="outline"
+      spacing={0}
+      aria-label="Post a job"
+      value={[variant]}
+      onValueChange={(value) => {
+        const next = value[0] as PostingVariant | undefined
+        if (next) setVariant(next)
+      }}
+    >
+      {POSTING_VARIANTS.map((option) => (
         <ToggleGroupItem key={option.value} value={option.value}>
           {option.label}
         </ToggleGroupItem>

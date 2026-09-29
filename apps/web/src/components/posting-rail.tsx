@@ -1,17 +1,32 @@
-import type * as React from "react"
+import * as React from "react"
 import { Link } from "react-router"
 import {
   ArrowRightIcon,
   CheckIcon,
-  CircleDashedIcon,
   LoaderIcon,
   LockIcon,
+  MinusIcon,
+  PencilIcon,
+  UsersIcon,
+  type LucideIcon,
 } from "lucide-react"
 
 import { cn } from "@workspace/ui/lib/utils"
 
-import { Aura } from "@/components/aura"
-import type { RailModel } from "@/lib/posting-rail"
+import { Tabs, TabsList, TabsTrigger } from "@workspace/ui/components/tabs"
+
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@workspace/ui/components/avatar"
+import { Badge } from "@workspace/ui/components/badge"
+
+import { CriteriaEvidence } from "@/components/criteria-evidence"
+import { PostingCard } from "@/components/posting-card"
+import { PostingPage } from "@/components/posting-page"
+import type { SearchPerson } from "@/lib/search-intake"
+import type { RailModel, RailRow, RailStep } from "@/lib/posting-rail"
 
 /**
  * The rail beside the posting conversation.
@@ -23,161 +38,726 @@ import type { RailModel } from "@/lib/posting-rail"
  * is, the posting as it stands, the private brief as it builds, and how many
  * people it would find — all of it moving as answers land.
  *
+ * A STEPPER, NOT A TODO LIST. The plan used to tick and strike through each
+ * step the way a task list does, which read as "cancelled" rather than
+ * "done", and its current-step glyph was a spinner that only spun while an
+ * answer was being read — so most of the time it was a spinner standing
+ * still. Now: a filled tick for done, a ring for where you are (the tick
+ * spins inside it while reading), an empty ring for what is to come, and a
+ * line joining them, which is what four steps in order look like.
+ *
+ * FACTS ARE ROWS; SETS ARE CHIPS. The posting and the brief are labelled
+ * rows, because "Mumbai", "8–12 years" and "Hybrid" as three identical chips
+ * had to be decoded one at a time, and a row can hold a dash where an answer
+ * is still owed. Skills are chips, because a skill is one of a set and the
+ * set is what is being read.
+ *
+ * A PENCIL ON EVERY ROW, AND IT ASKS THE QUESTION AGAIN. The rail is where a
+ * recruiter notices "8–12 years — no, 10+", so it is where the way to change
+ * it should be. It is not an input in the rail: the draft is folded from the
+ * turns, so a change has to become one (`encodeChange`), and the form is
+ * already the full editor. The pencil hands the page the question's id, and
+ * the page docks that one question in the composer's place with the answer
+ * as it stands ticked. Hidden while an answer is being read — the row is
+ * about to move.
+ *
  * STATUS AND COUNT PAUSE WHILE AN ANSWER IS BEING READ. The count would
  * otherwise sit there describing the brief before the answer, as if it were
  * current; while a reading is in flight it says "Updating…" instead.
  */
+/** The record, or the posting as a candidate meets it — in the list, then opened. */
+type View = "details" | "preview"
+
 export function PostingRail({
   model,
   reading,
+  onEdit,
+  plan = true,
 }: {
   model: RailModel
   /** An answer is being read — the numbers below are about to change. */
   reading: boolean
+  /** Ask this question again, to change its answer. */
+  onEdit?: (id: string) => void
+  /** The Plan section — off when `PlanBar` draws the steps across the top. */
+  plan?: boolean
 }) {
+  const edit = reading ? undefined : onEdit
+  // WHAT HAS BEEN GATHERED, OR WHAT IT WILL LOOK LIKE. Details is the record
+  // — the rows, the chips, the brief, with pencils. Preview is the posting
+  // as a candidate meets it in the app: the list card, then the page it
+  // opens to. Local to the rail: which way you are looking is not worth a
+  // link.
+  const [view, setView] = React.useState<View>("details")
   const { people } = model
+  // 375px — a phone's width, so the job card reads at the size a candidate
+  // would see it.
   return (
-    <aside className="flex h-full w-72 shrink-0 flex-col gap-5 overflow-y-auto border-l bg-background p-4">
-      {/* The face above the status, and the status itself: it turns to
-          "thinking" while an answer is read, which is the spinner this line
-          used to carry. Room above it for the glow, which spills past the orb
-          and would otherwise be clipped by the rail's own scroll. */}
-      <div className="flex flex-col items-center gap-3 pt-6">
-        <Aura size={56} state={reading ? "thinking" : "idle"} />
-        <p className="text-center text-sm font-medium" aria-live="polite">
-          {reading ? "Reading your answer…" : model.status}
-        </p>
+    <aside className="flex h-full w-[375px] shrink-0 flex-col overflow-y-auto border-l bg-background">
+      {/* Only the switcher up top: the Aura and the status line went — the
+          bar (or the column's own steps) already says where things are. */}
+      <div className="flex flex-col px-4 pt-4 pb-3">
+        <Tabs
+          value={view}
+          onValueChange={(next) => setView(next as View)}
+          className="w-full"
+        >
+          <TabsList className="w-full" aria-label="How to see the posting">
+            <TabsTrigger value="details">Details</TabsTrigger>
+            <TabsTrigger value="preview">Preview</TabsTrigger>
+          </TabsList>
+        </Tabs>
       </div>
 
-      <Section title="Plan">
-        <ol className="flex flex-col gap-2">
-          {model.steps.map((step) => (
-            <li
-              key={step.label}
-              className={cn(
-                "flex items-start gap-2 text-sm",
-                step.state === "waiting" && "text-muted-foreground",
-                step.state === "done" && "text-muted-foreground"
-              )}
-            >
-              {step.state === "done" ? (
-                <CheckIcon className="mt-0.5 size-4 shrink-0 text-primary" />
-              ) : step.state === "active" ? (
-                <LoaderIcon
-                  className={cn(
-                    "mt-0.5 size-4 shrink-0 text-primary",
-                    reading && "animate-spin"
-                  )}
-                />
-              ) : (
-                <CircleDashedIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground/50" />
-              )}
-              <span className="min-w-0 flex-1">
-                <span
-                  className={cn(
-                    step.state === "done" && "line-through",
-                    step.state === "active" && "font-medium text-foreground"
-                  )}
-                >
-                  {step.label}
-                </span>
-                {step.detail ? (
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {step.detail}
-                  </span>
-                ) : null}
-              </span>
-            </li>
-          ))}
-        </ol>
-      </Section>
-
-      <Section title="The posting so far">
-        {model.posting.length ? (
-          <Chips chips={model.posting} />
-        ) : (
-          <p className="text-xs text-muted-foreground">Nothing yet.</p>
-        )}
-        {model.must.length ? (
-          <div className="mt-3 flex flex-col gap-1.5">
-            <p className="text-xs text-muted-foreground">
-              {model.nice.length ? "Must have" : "Skills"}
+      {view === "preview" && model.draft ? (
+        <div className="flex flex-col gap-4 px-4 pb-4">
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-medium text-muted-foreground">
+              In the list
             </p>
-            <Chips chips={model.must} tone="strong" />
-            {model.nice.length ? (
-              <>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Good to have
-                </p>
-                <Chips chips={model.nice} />
-              </>
-            ) : null}
+            <PostingCard draft={model.draft} />
           </div>
-        ) : null}
-      </Section>
-
-      {model.brief.length ? (
-        <Section
-          title="Who we're looking for"
-          aside={
-            <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-              <LockIcon className="size-3" />
-              Private
-            </span>
-          }
-        >
-          <Chips chips={model.brief} />
-        </Section>
+          <div className="flex flex-col gap-2">
+            <p className="text-xs font-medium text-muted-foreground">Opened</p>
+            <PostingPage draft={model.draft} />
+          </div>
+          <p className="text-xs text-muted-foreground">
+            How a candidate would meet it in the app. Nothing is posted yet.
+          </p>
+        </div>
       ) : null}
 
-      {people ? (
-        <Section title="People this would find">
-          <p
-            className={cn(
-              "text-2xl font-semibold tabular-nums transition-opacity",
-              reading && "opacity-40"
-            )}
-          >
-            {people.matching.toLocaleString("en-IN")}
-            <span className="ml-1 text-sm font-normal text-muted-foreground">
-              of {people.total.toLocaleString("en-IN")}
-            </span>
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {reading
-              ? "Updating…"
-              : "Estimated across the database, with this brief's filters."}
-          </p>
-          <Link
-            to={people.href}
-            className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
-          >
-            Open the search
-            <ArrowRightIcon className="size-3" />
-          </Link>
-        </Section>
+      {/* A search's preview: the three people it ranks first, as Search
+          Resume's cards draw them — with the verdict lines, because they are
+          the reason each one is there. */}
+      {view === "preview" && model.kind === "search" ? (
+        <div className="flex flex-col gap-3 px-4 pb-4">
+          {model.preview?.length ? (
+            <>
+              <p className="text-xs font-medium text-muted-foreground">
+                The first three it would find
+              </p>
+              {model.preview.map((person) => (
+                <PersonCard key={person.id} person={person} />
+              ))}
+              {people ? (
+                <p className="text-xs text-muted-foreground">
+                  {people.matching.toLocaleString("en-IN")} people in all — the
+                  rest are on Search Resume.
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {model.preview
+                ? "The filters leave nobody — loosen one and people appear here."
+                : "Nobody to show until the role is named."}
+            </p>
+          )}
+        </div>
+      ) : null}
+
+      {view === "details" ? (
+        <div className="flex flex-col gap-3 px-4 pb-4">
+          {plan ? (
+            <Panel title="Plan">
+              <ol className="flex flex-col">
+                {model.steps.map((step, index) => (
+                  <Step
+                    key={step.label}
+                    step={step}
+                    last={index === model.steps.length - 1}
+                    reading={reading}
+                  />
+                ))}
+              </ol>
+            </Panel>
+          ) : null}
+
+          {model.sections
+            ? model.sections.map((section) => {
+                const step =
+                  section.step === undefined
+                    ? undefined
+                    : model.steps[section.step]
+                return (
+                  <Panel
+                    key={section.id}
+                    icon={step?.icon}
+                    title={section.title}
+                    aside={
+                      <>
+                        {section.private ? (
+                          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <LockIcon className="size-3" />
+                            Private
+                          </span>
+                        ) : null}
+                        <StepStatus step={step} reading={reading} />
+                      </>
+                    }
+                  >
+                    {section.rows?.length ? (
+                      <Rows rows={section.rows} onEdit={edit} />
+                    ) : null}
+                    {section.chips?.map((group) => (
+                      <div
+                        key={group.label}
+                        className={cn(
+                          "flex flex-col gap-2",
+                          section.rows?.length && "border-t pt-3"
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-medium text-muted-foreground">
+                            {group.label}
+                          </p>
+                          {edit &&
+                          group.editId &&
+                          (group.items.length || group.empty) ? (
+                            <Pencil
+                              label={`Change ${group.label.toLowerCase()}`}
+                              onClick={() => edit(group.editId!)}
+                            />
+                          ) : null}
+                        </div>
+                        {group.items.length ? (
+                          <Chips chips={group.items} tone="strong" />
+                        ) : group.empty ? (
+                          <p className="text-sm leading-5 text-muted-foreground">
+                            {group.empty}
+                          </p>
+                        ) : (
+                          <Dash />
+                        )}
+                      </div>
+                    ))}
+                    {section.list ? (
+                      <div className="flex flex-col gap-2">
+                        <p className="text-xs font-medium text-muted-foreground">
+                          {section.list.label}
+                        </p>
+                        {section.list.items.length ? (
+                          <ol className="flex flex-col gap-1.5 text-sm">
+                            {section.list.items.map((item, index) => (
+                              <li key={item} className="flex gap-2">
+                                <span className="w-4 shrink-0 text-right text-muted-foreground tabular-nums">
+                                  {index + 1}.
+                                </span>
+                                <span className="min-w-0 break-words">
+                                  {item}
+                                </span>
+                              </li>
+                            ))}
+                          </ol>
+                        ) : (
+                          <p className="text-sm text-muted-foreground">
+                            {section.list.empty}
+                          </p>
+                        )}
+                      </div>
+                    ) : null}
+                  </Panel>
+                )
+              })
+            : null}
+
+          {!model.sections ? (
+            <>
+              <Panel
+                icon={model.steps[0]?.icon}
+                title="Job details"
+                aside={<StepStatus step={model.steps[0]} reading={reading} />}
+              >
+                <Rows rows={model.job} onEdit={edit} />
+              </Panel>
+
+              <Panel
+                icon={model.steps[1]?.icon}
+                title="Candidate details"
+                aside={<StepStatus step={model.steps[1]} reading={reading} />}
+              >
+                <Rows rows={model.requirements} onEdit={edit} />
+                <div className="flex flex-col gap-2 border-t pt-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      {model.nice.length ? "Must have" : "Skills"}
+                    </p>
+                    {edit && model.must.length ? (
+                      <Pencil
+                        label="Change the skills"
+                        onClick={() => edit("skills")}
+                      />
+                    ) : null}
+                  </div>
+                  {model.must.length ? (
+                    <Chips chips={model.must} tone="strong" />
+                  ) : (
+                    <Dash />
+                  )}
+                  {model.nice.length ? (
+                    <>
+                      <p className="mt-1 text-xs font-medium text-muted-foreground">
+                        Good to have
+                      </p>
+                      <Chips chips={model.nice} />
+                    </>
+                  ) : null}
+                </div>
+              </Panel>
+
+              {model.brief.length || model.screening !== null ? (
+                <Panel
+                  icon={model.steps[2]?.icon}
+                  title="Selection criteria"
+                  aside={
+                    <>
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                        <LockIcon className="size-3" />
+                        Private
+                      </span>
+                      <StepStatus step={model.steps[2]} reading={reading} />
+                    </>
+                  }
+                >
+                  {model.brief.length ? (
+                    <Rows rows={model.brief} onEdit={edit} />
+                  ) : null}
+                  {/* The optional tail of the step: what candidates answer when
+                  they apply. Drawn once the step has reached it. */}
+                  {model.screening !== null ? (
+                    <div
+                      className={cn(
+                        "flex flex-col gap-2",
+                        model.brief.length && "border-t pt-3"
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs font-medium text-muted-foreground">
+                          Screening questions
+                        </p>
+                        {edit ? (
+                          <Pencil
+                            label="Change the screening questions"
+                            onClick={() => edit("screening")}
+                          />
+                        ) : null}
+                      </div>
+                      {model.screening.length ? (
+                        <ol className="flex flex-col gap-1.5 text-sm">
+                          {model.screening.map((question, index) => (
+                            <li key={question} className="flex gap-2">
+                              <span className="w-4 shrink-0 text-right text-muted-foreground tabular-nums">
+                                {index + 1}.
+                              </span>
+                              <span className="min-w-0 break-words">
+                                {question}
+                              </span>
+                            </li>
+                          ))}
+                        </ol>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">
+                          None — candidates apply straight away.
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
+                </Panel>
+              ) : null}
+            </>
+          ) : null}
+
+          {people ? (
+            <Panel icon={UsersIcon} title="People this would find" tone="muted">
+              <p
+                className={cn(
+                  "text-2xl font-semibold tabular-nums transition-opacity",
+                  reading && "opacity-40"
+                )}
+              >
+                {people.matching.toLocaleString("en-IN")}
+                <span className="ml-1.5 text-sm font-normal text-muted-foreground">
+                  of {people.total.toLocaleString("en-IN")}
+                </span>
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {reading
+                  ? "Updating…"
+                  : "Estimated across the database, with this brief's filters."}
+              </p>
+              <Link
+                to={people.href}
+                className="inline-flex items-center gap-1 self-start text-xs font-medium text-primary hover:underline"
+              >
+                Open the search
+                <ArrowRightIcon className="size-3" />
+              </Link>
+            </Panel>
+          ) : null}
+        </div>
       ) : null}
     </aside>
   )
 }
 
-function Section({
+/**
+ * One step of the plan: the glyph in a column of its own, the line down from
+ * it to the next glyph, and the label and detail beside. The line is drawn
+ * from the glyph's centre to the bottom of the row, so the gap between steps
+ * is the row's own padding rather than a flex gap the line could not cross.
+ */
+function Step({
+  step,
+  last,
+  reading,
+}: {
+  step: RailStep
+  last: boolean
+  reading: boolean
+}) {
+  const active = step.state === "active"
+  return (
+    <li
+      className={cn(
+        "relative flex gap-3 pb-4 text-sm",
+        !last &&
+          "after:absolute after:top-6 after:bottom-0 after:left-[9px] after:w-px after:bg-border"
+      )}
+    >
+      <Glyph state={step.state} reading={reading} className="mt-px" />
+      <span className="flex min-w-0 flex-1 flex-col">
+        <span
+          className={cn(
+            active ? "font-medium text-foreground" : "text-muted-foreground"
+          )}
+        >
+          {step.label}
+        </span>
+        {step.detail ? (
+          <span className="truncate text-xs text-muted-foreground">
+            {step.detail}
+          </span>
+        ) : null}
+      </span>
+    </li>
+  )
+}
+
+/** The step's mark: a filled tick, a ring with a dot (a spinner while reading), an empty ring. */
+function Glyph({
+  state,
+  reading,
+  className,
+}: {
+  state: RailStep["state"]
+  reading: boolean
+  className?: string
+}) {
+  const active = state === "active"
+  const done = state === "done"
+  return (
+    <span
+      className={cn(
+        "relative z-10 grid size-5 shrink-0 place-items-center rounded-full",
+        done && "bg-primary text-primary-foreground",
+        active && "border-2 border-primary text-primary",
+        state === "waiting" && "border border-border",
+        state === "skipped" && "bg-muted text-muted-foreground",
+        className
+      )}
+    >
+      {done ? (
+        <CheckIcon className="size-3" strokeWidth={3} />
+      ) : state === "skipped" ? (
+        <MinusIcon className="size-3" strokeWidth={3} />
+      ) : active ? (
+        reading ? (
+          <LoaderIcon className="size-3 animate-spin" />
+        ) : (
+          <span className="size-1.5 rounded-full bg-primary" />
+        )
+      ) : null}
+    </span>
+  )
+}
+
+/**
+ * The plan across the top of the chat — "Chat with rail v2". Four segments
+ * with a rule between, each an icon tile beside "Step N" over the step's
+ * name, the current one underlined in the brand — a stepper of the kind a
+ * multi-page form draws, since that is what the five stages are. Done steps
+ * swap their icon for a tick; the current one spins while an answer is read.
+ *
+ * SIZED BY WHAT IT SAYS. Each step takes an equal share of the bar and
+ * stretches only if its own words need more (`flex-1` with no `min-w-0`,
+ * so a segment never shrinks below its label), so four steps fit the bar
+ * at any width that can hold their names, and nothing wraps or is cut.
+ * Narrower than that the bar scrolls sideways, snapping to a step, with
+ * the current step scrolled into view as it changes; the scrollbar is not
+ * drawn, the step cut off at the edge being the affordance. It sits inside
+ * the chat column, not across the rail, so it is the conversation's
+ * progress and the rail stays the posting's record.
+ */
+export function PlanBar({
+  steps,
+  reading,
+  className,
+}: {
+  steps: RailStep[]
+  reading: boolean
+  className?: string
+}) {
+  const current = React.useRef<HTMLLIElement>(null)
+  const activeLabel = steps.find((step) => step.state === "active")?.label
+  React.useEffect(() => {
+    current.current?.scrollIntoView({
+      inline: "nearest",
+      block: "nearest",
+      behavior: "smooth",
+    })
+  }, [activeLabel])
+
+  return (
+    <ol
+      aria-label="Plan"
+      className={cn(
+        "flex shrink-0 snap-x [scrollbar-width:none] divide-x overflow-x-auto border-b bg-background [&::-webkit-scrollbar]:hidden",
+        className
+      )}
+    >
+      {steps.map((step, index) => {
+        const active = step.state === "active"
+        const done = step.state === "done"
+        const Icon = step.icon
+        return (
+          <li
+            key={step.label}
+            ref={active ? current : undefined}
+            aria-current={active ? "step" : undefined}
+            className={cn(
+              "relative flex flex-1 snap-start items-center gap-3 px-4 py-3",
+              // The underline: a bar along the segment's bottom edge, over
+              // the rail's own border.
+              active &&
+                "after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:bg-primary"
+            )}
+          >
+            {/* The step's own icon, always; done is a badge on the tile's
+                corner — a white tick in a brand circle — not a tick in
+                place of the icon, so a finished step still says what it
+                was. */}
+            <span
+              className={cn(
+                "relative grid size-10 shrink-0 place-items-center rounded-lg bg-muted",
+                step.state === "waiting"
+                  ? "text-muted-foreground"
+                  : "text-foreground"
+              )}
+            >
+              {active && reading ? (
+                <LoaderIcon className="size-5 animate-spin" />
+              ) : (
+                <Icon className="size-5" />
+              )}
+              {done ? (
+                <span
+                  aria-label="Done"
+                  className="absolute -top-1 -right-1 grid size-4 place-items-center rounded-full bg-primary text-primary-foreground ring-2 ring-background"
+                >
+                  <CheckIcon className="size-2.5" strokeWidth={3} />
+                </span>
+              ) : step.state === "skipped" ? (
+                <span
+                  aria-label="Skipped"
+                  className="absolute -top-1 -right-1 grid size-4 place-items-center rounded-full bg-muted-foreground text-background ring-2 ring-background"
+                >
+                  <MinusIcon className="size-2.5" strokeWidth={3} />
+                </span>
+              ) : null}
+            </span>
+            <span className="flex flex-col">
+              <span className="text-xs text-muted-foreground">
+                Step {index + 1}
+              </span>
+              <span
+                className={cn(
+                  "flex items-center gap-1 text-sm leading-5 font-semibold whitespace-nowrap",
+                  step.state === "waiting"
+                    ? "text-muted-foreground"
+                    : "text-foreground"
+                )}
+              >
+                {step.label}
+                {step.private ? (
+                  <LockIcon
+                    className="size-3 shrink-0 text-muted-foreground"
+                    aria-label="Private"
+                  />
+                ) : null}
+              </span>
+            </span>
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+/**
+ * Label beside value. A missing value is a dash, so the row still says what
+ * it is for. The pencil shows on hover or focus, on rows that have a value
+ * to change — a dash is a question the conversation is about to ask anyway.
+ */
+function Rows({
+  rows,
+  onEdit,
+}: {
+  rows: RailRow[]
+  onEdit?: (id: string) => void
+}) {
+  return (
+    <dl className="grid grid-cols-[minmax(5.5rem,auto)_1fr] gap-x-3 gap-y-1.5 text-sm">
+      {rows.map((row) => {
+        const id = row.id
+        const editable = onEdit && id && row.value !== null
+        return (
+          <div key={row.label} className="group/row contents">
+            <dt className="py-0.5 text-xs leading-5 text-muted-foreground">
+              {row.label}
+            </dt>
+            <dd className="flex min-w-0 items-start gap-1 py-0.5 leading-5">
+              <span className="min-w-0 flex-1 font-medium break-words">
+                {row.value ?? <Dash />}
+              </span>
+              {editable ? (
+                <Pencil
+                  label={`Change ${row.label.toLowerCase()}`}
+                  onClick={() => onEdit(id)}
+                  className="-my-0.5 opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"
+                />
+              ) : null}
+            </dd>
+          </div>
+        )
+      })}
+    </dl>
+  )
+}
+
+function Pencil({
+  label,
+  onClick,
+  className,
+}: {
+  label: string
+  onClick: () => void
+  className?: string
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className={cn(
+        "grid size-6 shrink-0 place-items-center rounded-full text-muted-foreground transition-[opacity,color,background-color] outline-none hover:bg-muted hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50",
+        className
+      )}
+    >
+      <PencilIcon className="size-3.5" />
+    </button>
+  )
+}
+
+function Dash() {
+  return (
+    <span className="text-muted-foreground/50" aria-label="Not yet">
+      —
+    </span>
+  )
+}
+
+/**
+ * A card per section, in the Details view — headed by the step's own icon
+ * and its state, so the rail's sections read as the bar's steps opened up:
+ * done, in progress with its count, or next. `muted` is the count's card,
+ * which is a figure rather than a record.
+ */
+function Panel({
+  icon: Icon,
   title,
   aside,
+  tone = "card",
   children,
 }: {
+  icon?: LucideIcon
   title: string
   aside?: React.ReactNode
+  tone?: "card" | "muted"
   children: React.ReactNode
 }) {
   return (
-    <section className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-2">
-        <h2 className="text-xs font-medium text-muted-foreground">{title}</h2>
-        {aside}
+    <section
+      className={cn(
+        "flex flex-col rounded-2xl border",
+        tone === "muted" ? "bg-muted/40" : "bg-background"
+      )}
+    >
+      <div className="flex items-center gap-2.5 px-3.5 pt-3 pb-2.5">
+        {Icon ? (
+          <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+            <Icon className="size-4" />
+          </span>
+        ) : null}
+        <h2 className="min-w-0 flex-1 truncate text-sm font-semibold">
+          {title}
+        </h2>
+        <div className="flex shrink-0 items-center gap-2">{aside}</div>
       </div>
-      {children}
+      <div className="flex flex-col gap-3 border-t px-3.5 py-3">{children}</div>
     </section>
+  )
+}
+
+/** The step's state as a small chip: a tick, its count, or "Next". */
+function StepStatus({
+  step,
+  reading,
+}: {
+  step: RailStep | undefined
+  reading: boolean
+}) {
+  if (!step) return null
+  if (step.state === "done")
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+        <CheckIcon className="size-3" strokeWidth={3} />
+        Done
+      </span>
+    )
+  if (step.state === "skipped")
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
+        <MinusIcon className="size-3" strokeWidth={3} />
+        Skipped
+      </span>
+    )
+  if (step.state === "active")
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-foreground">
+        {reading ? (
+          <LoaderIcon className="size-3 animate-spin" />
+        ) : (
+          <span className="size-1.5 rounded-full bg-primary" />
+        )}
+        {step.detail ?? "Now"}
+      </span>
+    )
+  return (
+    <span className="rounded-full px-2 py-0.5 text-xs font-medium text-muted-foreground">
+      Next
+    </span>
   )
 }
 
@@ -203,6 +783,45 @@ function Chips({
           {chip}
         </span>
       ))}
+    </div>
+  )
+}
+
+/**
+ * One of a search's first three, for the Preview: who they are, how they
+ * score, and the verdict lines that put them there — the same lines the
+ * result cards draw, from the same `verdictsFor`.
+ */
+function PersonCard({ person }: { person: SearchPerson }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-2xl border bg-background p-3">
+      <div className="flex items-start gap-3">
+        <Avatar className="size-10">
+          <AvatarImage src={person.photo} alt="" />
+          <AvatarFallback>
+            {person.name
+              .split(" ")
+              .slice(0, 2)
+              .map((part) => part[0])
+              .join("")}
+          </AvatarFallback>
+        </Avatar>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium">{person.name}</p>
+          <p className="truncate text-xs text-muted-foreground">
+            {person.title
+              ? `${person.title}${person.company ? ` at ${person.company}` : ""}`
+              : person.location}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {person.years} yrs · {person.location}
+          </p>
+        </div>
+        <Badge variant="outline" className="shrink-0 tabular-nums">
+          {person.score}%
+        </Badge>
+      </div>
+      <CriteriaEvidence verdicts={person.verdicts} stacked />
     </div>
   )
 }

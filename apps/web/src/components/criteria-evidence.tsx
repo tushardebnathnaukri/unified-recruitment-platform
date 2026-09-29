@@ -18,7 +18,14 @@ import type { Verdict } from "@/lib/criteria"
  * before a word is read. The chips share one column width, so the sentences
  * start on the same edge on every card.
  */
-export function CriteriaEvidence({ verdicts }: { verdicts: Verdict[] }) {
+export function CriteriaEvidence({
+  verdicts,
+  stacked = false,
+}: {
+  verdicts: Verdict[]
+  /** Chip above sentence, for a column too narrow for the two side by side. */
+  stacked?: boolean
+}) {
   return (
     <ul
       aria-label="How they meet the criteria"
@@ -27,7 +34,10 @@ export function CriteriaEvidence({ verdicts }: { verdicts: Verdict[] }) {
       {verdicts.map((verdict) => (
         <li
           key={verdict.criterion}
-          className="grid items-start gap-x-3 gap-y-1 sm:grid-cols-[9rem_minmax(0,1fr)]"
+          className={cn(
+            "grid items-start gap-x-3 gap-y-1",
+            !stacked && "sm:grid-cols-[9rem_minmax(0,1fr)]"
+          )}
         >
           <Badge
             variant={verdict.met ? "success" : "outline"}

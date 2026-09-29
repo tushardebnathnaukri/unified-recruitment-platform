@@ -3,6 +3,7 @@ import { SparklesIcon } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { Kbd } from "@workspace/ui/components/kbd"
 import { Separator } from "@workspace/ui/components/separator"
+import { cn } from "@workspace/ui/lib/utils"
 import { SidebarTrigger } from "@workspace/ui/components/sidebar"
 import {
   Tooltip,
@@ -37,12 +38,27 @@ import { usePageHeaderSlot } from "@/components/page-header"
  * render a `PageHeader` into the slot below and the route title stands down;
  * see `page-header.tsx`.
  */
-export function SiteHeader({ title }: { title: string }) {
+export function SiteHeader({
+  title,
+  bare = false,
+}: {
+  title: string
+  /**
+   * No bar from `md` up. Below it the bar stays, because it holds the only
+   * trigger that can open the nav there.
+   */
+  bare?: boolean
+}) {
   const { available, open, setOpen } = useAthena()
   const { ref, filled } = usePageHeaderSlot()
 
   return (
-    <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b bg-background transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
+    <header
+      className={cn(
+        "flex h-(--header-height) shrink-0 items-center gap-2 border-b bg-background transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)",
+        bare && "md:hidden"
+      )}
+    >
       <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">
         <div className="flex items-center md:hidden">
           <SidebarTrigger className="-ml-1" />

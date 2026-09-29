@@ -367,9 +367,7 @@ function RecentQueryRow({ recent }: { recent: RecentQuery }) {
       </ItemContent>
 
       <ItemActions>
-        <span className="text-xs text-muted-foreground">
-          {recent.ranAgo}
-        </span>
+        <span className="text-xs text-muted-foreground">{recent.ranAgo}</span>
       </ItemActions>
     </Item>
   )

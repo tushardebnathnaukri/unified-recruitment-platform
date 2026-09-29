@@ -43,6 +43,9 @@ export function LocationPicker({
   chosen,
   onChange,
   countFor,
+  max,
+  empty = "No matching location.",
+  invalid,
 }: {
   label: string
   placeholder: string
@@ -50,16 +53,32 @@ export function LocationPicker({
   chosen: string[]
   onChange: (next: string[]) => void
   countFor?: (city: string) => number
+  /**
+   * The most it takes — the posting form's "up to 3 locations" and "up to 5
+   * industries". Past it a pick is ignored and the box stops offering, rather
+   * than the form failing on submit.
+   */
+  max?: number
+  /** Said when nothing matches. The form reuses this for industries and skills. */
+  empty?: string
+  invalid?: boolean
 }) {
+  const full = max !== undefined && chosen.length >= max
   return (
     <Combobox
       items={options}
       multiple
       autoHighlight
       value={chosen}
-      onValueChange={onChange}
+      onValueChange={(next: string[]) => {
+        if (max === undefined || next.length <= max) onChange(next)
+      }}
     >
-      <ComboboxChips className="w-full" aria-label={label}>
+      <ComboboxChips
+        className="w-full"
+        aria-label={label}
+        aria-invalid={invalid || undefined}
+      >
         <ComboboxValue>
           {chosen.map((city) => (
             <ComboboxChip key={city} aria-label={city}>
@@ -71,11 +90,12 @@ export function LocationPicker({
             empty box, and beside three cities it reads as a fourth. */}
         <ComboboxChipsInput
           placeholder={chosen.length > 0 ? "" : placeholder}
+          disabled={full}
         />
       </ComboboxChips>
 
       <ComboboxContent>
-        <ComboboxEmpty>No matching location.</ComboboxEmpty>
+        <ComboboxEmpty>{empty}</ComboboxEmpty>
         <ComboboxList>
           {(city: string) => (
             <ComboboxItem key={city} value={city}>

@@ -16,6 +16,10 @@ import {
   nextQuestion,
   payLabel,
   readDescription,
+  readField,
+  readRanked,
+  currentOf,
+  postingItem,
   readPay,
   remainingFields,
   REMOTE,
@@ -209,6 +213,78 @@ export function refusalFor(kinds: string[]) {
   return `I've left out anything about ${said} — I can't screen on that.`
 }
 
+// --- Screening ----------------------------------------------------------------------
+
+/**
+ * THE SCREENING STEP: which questions candidates answer when they apply.
+ *
+ * PROPOSED FROM WHAT THE CHAT ALREADY KNOWS, never invented — a question per
+ * must-have skill, the years, the city (and whether a move would do), the
+ * team, the industry, and the two every posting asks (notice, expected
+ * pay). The recruiter ticks the ones to use and adds their own; the answer
+ * is the page's to read, one question per line, so a comma inside a
+ * question is only a comma. Up to ten, as the form allows.
+ */
+export const SCREENING_MAX = 10
+
+export function screeningFor(state: IntakeState): string[] {
+  const { draft, brief } = state
+  const questions: string[] = []
+  for (const skill of draft.skills.slice(0, 3))
+    questions.push(`How many years have you worked hands-on with ${skill}?`)
+  if (draft.experience)
+    questions.push(
+      `Do you have ${draft.experience.min}+ years of total experience?`
+    )
+  const city = draft.locations.find((place) => place !== REMOTE)
+  if (city)
+    questions.push(
+      brief.openToMovers === false
+        ? `Are you currently based in ${city}?`
+        : `Are you based in ${city}, or willing to relocate there?`
+    )
+  if (brief.ledTeam || draft.teamScale)
+    questions.push("Have you managed a team? If so, how large?")
+  if (brief.industries.length)
+    questions.push(
+      `Do you have experience in ${brief.industries.map(industryLabel).join(" or ")}?`
+    )
+  questions.push("What is your notice period?")
+  if (draft.pay) questions.push("What is your expected annual CTC?")
+  return questions.slice(0, 8)
+}
+
+/** One question per line; trimmed, unique, and no more than the form takes. */
+export function readScreening(text: string): string[] {
+  return unique(
+    text
+      .split(/\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+  ).slice(0, SCREENING_MAX)
+}
+
+/** The screening step as a questionnaire item — the proposals as ticks. */
+export function screeningItem(
+  state: IntakeState,
+  { change = false }: { change?: boolean } = {}
+): AskedItem {
+  const current = state.draft.screening
+  return {
+    id: "screening",
+    prompt: "Which questions should candidates answer when they apply?",
+    hint: "Optional. Asked before they can apply — up to ten. Tick the ones to use, or add your own.",
+    // Asked again to change them, every question already set is a tick too.
+    options: change
+      ? unique([...current, ...screeningFor(state)])
+      : screeningFor(state),
+    multiple: true,
+    required: change,
+    current: change ? current : undefined,
+    separator: "\n",
+  }
+}
+
 // --- The plan -------------------------------------------------------------------
 
 /** Whether a topic means anything for this draft. */
@@ -262,7 +338,7 @@ function nextTopic(plan: RefineId[], settled: RefineId[]) {
 export function coveredTopics(state: IntakeState): RefineId[] {
   const { brief, draft } = state
   const covered: [RefineId, boolean][] = [
-    ["skillsSplit", draft.niceSkills.length > 0],
+    ["skillsSplit", draft.niceSkills.length > 0 || Boolean(state.ranked)],
     ["adjacent", brief.adjacentTitles.length > 0],
     ["relocation", brief.openToMovers !== null],
     ["industry", brief.industries.length > 0],
@@ -287,7 +363,7 @@ export function enterRefine(
   const asking = plan[0] ?? null
   return {
     ...state,
-    stage: asking ? "refine" : "done",
+    stage: asking ? "refine" : "screen",
     plan,
     settled: [],
     asking,
@@ -345,13 +421,17 @@ const round = (n: number) => Math.round(n / 5) * 5
 const QUESTIONS: RefineQuestion[] = [
   {
     id: "skillsSplit",
-    ask: () => "Which of these are must-haves? The rest become good-to-haves.",
-    hint: "Must-haves decide who is shortlisted; good-to-haves only rank them.",
-    // Every listed skill as a checkbox — tick the must-haves. The chat had a
-    // chip for "all" and for the first two; a list of ticks says it directly.
-    options: (draft) => draft.skills,
+    ask: () => "Which of these are must-haves?",
+    hint: "Above the line decides who is shortlisted; below only ranks them. Drag to reorder, or add your own.",
+    // ONLY ASKED WHEN THE SKILLS WERE NEVER RANKED — read from a JD or the
+    // opening sentence. The posting's own skills question is this same
+    // ranking, and `coveredTopics` drops this topic once it has been answered.
+    options: () => [],
     multiple: true,
     read: (answer, draft) => {
+      const ranked = readRanked(answer)
+      if (ranked)
+        return { draft: { skills: ranked.must, niceSkills: ranked.nice } }
       if (/^all\b/i.test(answer.trim())) {
         return { said: "Got it — all of them are must-haves." }
       }
@@ -546,6 +626,20 @@ export function refineItem(
     topic === "skillsSplit" || topic === "college"
       ? undefined
       : state.phrasings?.[topic]
+  if (topic === "skillsSplit") {
+    return {
+      id: topic,
+      prompt: question.ask(state.draft),
+      hint: question.hint,
+      options: [],
+      multiple: true,
+      required: false,
+      note: state.unread?.includes(topic)
+        ? "I couldn't use that last time — try again, or skip it."
+        : undefined,
+      rank: { must: state.draft.skills, nice: state.draft.niceSkills },
+    }
+  }
   return {
     id: topic,
     prompt: phrasing?.ask || question.ask(state.draft),
@@ -563,7 +657,10 @@ export function refineItem(
 }
 
 /** What each question is called in the recruiter's answer bubble. */
-export const LABELS: Record<FieldId | RefineId | "start" | "base", string> = {
+export const LABELS: Record<
+  FieldId | RefineId | "screening" | "start" | "base",
+  string
+> = {
   start: "Start",
   base: "Based on",
   title: "Role",
@@ -572,7 +669,8 @@ export const LABELS: Record<FieldId | RefineId | "start" | "base", string> = {
   skills: "Skills",
   pay: "Pay",
   mode: "Work mode",
-  skillsSplit: "Must-haves",
+  skillsSplit: "Skills",
+  screening: "Screening",
   adjacent: "Neighbouring roles",
   relocation: "Relocation",
   industry: "Industry",
@@ -616,7 +714,226 @@ export function decodeAnswers(prompt: string): Answers | null {
   }
 }
 
+// --- A change from the rail, as one turn -----------------------------------------
+
+/**
+ * A CHANGE IS A TURN TOO, and a different kind from an answer. The draft is
+ * folded from the turns, so a value changed beside the chat has to be
+ * recorded as one or it is gone on reload. It is its own marker rather than
+ * an `Answers:` turn because an answer fills what is empty and never
+ * overwrites — that is what lets a first sentence set the city without a
+ * later "Pune" clobbering it — and a change is exactly an overwrite. It
+ * names the field it changes, so it is read by that field's own reader and
+ * never by the model: there is nothing to interpret.
+ */
+const CHANGE = "Change: "
+
+export function encodeChange(answers: Answers) {
+  return `${CHANGE}${JSON.stringify(answers)}`
+}
+
+export function decodeChange(prompt: string): Answers | null {
+  if (!prompt.startsWith(CHANGE)) return null
+  return decodeAnswers(`${ANSWERS}${prompt.slice(CHANGE.length)}`)
+}
+
+const FIELD_IDS: FieldId[] = [
+  "title",
+  "locations",
+  "experience",
+  "skills",
+  "pay",
+  "mode",
+]
+const isField = (id: string): id is FieldId => FIELD_IDS.includes(id as FieldId)
+const isTopic = (id: string): id is RefineId =>
+  REFINE_ORDER.includes(id as RefineId)
+
+/**
+ * What "no" clears, topic by topic. The rules' readers answer "no" with a
+ * sentence and no change, which is right the first time — nothing was
+ * recorded, so nothing is to undo — and wrong for a change, where "no
+ * neighbouring titles" means take them off.
+ */
+const CLEARED: Partial<Record<RefineId, Partial<HiringBrief>>> = {
+  adjacent: { adjacentTitles: [] },
+  industry: { industries: [] },
+  targets: { targetCompanies: [] },
+  college: { institutes: [] },
+  exclusions: { exclusions: [] },
+}
+
+/**
+ * The question asked again, to change its answer: the same item as the first
+ * time, with the answer as it stands ticked, and required — the way out of a
+ * change is the card's close, not a skip that would record nothing.
+ */
+export function changeItem(
+  id: FieldId | RefineId | "screening",
+  state: IntakeState,
+  brand: Brand
+): AskedItem {
+  if (id === "screening") return screeningItem(state, { change: true })
+  if (isField(id)) {
+    const item = postingItem(id, state, brand)
+    return {
+      ...item,
+      required: true,
+      note: undefined,
+      // The skills come back as the ranking they are, not the title's
+      // suggestions with the line guessed.
+      rank:
+        id === "skills"
+          ? { must: state.draft.skills, nice: state.draft.niceSkills }
+          : undefined,
+      current: currentOf(state.draft, id),
+    }
+  }
+  const item = refineItem(id, state, brand)
+  return {
+    ...item,
+    required: true,
+    note: undefined,
+    current: currentTopic(state, id),
+  }
+}
+
+/** A refinement answer as the questionnaire would have said it. */
+function currentTopic(state: IntakeState, topic: RefineId): string[] {
+  const { brief, draft } = state
+  switch (topic) {
+    case "skillsSplit":
+      return draft.skills
+    case "adjacent":
+      return brief.adjacentTitles
+    case "relocation":
+      return brief.openToMovers === null
+        ? []
+        : brief.openToMovers
+          ? [
+              draft.relocationSupport
+                ? "Yes, and we'll support the move"
+                : "Yes, but no relocation support",
+            ]
+          : [`No, only people in ${cityOf(draft)}`]
+    case "industry":
+      return brief.industries.map(industryLabel)
+    case "scale":
+      return draft.teamScale ? [draft.teamScale] : []
+    case "targets":
+      return brief.targetCompanies
+    case "college":
+      return brief.institutes.includes(PREMIUM_INSTITUTES)
+        ? [PREMIUM_INSTITUTES]
+        : brief.institutes.length
+          ? brief.institutes
+          : [ALL_INSTITUTES]
+    case "budget":
+      return brief.budget
+        ? [brief.budget.firm ? "Firm" : `Up to ₹${brief.budget.upTo}L`]
+        : []
+    case "exclusions":
+      return brief.exclusions
+  }
+}
+
+/**
+ * A change, applied. Each entry is read by its own field's or topic's reader
+ * and written over what was there; the stage and the question being asked do
+ * not move, so a change mid-conversation lands and the conversation carries
+ * on where it was. What could not be read is said back and left as it was.
+ */
+function applyChange(
+  state: IntakeState,
+  change: Answers,
+  brand: Brand
+): IntakeState {
+  let draft = { ...state.draft }
+  let brief = { ...state.brief }
+  const refused: string[] = []
+  const unread: string[] = []
+  let ranked = state.ranked
+
+  for (const [id, value] of Object.entries(change)) {
+    if (value === null) continue
+    const kind = protectedIn(value)
+    if (kind) {
+      refused.push(kind)
+      continue
+    }
+    if (id === "screening") {
+      // Allowed to be empty: no questions is a real answer here.
+      draft = { ...draft, screening: readScreening(value) }
+      continue
+    }
+    if (isField(id)) {
+      const read = readField(id, value, brand)
+      if (!read) {
+        unread.push(id)
+        continue
+      }
+      draft = { ...draft, ...read }
+      if (id === "skills" && readRanked(value)) ranked = true
+      continue
+    }
+    if (!isTopic(id)) continue
+    const read = questionOf(id).read(value, draft, brand)
+    if (!read) {
+      unread.push(id)
+      continue
+    }
+    draft = { ...draft, ...read.draft }
+    brief = { ...brief, ...read.brief, ...(read.said ? CLEARED[id] : {}) }
+  }
+
+  const changed: Partial<PostingDraft> = {}
+  for (const id of [...FIELD_IDS, "niceSkills", "teamScale"] as const) {
+    if (JSON.stringify(draft[id]) !== JSON.stringify(state.draft[id]))
+      Object.assign(changed, { [id]: draft[id] })
+  }
+  const screened =
+    JSON.stringify(draft.screening) !== JSON.stringify(state.draft.screening)
+      ? [{ label: "Screening", value: screeningSaid(draft.screening) }]
+      : []
+  const labels = Object.keys(change).map(
+    (id) => LABELS[id as keyof typeof LABELS] ?? id
+  )
+  return {
+    ...state,
+    draft,
+    brief,
+    ranked,
+    unread,
+    missed: false,
+    engine: "rules",
+    fallback: undefined,
+    took: undefined,
+    heard: refused.length
+      ? refusalFor(refused)
+      : unread.length
+        ? `I couldn't read that change to ${labels.join(", ").toLowerCase()}, so it's as it was.`
+        : null,
+    noted: mergeNoted(
+      [...notedFrom(changed), ...screened],
+      refineNoted(state, draft, brief)
+    ),
+  }
+}
+
 // --- Reading an answer, by the rules --------------------------------------------
+
+/**
+ * Two lists of recorded rows as one, the first list's label winning. The
+ * posting's rows (`notedFrom`) and the brief's (`refineNoted`) both know
+ * about the skills split, so a turn that moves a skill below the line would
+ * otherwise say "Must have" twice.
+ */
+export function mergeNoted(first: Noted, second: Noted): Noted {
+  return [
+    ...first,
+    ...second.filter((row) => !first.some((seen) => seen.label === row.label)),
+  ]
+}
 
 /** What a refinement answer changed, as rows — labelled as the brief is. */
 export function refineNoted(
@@ -721,7 +1038,7 @@ function advanceRefine(
       ...ruled,
       settled,
       asking,
-      stage: asking ? "refine" : "done",
+      stage: asking ? "refine" : "screen",
     }
   }
 
@@ -764,6 +1081,9 @@ function advanceRefine(
 export type IntakeInput =
   { text: string; document?: boolean } | { answers: Answers }
 
+/** A turn, or a change made from the rail (`encodeChange`) — never a reading. */
+export type IntakeTurn = IntakeInput | { change: Answers }
+
 /**
  * One turn, by the rules, whichever stage it is in.
  *
@@ -779,9 +1099,13 @@ export type IntakeInput =
  */
 export function advance(
   state: IntakeState,
-  given: IntakeInput,
+  given: IntakeTurn,
   brand: Brand
 ): IntakeState {
+  // A change names its field and is read by that field's reader — before
+  // anything else, because it can arrive at any stage, including done.
+  if ("change" in given)
+    return applyChange({ ...state, noted: undefined }, given.change, brand)
   // How the posting starts comes first, and is never a model's to read.
   const start = advanceStart({ ...state, noted: undefined }, given, brand)
   if (start.done) return start.state
@@ -814,6 +1138,8 @@ function advanceRead(
           brand
         )
         if (value !== null && !filled(next.draft, id)) unread.push(id)
+        if (id === "skills" && value !== null && readRanked(value))
+          next = { ...next, ranked: true }
       }
     } else if (state.opener || input.document) {
       next = {
@@ -851,7 +1177,7 @@ function advanceRead(
     }
 
     const changed: Partial<PostingDraft> = {}
-    for (const id of FIELD_IDS) {
+    for (const id of [...FIELD_IDS, "niceSkills"] as const) {
       if (JSON.stringify(next.draft[id]) !== JSON.stringify(before.draft[id]))
         Object.assign(changed, { [id]: next.draft[id] })
     }
@@ -902,7 +1228,7 @@ function advanceRead(
     return {
       ...next,
       ...ruled,
-      stage: asking ? "refine" : "done",
+      stage: asking ? "refine" : "screen",
       asking,
       unread,
       missed: false,
@@ -911,59 +1237,102 @@ function advanceRead(
     }
   }
 
+  // SCREENING: the card's ticks and typed lines are the questions; a skip,
+  // or "post it now", is none. Read by the page, never the model.
+  if (state.stage === "screen") {
+    // A card answer about something else — a topic re-asked under an
+    // earlier plan, say — is a change to the posting, not a skipped step.
+    if ("answers" in input && !("screening" in input.answers))
+      return applyChange(state, input.answers, brand)
+    const value =
+      "answers" in input ? (input.answers.screening ?? null) : input.text
+    const screening =
+      value === null || isSkip(value) || value.trim() === POST_NOW
+        ? []
+        : readScreening(value)
+    return {
+      ...state,
+      ...ruled,
+      stage: "done",
+      asking: null,
+      draft: { ...state.draft, screening },
+      unread: [],
+      missed: false,
+      heard: screening.length ? null : "No screening questions, then.",
+      noted: screening.length
+        ? [{ label: "Screening", value: screeningSaid(screening) }]
+        : undefined,
+    }
+  }
+
   return state
 }
 
-const FIELD_IDS: FieldId[] = [
-  "title",
-  "locations",
-  "experience",
-  "skills",
-  "pay",
-  "mode",
-]
+/** "3 questions" — how a set of screening questions is said back. */
+function screeningSaid(questions: string[]) {
+  return questions.length
+    ? `${questions.length} question${questions.length === 1 ? "" : "s"}`
+    : "None"
+}
 
 // --- What it produces -----------------------------------------------------------
 
 /** The private brief as rows — only what was said, nothing defaulted. */
 export function briefRows(state: IntakeState) {
   const { brief, draft } = state
-  const rows: { label: string; value: string }[] = []
+  const rows: { label: string; value: string; topic: RefineId }[] = []
   if (brief.adjacentTitles.length)
     rows.push({
+      topic: "adjacent",
       label: "Also consider",
       value: brief.adjacentTitles.join(", "),
     })
   if (brief.openToMovers !== null)
     rows.push({
+      topic: "relocation",
       label: "Location",
       value: brief.openToMovers
         ? `In ${cityOf(draft)}, or willing to move there`
         : `Already in ${cityOf(draft)}`,
     })
   if (brief.industries.length)
-    rows.push({ label: "Industry", value: brief.industries.join(", ") })
+    rows.push({
+      topic: "industry",
+      label: "Industry",
+      value: brief.industries.join(", "),
+    })
   if (brief.ledTeam !== null)
     rows.push({
+      topic: "scale",
       label: "Has led a team",
       value: brief.ledTeam ? "Required" : "Not needed",
     })
   if (brief.targetCompanies.length)
     rows.push({
+      topic: "targets",
       label: "Look first at",
       value: brief.targetCompanies.join(", "),
     })
   if (brief.institutes.length)
-    rows.push({ label: "Prefer", value: brief.institutes.join(", ") })
+    rows.push({
+      topic: "college",
+      label: "Prefer",
+      value: brief.institutes.join(", "),
+    })
   if (brief.budget)
     rows.push({
+      topic: "budget",
       label: "Budget",
       value: brief.budget.firm
         ? "Firm"
         : `Can stretch to ₹${brief.budget.upTo}L`,
     })
   if (brief.exclusions.length)
-    rows.push({ label: "Rule out", value: brief.exclusions.join("; ") })
+    rows.push({
+      topic: "exclusions",
+      label: "Rule out",
+      value: brief.exclusions.join("; "),
+    })
   return rows
 }
 

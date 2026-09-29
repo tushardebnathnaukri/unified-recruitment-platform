@@ -75,6 +75,11 @@ export type PostingDraft = {
   niceSkills: string[]
   teamScale: string | null
   relocationSupport: boolean | null
+  /**
+   * The screening questions candidates answer when they apply — the form's
+   * "Add Screening Questions", up to ten, set in the chat's Screening step.
+   */
+  screening: string[]
 }
 
 /** The six fields the posting stage asks for — not the three refinement adds. */
@@ -91,6 +96,7 @@ export const EMPTY_DRAFT: PostingDraft = {
   niceSkills: [],
   teamScale: null,
   relocationSupport: null,
+  screening: [],
 }
 
 export const REMOTE = "Remote"
@@ -381,6 +387,74 @@ function listOf(text: string) {
     .filter(Boolean)
 }
 
+// --- Skills, ranked -------------------------------------------------------------
+
+/**
+ * THE SKILLS ARE ASKED ONCE, AS A RANKING. They used to be asked twice: tick
+ * the ones that matter, then — first thing in refinement — tick which of those
+ * are must-haves. Both were the same list and the same judgement. Now the one
+ * question is an ordered list with a line through it: above the line decides
+ * who is shortlisted, below only ranks them, and the order is the order the
+ * search weighs them in (`crit`, which Best match reads top down).
+ *
+ * THE CARD'S ANSWER IS WRITTEN IN WORDS, so the bubble and the model can read
+ * it as they would anything typed: "Must have: A, B · Good to have: C". The
+ * prefix is what marks it as a ranking rather than a list somebody typed, and
+ * it is always there — without it a ranking with nothing below the line would
+ * read the same as a typed list of some of the skills.
+ */
+const RANKED =
+  /^\s*must.?haves?:\s*(.*?)(?:\s*·\s*good.?to.?haves?:\s*(.*?))?\s*$/is
+
+/** Commas and "and" split skills; a slash does not, or UI/UX is two skills. */
+function skillsIn(text: string) {
+  return text
+    .split(/,|;|\band\b|&/i)
+    .map((part) => part.trim())
+    .filter(Boolean)
+}
+
+export function encodeRanked(must: string[], nice: string[]) {
+  const head = `Must have: ${must.join(", ")}`
+  return nice.length ? `${head} · Good to have: ${nice.join(", ")}` : head
+}
+
+/** A ranking the card sent, or null for text that is not one. */
+export function readRanked(
+  answer: string
+): { must: string[]; nice: string[] } | null {
+  const match = RANKED.exec(answer)
+  if (!match) return null
+  const must = [...new Set(skillsIn(match[1] ?? ""))]
+  const nice = [...new Set(skillsIn(match[2] ?? ""))].filter(
+    (skill) => !must.includes(skill)
+  )
+  // Something always sits above the line: a posting of nothing but
+  // good-to-haves has no must-haves to shortlist on.
+  if (!must.length && nice.length)
+    return { must: nice.slice(0, 1), nice: nice.slice(1) }
+  return must.length ? { must, nice } : null
+}
+
+/** How many suggestions start above the line when the title says nothing. */
+const MUST_BY_DEFAULT = 3
+
+/**
+ * Where a list of suggested skills starts: the ones the title marks as
+ * must-haves above the line, or — where it marks none, as hirist's pool never
+ * does — the top three, since the list is already in order of fit.
+ */
+export function rankFor(title: string | null, skills: string[], brand: Brand) {
+  const proposals = title ? skillsForTitle(title, brand) : []
+  const flagged = skills.filter((skill) =>
+    proposals.some(
+      (proposal) => proposal.skill === skill && proposal.tier === "must"
+    )
+  )
+  const must = flagged.length ? flagged : skills.slice(0, MUST_BY_DEFAULT)
+  return { must, nice: skills.filter((skill) => !must.includes(skill)) }
+}
+
 /**
  * Everything a first answer — or an attached JD — says about the posting.
  *
@@ -450,11 +524,18 @@ export function modeLabel(mode: WorkMode) {
 /** The posting's facts as rows — the summary card, and nothing invented. */
 export function summaryRows(draft: PostingDraft) {
   return [
+    // The job, then the requirements — the stepper's two groups.
     { label: "Role", value: draft.title ?? "—" },
     {
       label: "Location",
       value: draft.locations.length ? draft.locations.join(", ") : "—",
     },
+    { label: "Pay", value: draft.pay ? payLabel(draft.pay) : "Not disclosed" },
+    { label: "Work mode", value: draft.mode ? modeLabel(draft.mode) : "—" },
+    ...(draft.teamScale ? [{ label: "Team", value: draft.teamScale }] : []),
+    ...(draft.relocationSupport
+      ? [{ label: "Relocation", value: "Supported" }]
+      : []),
     {
       label: "Experience",
       value: draft.experience ? yearsLabel(draft.experience) : "—",
@@ -466,11 +547,13 @@ export function summaryRows(draft: PostingDraft) {
     ...(draft.niceSkills.length
       ? [{ label: "Good to have", value: draft.niceSkills.join(", ") }]
       : []),
-    ...(draft.teamScale ? [{ label: "Team", value: draft.teamScale }] : []),
-    { label: "Pay", value: draft.pay ? payLabel(draft.pay) : "Not disclosed" },
-    { label: "Work mode", value: draft.mode ? modeLabel(draft.mode) : "—" },
-    ...(draft.relocationSupport
-      ? [{ label: "Relocation", value: "Supported" }]
+    ...(draft.screening.length
+      ? [
+          {
+            label: "Screening",
+            value: `${draft.screening.length} question${draft.screening.length === 1 ? "" : "s"}`,
+          },
+        ]
       : []),
   ]
 }
@@ -556,7 +639,10 @@ function readSpan(value: string | null): Span | null {
  * search's are where people are, and a link that wrote one into the other
  * would quietly turn a posting into a filter.
  */
-export function postingHref(draft: PostingDraft) {
+export function postingHref(
+  draft: PostingDraft,
+  { industries = [] }: { industries?: string[] } = {}
+) {
   const params = new URLSearchParams()
   if (draft.title) params.set("title", draft.title)
   for (const city of draft.locations) params.append("loc", city)
@@ -567,6 +653,10 @@ export function postingHref(draft: PostingDraft) {
   for (const skill of draft.niceSkills) params.append("nice", skill)
   if (draft.teamScale) params.set("team", draft.teamScale)
   if (draft.relocationSupport) params.set("reloc", "1")
+  for (const question of draft.screening) params.append("sq", question)
+  // Not a posting field in the chat but a required one on the form, and the
+  // chat's opener asks for it — so the brief's industries come along.
+  for (const industry of industries) params.append("ind", industry)
   const query = params.toString()
   return query ? `/jobs/new?${query}` : "/jobs/new"
 }
@@ -611,6 +701,7 @@ export function draftFrom(params: URLSearchParams): PostingDraft {
     niceSkills: params.getAll("nice"),
     teamScale: params.get("team"),
     relocationSupport: params.get("reloc") === "1" ? true : null,
+    screening: params.getAll("sq"),
   }
 }
 
@@ -648,7 +739,8 @@ const EXAMPLES: Record<Brand, string[]> = {
   ],
 }
 
-/** The asking order: what the job is, where, how senior, then the refinements. */
+/** The asking order: the job (what, where, pay, mode), then the requirements
+ *  (years, skills) — see `JOB_FIELDS` / `REQUIREMENT_FIELDS` below. */
 const QUESTIONS: Question[] = [
   {
     id: "title",
@@ -700,47 +792,6 @@ const QUESTIONS: Question[] = [
     },
   },
   {
-    id: "experience",
-    ask: "How much experience should they have?",
-    retry: 'I need a number of years — "5–8", "12+", or "fresher".',
-    hint: "The band matters more than the exact number.",
-    options: () => [
-      "0–2 years",
-      "2–5 years",
-      "5–8 years",
-      "8–12 years",
-      "12+ years",
-    ],
-    skippable: true,
-    skipped: "Any experience, then.",
-    read: (answer) => {
-      const years = readYears(answer, { bare: true })
-      return years ? { experience: years } : null
-    },
-  },
-  {
-    id: "skills",
-    ask: "Which skills matter most?",
-    retry: 'Name them with commas between — "Forecasting, Key accounts".',
-    hint: "Suggested from the title. Tick the ones that matter, or add your own.",
-    multiple: true,
-    // One checkbox per skill. It used to be a single chip holding the whole
-    // set, because in a one-question-per-turn chat a tap was a whole answer;
-    // a questionnaire item takes several ticks and one submit.
-    options: (draft, brand) =>
-      draft.title
-        ? skillsForTitle(draft.title, brand)
-            .slice(0, 6)
-            .map((proposal) => proposal.skill)
-        : [],
-    skippable: true,
-    skipped: "No skills listed, then.",
-    read: (answer) => {
-      const skills = listOf(answer)
-      return skills.length ? { skills } : null
-    },
-  },
-  {
     id: "pay",
     ask: "What's the pay range?",
     retry: 'I need a figure in lakhs a year — "20–35L", "up to 60L", "1.2 Cr".',
@@ -766,7 +817,59 @@ const QUESTIONS: Question[] = [
       return mode ? { mode } : null
     },
   },
+  {
+    id: "experience",
+    ask: "How much experience should they have?",
+    retry: 'I need a number of years — "5–8", "12+", or "fresher".',
+    hint: "The band matters more than the exact number.",
+    options: () => [
+      "0–2 years",
+      "2–5 years",
+      "5–8 years",
+      "8–12 years",
+      "12+ years",
+    ],
+    skippable: true,
+    skipped: "Any experience, then.",
+    read: (answer) => {
+      const years = readYears(answer, { bare: true })
+      return years ? { experience: years } : null
+    },
+  },
+  {
+    id: "skills",
+    ask: "Which skills matter most?",
+    retry: 'Name them with commas between — "Forecasting, Key accounts".',
+    hint: "Suggested from the title, most important first. Above the line decides who is shortlisted; below only ranks them. Drag to reorder, or add your own.",
+    multiple: true,
+    // Drawn as a ranking (`rank` on the item), not as ticks — see `readRanked`.
+    options: (draft, brand) =>
+      draft.title
+        ? skillsForTitle(draft.title, brand)
+            .slice(0, 6)
+            .map((proposal) => proposal.skill)
+        : [],
+    skippable: true,
+    skipped: "No skills listed, then.",
+    read: (answer) => {
+      const ranked = readRanked(answer)
+      if (ranked) return { skills: ranked.must, niceSkills: ranked.nice }
+      const skills = skillsIn(answer)
+      return skills.length ? { skills } : null
+    },
+  },
 ]
+
+/**
+ * THE SIX FIELDS IN TWO GROUPS, which is the order they are asked in and the
+ * order the stepper ticks them off: what the job IS — title, where, pay, how
+ * it is worked — and then what the candidate MUST HAVE — years and skills.
+ * A recruiter reads "job details" and "candidate requirements" as two things,
+ * so the posting stage is two steps rather than one, and pay is asked before
+ * experience because it belongs to the job rather than to the person.
+ */
+export const JOB_FIELDS: FieldId[] = ["title", "locations", "pay", "mode"]
+export const REQUIREMENT_FIELDS: FieldId[] = ["experience", "skills"]
 
 const SKIP =
   /^(skip|no|none|nope|n\/?a|any|not sure|doesn'?t matter|don'?t know|pass)\.?$/i
@@ -789,7 +892,7 @@ export type IntakeState = {
    * is the finished card. One state carries all three so the conversation is
    * one conversation — a correction during refinement still reaches the draft.
    */
-  stage: "posting" | "refine" | "done"
+  stage: "posting" | "refine" | "screen" | "done"
   draft: PostingDraft
   skipped: FieldId[]
   /** The private half — who to search for and screen on. Never posted. */
@@ -798,6 +901,12 @@ export type IntakeState = {
   plan: RefineId[]
   /** Refinement topics answered or skipped. */
   settled: RefineId[]
+  /**
+   * The skills were ranked on the card, so which are must-haves is already
+   * said — even when nothing went below the line, which leaves no trace on
+   * the draft. Keeps refinement from asking the same question again.
+   */
+  ranked?: boolean
   /** The question being asked, or null once there is nothing left to ask. */
   asking: FieldId | RefineId | null
   /**
@@ -860,8 +969,12 @@ export type Phrasing = { ask: string; hint: string; options: string[] }
  * page draws, and the only thing it needs to know about a question.
  */
 export type AskedItem = {
-  /** A posting field, a refinement topic, or one of the two start questions. */
-  id: FieldId | RefineId | "start" | "base"
+  /**
+   * A posting field, a refinement topic, the screening step, one of the two
+   * start questions — or a search question (`lib/intake.ts`). A string, so
+   * the two conversations share one card.
+   */
+  id: string
   prompt: string
   hint: string
   options: string[]
@@ -869,6 +982,22 @@ export type AskedItem = {
   required: boolean
   /** Said with a question whose last answer could not be read. */
   note?: string
+  /**
+   * Drawn as a ranking instead of choices — the skills, and the must-haves
+   * split when the skills came from a JD. Where the list starts.
+   */
+  rank?: { must: string[]; nice: string[] }
+  /**
+   * What the answer is NOW, when a question is asked again to change it: the
+   * matching options come up ticked, and a value that is not one of them
+   * sits in "Something else".
+   */
+  current?: string[]
+  /**
+   * What several ticks are joined with in the answer — ", " unless the
+   * values can hold commas themselves (screening questions: a newline).
+   */
+  separator?: string
 }
 
 export function nextQuestion(draft: PostingDraft, skipped: FieldId[]) {
@@ -905,7 +1034,11 @@ export function notedFrom(change: Partial<PostingDraft>): Noted {
     ["Role", change.title],
     ["Location", change.locations?.join(", ")],
     ["Experience", change.experience ? yearsLabel(change.experience) : null],
-    ["Skills", change.skills?.join(", ")],
+    [
+      change.niceSkills?.length ? "Must have" : "Skills",
+      change.skills?.join(", "),
+    ],
+    ["Good to have", change.niceSkills?.join(", ")],
     ["Pay", change.pay ? payLabel(change.pay) : null],
     ["Work mode", change.mode ? modeLabel(change.mode) : null],
   ]
@@ -1017,14 +1150,30 @@ export function postingItem(
   // Work mode is a closed list with labels of its own; Gemini offered the raw
   // values ("office", "hybrid") instead. Its wording of the question is kept.
   const fixed = id === "mode"
+  const options =
+    !fixed && phrasing?.options.length
+      ? phrasing.options
+      : question.options(state.draft, brand)
+  // THE SKILLS ARE A RANKING, AND ITS WORDS ARE THE PAGE'S: Gemini's hint
+  // says "tick the ones that matter", which a ranking cannot be answered by.
+  // Its suggestions are kept — they are often better than the title's.
+  if (id === "skills") {
+    return {
+      id,
+      prompt: question.ask,
+      hint: question.hint,
+      options: [],
+      multiple: true,
+      required: false,
+      note: state.unread?.includes(id) ? question.retry : undefined,
+      rank: rankFor(state.draft.title, options, brand),
+    }
+  }
   return {
     id,
     prompt: phrasing?.ask || question.ask,
     hint: phrasing?.hint || question.hint,
-    options:
-      !fixed && phrasing?.options.length
-        ? phrasing.options
-        : question.options(state.draft, brand),
+    options,
     multiple: question.multiple ?? false,
     required: !question.skippable,
     note: state.unread?.includes(id) ? question.retry : undefined,
@@ -1034,4 +1183,52 @@ export function postingItem(
 /** The rules' wording for a field — what the model is told is being asked. */
 export function askFor(id: FieldId) {
   return QUESTIONS.find((entry) => entry.id === id)?.ask ?? ""
+}
+
+/**
+ * One field's answer, read by that field's own reader — for a change made
+ * from the rail, which names the field it is changing. Only THAT field comes
+ * back (plus the good-to-haves when the skills were ranked): the title's
+ * reader reads a whole sentence, and "Head of Sales" typed to change the
+ * title must not also move the city.
+ */
+export function readField(
+  id: FieldId,
+  answer: string,
+  brand: Brand
+): Partial<PostingDraft> | null {
+  const question = QUESTIONS.find((entry) => entry.id === id)
+  const read = question?.read(answer, brand)
+  // A TITLE TYPED INTO A BOX IS THE TITLE, WHOLE. The title's reader reads a
+  // sentence and pulls the role out of it — "VP, Enterprise Sales" came back
+  // as "VP" — which is right for the question's example sentences ("A Head
+  // of Marketing in Mumbai, 12+ years") and wrong for the form's box. A
+  // sentence gives a city or years as well; a bare title gives neither.
+  if (id === "title") {
+    const sentence = read?.title && (read.locations || read.experience)
+    const title = sentence ? read.title : answer.trim() || null
+    return title ? { title } : null
+  }
+  if (!read || !(id in read)) return null
+  const change: Partial<PostingDraft> = { [id]: read[id] }
+  if (id === "skills" && read.niceSkills) change.niceSkills = read.niceSkills
+  return change
+}
+
+/** The field's value as the questionnaire would have said it — to tick it. */
+export function currentOf(draft: PostingDraft, id: FieldId): string[] {
+  switch (id) {
+    case "title":
+      return draft.title ? [draft.title] : []
+    case "locations":
+      return draft.locations
+    case "experience":
+      return draft.experience ? [yearsLabel(draft.experience)] : []
+    case "pay":
+      return draft.pay ? [payLabel(draft.pay).replace(/ a year$/, "")] : []
+    case "mode":
+      return draft.mode ? [modeLabel(draft.mode)] : []
+    case "skills":
+      return draft.skills
+  }
 }

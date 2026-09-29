@@ -10,6 +10,46 @@ diff.
 
 ## Pending
 
+### Post a job: "Chat with rail v2", "Form beside chat" and "Chat, then form" on the Dashboard, and a /settings row
+
+- **Date:** 2026-09-28
+- **App:** `lib/posting-variant.ts`, `components/posting-form-panel.tsx`, the layout branch in
+  `routes/agent.tsx`, `PlanBar` in `components/posting-rail.tsx`, and a "Post a job" row on
+  `/settings` with four values (Chat with rail / Chat with rail v2 — the plan as a horizontal
+  stepper across the top, the rail without it / Form beside chat / Chat, then form — the rail
+  until the posting is gathered, then the form beside the chat).
+  Under the variant a posting conversation is the post-a-job form on the left (the same form as
+  `/jobs/new`, now `components/job-form.tsx`) with a "N of M people this would find · Open the
+  search" footer, and the chat as a 26rem column on the right with a left border; the rail is
+  gone and replies lose their posting card.
+- **Storybook:** the Settings row composition gains a fourth switcher, a five-way one ("Post a job": rail, rail v2, form, chat-then-form, Chat alt); there is no story for the
+  Dashboard's conversation layout, so nothing to redo there unless one is wanted.
+- **Figma:** the Settings composition frame, the same row.
+- [ ] Storybook
+- [ ] Figma
+
+
+### Post a job: the live iimjobs form, field for field
+
+- **Date:** 2026-09-28
+- **App:** `routes/new-job.tsx` rebuilt to mirror `beta-recruiter.iimjobs.com/post-job`: a Job
+  type card (Pro "Recommended" / Basic, each with "Know more", and a Pro + Boost switch with a
+  "Formerly Premium Posting" badge), then two steps under a two-segment progress bar. **Basic
+  Details** — "Already have a JD?" upload banner, Job title, Location (up to 3), Years of
+  experience (two selects), Skills (chips + a "Suggestion" row from the title), Job description
+  with "Generate JD with AI" on its label row, the "Format my JD" switch, Video JD, Industry (up
+  to 5), Category + Functional area (with a suggestion chip), Annual salary (four selects,
+  Lakhs/Crores), Hide salary, Graduating year, Course type chips; Cancel / Continue. **Additional
+  Details** — Add Screening Questions, Video/Audio Profile, Application redirection URL, Diversity
+  hiring chips, company name + "Don't show company name", LinkedIn share row; Back / Post job.
+  A "Switch to Basic?" dialog. Must-have / good-to-have skills, Team, Work mode and Relocation
+  are gone.
+- **Storybook:** `Compositions → Post a job form` (`compositions/job-form.stories.tsx`) draws the
+  old single-card form. Redo it as the two steps, plus the Basic dialog drawn in place.
+- **Figma:** the "Post a job form — board" frame (see `figma-map.json`), the same way.
+- [ ] Storybook
+- [ ] Figma
+
 ### The Agent is the Dashboard; the old Dashboard is gone
 
 - **Date:** 2026-09-28

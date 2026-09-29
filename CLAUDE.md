@@ -502,6 +502,10 @@ than shrank — Search Resume's "Looking for" skills are now `LookingFor` above 
 green chips they explain, and Juicebox's query pill is gone entirely, because the bar's title and
 back button were the same control.
 
+**The Dashboard has no top bar from `md` up** (`bare` on `SiteHeader`, set in `AppShell` by
+`useMatch("/dashboard/*")`), and its conversation is `md:h-svh` instead of the screen less the
+header. Below `md` the bar stays, because it holds the only trigger that opens the nav there.
+
 **Athena is the third column.** `AthenaProvider` sits inside `SidebarProvider` because opening the
 copilot collapses the nav (and restores whatever it was doing on close), which means it needs
 `useSidebar`. The pane is a sibling of `SidebarInset`, not a child — it sits *beside* the page, not
@@ -687,6 +691,92 @@ dropped when an answer already covered them. Refinement fills a private **hiring
 never posted — it becomes Search Resume's filters and criteria (`searchHrefFor`), which is what
 the finish card links to.
 
+**The skills are asked once, as a ranking** (`RankedSkills` in `components/agent-questionnaire.tsx`,
+`readRanked` / `encodeRanked` in `lib/job-intake.ts`): one ordered list with a line through it,
+must-haves above and good-to-haves below, reordered by drag or arrows, with "Add a skill" for your
+own. The order is the order the search weighs them in. It replaced ticking the skills and then being
+asked which were must-haves; refinement's `skillsSplit` now only appears when the skills came from a
+JD or the opener and were never ranked (`state.ranked`), and draws the same list. The card's answer is
+words — "Must have: A, B · Good to have: C" — read by the page, not the model, like the institutes.
+
+**The posting conversation has five layouts, picked on /settings** ("Post a job",
+`usePostingVariant` in `lib/posting-variant.ts`): **Chat with rail** (the default), **Chat with rail
+v2** (the same, with the Plan lifted out of the rail and drawn across the top of the page by
+`PlanBar` in `posting-rail.tsx`, inside the chat column rather than across the rail — five equal
+segments with a rule between, an icon tile (`icon` on `RailStep`, a tick badge on its corner once done, a spinner
+while reading) beside "Step N" over the name (the detail stays in the rail), the current one
+underlined in the brand; **sized by its words** — equal shares, a segment stretching only
+if its label needs more and never shrinking below it, so the bar fits wherever the four names fit
+and scrolls sideways (snap, no scrollbar drawn) only where they do not, the current step scrolled
+into view as it changes; the rail
+takes `plan={false}`; and **the questionnaire cards are part of the transcript** — drawn at the end
+of the reply that asks them, `inlineCards` in `agent.tsx`, the box below staying a plain reply box —
+where the other layouts dock them in the composer's place; a pencil's change card still docks), **Form beside chat**, and **Chat, then
+form** — the rail while the chat is asking, and the form beside the chat
+once `posting.stage === "done"`, so "Review and post" brings the form in rather than bouncing to
+`/jobs/new`; that one is the recommendation, kept as a third option so all three compare. Under the
+form layouts, while a posting is being gathered (or, under the hybrid, once it has), the post-a-job form (`components/job-form.tsx`, the same
+controlled form `/jobs/new` draws, its values and readers in `lib/job-form.ts`) takes the rail's
+place on the left and the chat becomes a 26rem column on the right; the rail's count sits at the
+foot of the form column, and the finish card's posting block is dropped from replies there because
+the form is the posting. `components/posting-form-panel.tsx` keeps the two in step **both ways**:
+a new reading writes the six chat-known fields into the form (derived during render, like the
+database's search box), and a hand edit to one of them, once done with (`onCommit` — a blur, a
+picker change), goes back as the same `Change:` turn the rail's pencil sends. The other fields are
+the form's alone. A chat-known field cannot be emptied from the form — nothing is sent, and the next
+reading puts the chat's value back. Below `@3xl/main` the chat is the page, as under the rail.
+**Beside the form the chat is a panel, after Hiremate's assistant** (`hiremate-dev-handoff.vercel.app/assistant`,
+read 29 Sep 2026): white and lifted by a shadow rather than ruled off, a header with the Aura, a
+name and the rail's status line, a hide button (a corner pill brings it back), replies as plain
+text rather than bubbles, and — once the posting is gathered — **`PostingStatusCard`** docked
+where the questionnaire goes: "Your posting is ready" or "Almost there" with the form's still-needed
+fields as chips (`stillNeeded` in `lib/job-form.ts`, reported up by the panel's `onStatus`), and a
+Post button disabled until the form is whole. Every docked card carries `DOCKED_CARD`
+(`lib/docked.ts`), a brand hairline along its top.
+
+**"Chat alt" is the posting as an onboarding, not a chat** (`wizard` in `lib/posting-variant.ts`;
+`components/posting-wizard.tsx`, its model in `lib/posting-wizard.ts`). Two panes: the left asks
+ONE question at a time — the prompt large, the options as the questionnaire's own rows
+(`AgentQuestionnaire frame="page"`: no card chrome, no close, a bigger title, and **the way forward
+always visible** — Next, or Save on a change, in a row under the choices beside Skip and the
+caller's `footer` (the wizard's Cancel), disabled until the question has an answer because pressed
+empty it would send a skip; a single answer still advances on its own when picked) and "Worth knowing"
+under it — **no chat box under the page**: every question is answered from its rows or its
+"Something else", and only the two that are free text by nature, the opening sentence and the JD,
+carry a box, as the question's own answer field. **A white top bar runs over both panes** —
+the back arrow (icon only), "Post a job", and the "Question N of M" count — because the Dashboard
+draws no bar of its own from `md` up and an onboarding is a place you are in rather than a page
+you are on. Under it the question pane opens on the step as a title with its icon and "Step N of
+4", then a progress bar of **one segment per step**, each filling as that step's questions are
+answered (the review segment fills when everything before it has) — so it says how far through
+this step and how far through the whole, and it is full at "All answered". **Back** re-asks the
+previous answered question with its answer filled in, the tracker's own click on that step; it
+undoes nothing, Save sends a change over the earlier turn, and it is disabled on the first question
+because the start choice cannot be re-asked — and the right is a **tracker of every question
+under the four steps**, done with its answer, current, skipped, or still to come with the question
+it will ask. **It is the same conversation as the other layouts**: the current question is the
+first item of the card the chat would have docked (`docked.items[0]`), submitted alone as an
+`Answers:` turn, which works because both readers take partial answers — the next card is simply
+the rest. Clicking a done step is the rail's pencil (the same change card, `Change:` turn, drawn in
+the question's place). Switch variant mid-way and nothing is lost. **The tracker lists questions
+that have not been asked yet**: the open posting fields, and — until refinement makes its plan —
+the refinement topics the rules would pick for this draft (`planFor`, less `coveredTopics`),
+tagged "Likely" because Gemini may choose differently; the count moves when the real plan lands
+(13 became 15 in one run). The skills split is not listed under Selection criteria, since the
+ranking under Candidate details already answers it. **"Worth knowing" is the page's own data, never
+invented** (`insightsFor`): `/insights`' pay percentiles under Pay (with the chosen city's median),
+its city shares under Location, its demand curve under Experience, the share of profiles outside
+the city under Relocation, the live roster under the title — and nothing under a question none of
+it bears on. `askingNow` is which question the pane is on; `wizardProgress` the "Question N of M".
+Below `@3xl/main` the tracker leaves the side and the question pane is the page: forward is
+answering (a single-answer row advances on its own, a pick-many has Continue, Skip is in the
+"Something else" row), backward is the labelled **Back** in the header, and the "Question N of M"
+count becomes a button that opens the same tracker as a bottom **Drawer**, where tapping an answer
+closes it and asks that question. One guard went into the
+Gemini reader for it: **a card can only skip what it asked** — shown one question, the model
+reported the fields it was not shown as skipped, so `reply.skipped` is filtered to the answered
+keys.
+
 **Questions are asked as a questionnaire docked in the composer's place**, the way Claude asks in
 plan mode (`components/agent-questionnaire.tsx`, over `@shadcn/react/questionnaire` in
 `packages/ui`). Number keys pick, not letters, because bare **A** and **D** are global
@@ -705,9 +795,57 @@ failure or a 25s timeout. Each reply says which reader produced it. Start choice
 family status, religion or caste and the like is not recorded: `protectedIn` catches it for the
 rules, the schema's `declined` field for Gemini, and `refusalFor` says so in the reply.
 
+**The posting has four steps, named for what a recruiter tells apart** (`railFor` in
+`lib/posting-rail.ts`): **Job details** (title, location, pay, work mode), **Candidate details** (experience, skills — "on the posting"), **Selection criteria** (the private brief;
+the name is Search Resume's own `crit`, which is what the brief becomes, **with the screening
+questions as its optional tail**) and **Review and post**. The chat gathers the first three; the
+last is the form's and is never ticked in the chat. **Screening is internally a stage of its own**
+(`stage: "screen"`, between refine and done — asked after the refinement answers so the proposals
+can use them — but drawn as part of step 3 on the bar, the rail and the finish card):
+`screeningFor` in `job-refine.ts` proposes questions from what the chat knows — one per must-have
+skill, the years, the city (and whether a move would do), the team, the industry, notice period,
+expected pay — as ticks on one card (`screeningItem`), with "Something else" for the recruiter's
+own; the answer is one question per line (`AskedItem.separator`, since a question can hold a comma)
+and is read by the page (`readScreening`), never the model. Skip and "post it now" mean none. The
+questions live on the draft (`PostingDraft.screening`, `?sq=` to the form, the form's `questions`
+list, a numbered list on the rail with a pencil and on the finish card), and a hand edit on the form
+comes back as a `Change:` turn — the one chat-known field a form edit can empty. The six
+posting fields are asked **in the stepper's two groups** — `JOB_FIELDS` then `REQUIREMENT_FIELDS`
+in `job-intake.ts`, pay before experience because it belongs to the job — and the rail, the finish
+card and the form panel use the same three section names, one name per thing.
+
+**The Dashboard's conversation is set on one type scale**: 12px for labels, eyebrows and chips
+(`text-xs`, `leading-5` in rows), 14px for body — `leading-relaxed` only for running prose in a
+bubble or a description, `leading-5` for rows, lists and the bar — 14px semibold for section and
+card headings (sentence case; the finish card's uppercase eyebrows are gone), 16px for a
+questionnaire's prompt, 24px for the count. The bubbles' "Got it." rows and the recruiter's answer
+rows use the same label/value pair as the rail's `Rows` and the finish card's.
+
+**The rail has two views, switched at its top** (no Aura or status line up there any more): **Details** (the record — a card per section,
+each headed by its step's icon and a status chip, done / its count / next, with the rows, the
+chips, the brief and pencils inside) and **Preview** — the list card, then the page it opens to: **the page** (`components/posting-page.tsx`: the posting opened as
+the iimjobs candidate app draws it — chrome, logo, title, "yrs · cities · Not posted yet", the
+drafted description behind "Read full description", "Who you'll hear from" with the signed-in
+recruiter, an inert Apply; the app's compare banner and Similar roles left out) and **the card** (`components/posting-card.tsx`: CleoDS's job
+card, from the Figma Dev Mode MCP at `127.0.0.1:3845` on node 5263:3766 — a 60×60 logo tile with
+16px corners, a semibold title, a "yrs · cities" line, on a 20px-radius card lifted by
+`elevation/2` (0 20 40 at 4% black, written out since the system has no elevation token); the logo tile stands empty because the chat never asks for a company, and a
+field not yet gathered is left out; a third, fainter line reads "Not posted yet" where the
+app's list puts the posting date). The count section shows under both. Which view
+is local state, not a link.
+
 **The stage rail beside the chat** (`lib/posting-rail.ts`, `components/posting-rail.tsx`, at
-`@3xl/main`) shows the stages, the posting as it stands, the brief, and **"N people this would
-find"**, counted by `poolFor` over the very search the finish card opens and then **projected
+`@3xl/main`, 375px wide — a phone's width, so the job card reads at the size a candidate sees) shows the stages as a stepper (tick, ring, empty ring, joined by a line — no
+strikethrough, which read as "cancelled"), the posting and the brief as **labelled rows** (a dash
+where an answer is still owed; the brief's rows are `briefRows`, the same the finish card prints),
+skills as chips (a set, not a fact), **a pencil on every row that asks that question again** — the
+same questionnaire card, docked in the composer's place with the current answer ticked, and Save
+sends a **`Change: {json}` turn** (`encodeChange`, beside `Answers:`), which `applyChange` in
+`lib/job-refine.ts` reads with that field's own reader and writes OVER the draft. It is its own
+turn kind because an answer never overwrites (that is what lets a first sentence set the city), it
+never goes to the model, it works at any stage including after "That's everything" (the loop in
+`answersFor` revives the last posting state for it), and a reload replays it — and **"N people this
+would find"**, counted by `poolFor` over the very search the finish card opens and then **projected
 onto the database** (`DATABASE` per brand — 40 lakh iimjobs, 35 lakh hirist, from their own
 public figures; one dealt person stands for `DATABASE / SAMPLE`, about 250), rounded to two
 figures. **So it no longer matches Search Resume**, which
@@ -715,6 +853,38 @@ still counts its dealt sample — a deliberate rail-only call; scaling Search Re
 how to make them agree again. Each reply also carries a work step — which reader read it, how long it
 took (measured around the call, not a staged delay) and what it recorded — collapsed in a
 `<details>`.
+
+**Search Resume is the Agent's second skill, and it is rules only** (`lib/search-intake.ts`,
+no model, no `/api` call). A sentence that starts a search ("find product managers in Pune with
+8+ years in FMCG" — `startsSearch`, or the Search people pill) opens it, and the turns fold into a
+`SearchState` beside the posting's, under `flow: "search"` in `answersFor`. Four stages, drawn as
+the same rail and the same `PlanBar` as a posting (`searchRailFor`, `kind: "search"`):
+**Requirement** (the sentence, read by `requirementOf` — "find" stripped, plurals singularised),
+**Search criteria** (one questionnaire card with what the sentence left open, from `lib/intake.ts`'s
+`QUESTIONS`; every answer is a filter, and "Skip these, find people now" is the way past all of
+them), **Calibrate** (optional: the three the search ranks first, each with its evidence lines, a
+thumb up or down per person, and Done re-orders the criteria by `recalibrate` — the reply says what
+moved, or that nothing did) and **Open the search**, a finish card whose link is `searchHrefFor`.
+Pencils on the rail's rows send the same `Change:` turn a posting's do, read by `advanceSearch`'s
+change branch; a change after calibration clears its order and the reply says so.
+
+**The sentence's industry is a filter, not just a fact about the results.** `searchParamsFor`
+writes it as `ind` from the chip, because the industry question is not asked again when the
+sentence named one and an answer to it would have written that key. City and years are not
+written, since the pool already conforms to them (`resultsFor`). Skills are criteria, never
+filters — they order, they remove nobody.
+
+**Calibration is skipped, and says so, when it could do nothing** (`onward`): with no criteria at
+all (no skill, no industry) there is nothing to re-order, and with filters that leave nobody
+there is nobody to show. Both go straight to done with a `heard` line; the rail's Calibrate step
+is `skipped` (a minus, muted — the fourth `RailStep` state) rather than ticked. **A finish card
+for a search with fewer than three people carries "Ways to widen it"**: `searchWidenings`, the
+brief page's step widenings (`widenings` in `lib/calibration.ts`) PLUS dropping each answered
+filter outright, each counted against the real pool and each a link to the search with that one
+change. The step alone is not enough — eight-year product managers here start at ₹40L, so "up to
+₹25L" widened to ₹35L still finds nobody, and "Any pay +39" is the honest offer. The rail's
+Preview tab is the same three people as the calibration card (`model.preview`), with the total
+under them; before the role is named it says so, and `[]` after means the filters left nobody.
 
 **The mic records and Gemini transcribes, when the AI server is up** (`startRecording` in
 `lib/dictation.ts` → `/api/transcribe` → `gemini-3.5-transcribe` on the Interactions API, with a
@@ -728,7 +898,19 @@ the message says where to look.
 
 **`/jobs/new` is the same posting as a form** (`routes/new-job.tsx`), linked from every question
 in the chat for anyone who would rather fill it in; `postingHref` / `draftFrom` carry the draft
-so far into it through the query string, so leaving half-way loses nothing. Posting only shows a toast.
+so far into it through the query string (plus the brief's industries as `ind`), so leaving
+half-way loses nothing. Posting only shows a toast. **It mirrors the live iimjobs post-job form**
+(`beta-recruiter.iimjobs.com/post-job`, read 28 Sep 2026): a Pro / Basic job type with a Pro + Boost
+switch, then Basic Details (title, up to 3 locations, experience, skills with title suggestions,
+JD, format toggle, video JD, up to 5 industries, category and functional area with a suggestion
+from `functionForTitle`, salary in lakhs or crores, hide salary, graduating year, course type) and
+Additional Details (screening questions, video/audio profile, redirect URL, diversity hiring,
+company and hiding it, LinkedIn share), with the live labels, required marks and limits. Basic is
+the same form with the Pro-only fields held back; switching trims to what Basic holds instead of
+discarding the draft as the live form does. The chat's facts with no field there fold in: good-to-have
+skills join the one skills list, remote becomes "Work from Home", team and relocation stay in the
+drafted description. The JD upload reads PDF/Word/text, "Generate JD with AI" is `describePosting`
+(rules, no model), and the screening dialog was never seen, so a question is only its wording.
 Every link from the chat into the form also carries the chat's own URL as `?chat=` (`withChat`),
 and the form then offers **Back to the chat** to that exact conversation instead of "Talk it
 through instead" (a fresh one). `chatFrom` honours only a `/dashboard` (or old `/agent`) URL, so it is not a redirect.

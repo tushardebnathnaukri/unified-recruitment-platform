@@ -32,6 +32,11 @@ export function defaultCriteria(skills: string[]) {
 /** Short enough for a chip: the named skill, or the sentence's first words. */
 function labelFor(text: string, named: string[]) {
   if (named.length > 0) return named.join(" · ")
+  // The default criterion's own shape names the skill even when the pool's
+  // reader does not know it — a chip should say "Product Marketing", not
+  // "hands-on experie…".
+  const skill = /^has hands-on experience with (.+)$/i.exec(text)
+  if (skill) return skill[1]
   const words = text.replace(/^(?:has|is|was)\s+/i, "").split(/\s+/)
   const short = words.slice(0, 3).join(" ")
   return words.length > 3 ? `${short}…` : short

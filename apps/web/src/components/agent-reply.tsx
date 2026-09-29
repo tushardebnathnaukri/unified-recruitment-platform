@@ -1,10 +1,13 @@
-import type * as React from "react"
+import * as React from "react"
 import { Link, useLocation } from "react-router"
 import {
   ArrowRightIcon,
   ChevronRightIcon,
   ClipboardListIcon,
   SearchIcon,
+  ThumbsDownIcon,
+  ThumbsUpIcon,
+  BookmarkIcon,
 } from "lucide-react"
 
 import {
@@ -12,10 +15,15 @@ import {
   AvatarFallback,
   AvatarImage,
 } from "@workspace/ui/components/avatar"
+import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
+import { toast } from "@workspace/ui/components/toast"
 import { cn } from "@workspace/ui/lib/utils"
 
+import { CriteriaEvidence } from "@/components/criteria-evidence"
 import type { Block } from "@/lib/agent"
+import { encodeAnswers } from "@/lib/job-refine"
+import type { SearchPerson } from "@/lib/search-intake"
 import { withChat } from "@/lib/job-intake"
 
 /**
@@ -214,20 +222,27 @@ function AgentBlock({
       <div className="overflow-hidden rounded-xl border bg-background">
         <Section title="The posting">
           <Rows rows={block.rows} />
-          <p className="mt-3 mb-1.5 text-xs font-medium text-muted-foreground">
+          <p className="mt-4 mb-2 text-xs font-medium text-muted-foreground">
             Description
           </p>
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">
-            {block.description}
-          </p>
+          <Description text={block.description} />
         </Section>
 
-        {block.brief.length ? (
-          <Section
-            title="Who we're looking for"
-            className="border-t bg-muted/30"
-          >
-            <Rows rows={block.brief} />
+        {block.brief.length || block.screening.length ? (
+          <Section title="Selection criteria" className="border-t bg-muted/30">
+            {block.brief.length ? <Rows rows={block.brief} /> : null}
+            {block.screening.length ? (
+              <div className={cn(block.brief.length && "mt-3")}>
+                <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                  Screening questions
+                </p>
+                <ol className="flex list-decimal flex-col gap-1 pl-5 text-sm">
+                  {block.screening.map((question) => (
+                    <li key={question}>{question}</li>
+                  ))}
+                </ol>
+              </div>
+            ) : null}
             {block.briefNote ? (
               <p className="mt-3 text-xs text-muted-foreground">
                 {block.briefNote}
@@ -253,6 +268,99 @@ function AgentBlock({
           >
             <SearchIcon data-icon="inline-start" />
             Find people now
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (block.kind === "calibrate") {
+    return <CalibrateCard people={block.people} live={live} onAsk={onAsk} />
+  }
+
+  if (block.kind === "search") {
+    return (
+      <div className="overflow-hidden rounded-xl border bg-background">
+        <Section title="The search">
+          <p className="text-2xl font-semibold tabular-nums">
+            {block.matching.toLocaleString("en-IN")}
+            <span className="ml-1.5 text-sm font-normal text-muted-foreground">
+              of {block.total.toLocaleString("en-IN")} people
+              {block.role ? ` for ${block.role}` : ""}
+            </span>
+          </p>
+          <div className="mt-3">
+            <Rows rows={block.rows} />
+          </div>
+        </Section>
+        {block.widenings.length ? (
+          <Section title="Ways to widen it" className="border-t">
+            <ul className="flex flex-col gap-1">
+              {block.widenings.map((widening) => (
+                <li key={widening.label}>
+                  <Link
+                    to={widening.href}
+                    className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-muted"
+                  >
+                    <span className="min-w-0 truncate">{widening.label}</span>
+                    <span className="shrink-0 text-xs font-medium text-primary tabular-nums">
+                      +{widening.gain.toLocaleString("en-IN")}
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Each opens the search with that one filter loosened. The gain is
+              counted, not guessed.
+            </p>
+          </Section>
+        ) : null}
+        {block.criteria.length ? (
+          <Section title="Ranked by" className="border-t bg-muted/30">
+            <ol className="flex flex-wrap gap-1.5">
+              {block.criteria.map((criterion, index) => (
+                <li
+                  key={criterion}
+                  className="inline-flex items-center gap-1.5 rounded-4xl bg-background px-2.5 py-1 text-xs font-medium ring-1 ring-foreground/10"
+                >
+                  <span className="text-muted-foreground tabular-nums">
+                    {index + 1}
+                  </span>
+                  {criterion}
+                </li>
+              ))}
+            </ol>
+            <p className="mt-3 text-xs text-muted-foreground">
+              The first counts most.{" "}
+              {block.calibrated
+                ? "Calibration is what set the order."
+                : "The order is what the requirement implied."}
+            </p>
+          </Section>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-2 border-t px-3 py-2.5">
+          <Button
+            nativeButton={false}
+            size="sm"
+            render={<Link to={block.href} />}
+          >
+            <SearchIcon data-icon="inline-start" />
+            Open Search Resume
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              toast.add({
+                title: "Saved to your recent searches",
+                description:
+                  "Saving isn't wired up in this prototype — it would sit under Recent searches on the Dashboard.",
+              })
+            }
+          >
+            <BookmarkIcon data-icon="inline-start" />
+            Save this search
           </Button>
         </div>
       </div>
@@ -365,24 +473,71 @@ function Section({
 }) {
   return (
     <div className={cn("px-3 py-3", className)}>
-      <p className="mb-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-        {title}
-      </p>
+      <p className="mb-2 text-sm leading-5 font-semibold">{title}</p>
       {children}
     </div>
   )
 }
 
+/** The rail's own rows: a small muted label beside a medium value. */
 function Rows({ rows }: { rows: { label: string; value: string }[] }) {
   return (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-sm">
+    <dl className="grid grid-cols-[minmax(5.5rem,auto)_1fr] gap-x-3 gap-y-1.5 text-sm">
       {rows.map((row) => (
         <div key={row.label} className="contents">
-          <dt className="text-muted-foreground">{row.label}</dt>
-          <dd className="min-w-0">{row.value}</dd>
+          <dt className="py-0.5 text-xs leading-5 text-muted-foreground">
+            {row.label}
+          </dt>
+          <dd className="min-w-0 py-0.5 leading-5 font-medium break-words">
+            {row.value}
+          </dd>
         </div>
       ))}
     </dl>
+  )
+}
+
+/**
+ * The drafted description, set as what it is rather than pre-wrapped text.
+ * `describePosting` writes blocks separated by a blank line, each a heading
+ * on its first line — "About the role", "What you will need", "Pay" — over
+ * a paragraph or "• " bullets. Set as one `<p>` the headings sat at the
+ * body's size and weight and the whole thing read as a wall; here a heading
+ * is a heading, a bullet a list item, and the body is the muted running
+ * text the rest of the card uses.
+ */
+function Description({ text }: { text: string }) {
+  const blocks = text
+    .split(/\n\s*\n/)
+    .map((block) => block.split("\n").filter((line) => line.trim()))
+    .filter((lines) => lines.length)
+  return (
+    <div className="flex flex-col gap-3">
+      {blocks.map(([heading, ...lines], index) => {
+        const bullets = lines.filter((line) => line.startsWith("• "))
+        const paragraphs = lines.filter((line) => !line.startsWith("• "))
+        return (
+          <div key={index} className="flex flex-col gap-1">
+            <p className="text-sm font-semibold">{heading}</p>
+            {paragraphs.map((line) => (
+              <p
+                key={line}
+                className="text-sm leading-relaxed text-muted-foreground"
+              >
+                {line}
+              </p>
+            ))}
+            {bullets.length ? (
+              <ul className="flex list-disc flex-col gap-0.5 pl-4 text-sm leading-relaxed text-muted-foreground marker:text-muted-foreground/60">
+                {bullets.map((line) => (
+                  <li key={line}>{line.slice(2)}</li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+        )
+      })}
+    </div>
   )
 }
 
@@ -392,4 +547,104 @@ function initialsOf(name: string) {
     .slice(0, 2)
     .map((part) => part[0])
     .join("")
+}
+
+/**
+ * Calibration: the three the search ranks first, a verdict on each, and one
+ * turn when the recruiter is done. THE VERDICT LINES ARE THE POINT, not the
+ * person — they are what turn "do you like them" into "does this criterion
+ * matter", which is the only thing a recruiter can usefully calibrate. Only
+ * the newest card takes verdicts; an old one shows the people without the
+ * buttons, since its answer is the next bubble.
+ */
+function CalibrateCard({
+  people,
+  live,
+  onAsk,
+}: {
+  people: SearchPerson[]
+  live: boolean
+  onAsk: (prompt: string) => void
+}) {
+  const [judged, setJudged] = React.useState<
+    Record<string, "kept" | "dropped">
+  >({})
+  const done = Object.keys(judged).length
+  const send = () =>
+    onAsk(
+      encodeAnswers({
+        calibrate: Object.entries(judged)
+          .map(([id, verdict]) => `${id}=${verdict}`)
+          .join("\n"),
+      })
+    )
+  return (
+    <div className="flex flex-col gap-2">
+      {people.map((person) => {
+        const verdict = judged[person.id]
+        return (
+          <div
+            key={person.id}
+            className={cn(
+              "rounded-xl border bg-background p-3 transition-opacity",
+              verdict === "dropped" && "opacity-60"
+            )}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium">{person.name}</p>
+                <p className="truncate text-xs text-muted-foreground">
+                  {person.title
+                    ? `${person.title}${person.company ? ` at ${person.company}` : ""}`
+                    : person.location}
+                  {" · "}
+                  {person.years} yrs
+                </p>
+              </div>
+              <Badge variant="outline" className="shrink-0 tabular-nums">
+                {person.score}%
+              </Badge>
+            </div>
+            <CriteriaEvidence verdicts={person.verdicts} />
+            {live ? (
+              <div className="mt-3 flex items-center gap-1.5">
+                <Button
+                  size="xs"
+                  variant={verdict === "kept" ? "default" : "outline"}
+                  onClick={() => setJudged({ ...judged, [person.id]: "kept" })}
+                >
+                  <ThumbsUpIcon data-icon="inline-start" />
+                  Looks right
+                </Button>
+                <Button
+                  size="xs"
+                  variant={verdict === "dropped" ? "default" : "outline"}
+                  onClick={() =>
+                    setJudged({ ...judged, [person.id]: "dropped" })
+                  }
+                >
+                  <ThumbsDownIcon data-icon="inline-start" />
+                  Not a fit
+                </Button>
+              </div>
+            ) : null}
+          </div>
+        )
+      })}
+      {live ? (
+        <div className="flex items-center gap-2 pt-1">
+          <Button size="sm" disabled={!done} onClick={send}>
+            {done ? `Done — ${done} of ${people.length}` : "Done"}
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => onAsk(encodeAnswers({ calibrate: null }))}
+          >
+            Skip this
+          </Button>
+        </div>
+      ) : null}
+    </div>
+  )
 }

@@ -9,6 +9,7 @@ import {
   notedFrom,
   isSkip,
   nextQuestion,
+  readRanked,
   remainingFields,
   REMOTE,
   titleCase,
@@ -25,6 +26,7 @@ import {
   enterRefine,
   industriesFor,
   institutesFor,
+  mergeNoted,
   readInstitutes,
   pendingTopics,
   POST_NOW,
@@ -35,6 +37,7 @@ import {
   screenExclusions,
   type HiringBrief,
   type IntakeInput,
+  type IntakeTurn,
   type RefineId,
 } from "@/lib/job-refine"
 import { advanceStart } from "@/lib/job-start"
@@ -69,9 +72,11 @@ const TIMEOUT_MS = 25_000
 
 export async function advanceWithAi(
   given: IntakeState,
-  asked: IntakeInput,
+  asked: IntakeTurn,
   brand: Brand
 ): Promise<IntakeState> {
+  // A change from the rail names its field; the page reads it, never the model.
+  if ("change" in asked) return advance(given, asked, brand)
   // How the posting starts is three buttons and a list of jobs: the page reads
   // it, and a pasted JD comes back from here marked as a document.
   const start = advanceStart({ ...given, noted: undefined }, asked, brand)
@@ -83,7 +88,10 @@ export async function advanceWithAi(
     fallback,
   })
 
-  if (state.stage === "done") return rules(undefined)
+  // Done, or the screening step — whose answer is ticks and lines the page
+  // reads itself: nothing for a model to interpret.
+  if (state.stage === "done" || state.stage === "screen")
+    return rules(undefined)
   // "Post it now" and a bare skip mean one thing; asking a model to read them
   // would only add a second and a chance to read them differently. A
   // questionnaire of nothing but skips is the same.
@@ -260,15 +268,30 @@ function fromPosting(
 ): IntakeState | null {
   if (!result || typeof result !== "object") return null
   const reply = result as Record<string, unknown>
-  const draft = readDraft(reply.draft, state.draft)
-  if (!draft) return null
+  const read = readDraft(reply.draft, state.draft)
+  if (!read) return null
+  // THE RANKING IS READ BY THE PAGE, like the institutes button: the card
+  // already says which skills are must-haves and in what order, and a model
+  // left to re-read it put the good-to-haves back among the skills.
+  const rankedSkills =
+    "answers" in input && input.answers.skills
+      ? readRanked(input.answers.skills)
+      : null
+  const draft: PostingDraft = rankedSkills
+    ? { ...read, skills: rankedSkills.must, niceSkills: rankedSkills.nice }
+    : read
 
   const isField = (id: string): id is FieldId =>
     FIELD_IDS.includes(id as FieldId)
+  // A CARD CAN ONLY SKIP WHAT IT ASKED. Asked one question at a time, the
+  // model was tempted to report the fields it was not shown as skipped.
+  const askedIds = "answers" in input ? Object.keys(input.answers) : null
   const skipped = unique([
     ...state.skipped,
     ...skippedIn(input).filter(isField),
-    ...strings(reply.skipped).filter(isField),
+    ...strings(reply.skipped)
+      .filter(isField)
+      .filter((id) => !askedIds || askedIds.includes(id)),
   ])
     // The title is never skippable, and a field with a value is not skipped.
     .filter((id) => id !== "title" && !filled(draft, id))
@@ -284,7 +307,7 @@ function fromPosting(
   // corrected or refused — and then the acknowledgement and the summary card
   // disagree. The model's sentence is used only when nothing was recorded.
   const changed: Partial<PostingDraft> = {}
-  for (const id of FIELD_IDS) {
+  for (const id of [...FIELD_IDS, "niceSkills"] as const) {
     if (JSON.stringify(draft[id]) !== JSON.stringify(state.draft[id])) {
       Object.assign(changed, { [id]: draft[id] })
     }
@@ -301,6 +324,7 @@ function fromPosting(
     skipped,
     asking,
     unread,
+    ranked: state.ranked || Boolean(rankedSkills),
     heard:
       [declined.length ? refusalFor(declined) : null, acknowledged]
         .filter(Boolean)
@@ -336,7 +360,7 @@ function fromPosting(
       [next.heard, refused.length ? refusalFor(refused) : null]
         .filter(Boolean)
         .join(" ") || null,
-    noted: [...noted, ...refineNoted(state, early, brief)],
+    noted: mergeNoted(noted, refineNoted(state, early, brief)),
   }
   if (asking !== null) return withBrief
 
@@ -502,6 +526,15 @@ function fromRefine(
     )
     draft.skills = listed.filter((skill) => !draft.niceSkills.includes(skill))
   }
+  // A ranking from the card is the page's to read, as in the posting stage.
+  const split =
+    "answers" in input && open.includes("skillsSplit")
+      ? readRanked(input.answers.skillsSplit ?? "")
+      : null
+  if (split) {
+    draft.skills = split.must
+    draft.niceSkills = split.nice
+  }
   const team = text(raw.teamScale)
   // A posting line, so it starts like one: the model sent "leads a team of 8".
   if (team) draft.teamScale = team[0].toUpperCase() + team.slice(1)
@@ -524,7 +557,8 @@ function fromRefine(
       ? answeredTopics.filter(
           (topic) =>
             modelUnread.includes(topic) &&
-            !(topic === "college" && collegeRead)
+            !(topic === "college" && collegeRead) &&
+            !(topic === "skillsSplit" && split)
         )
       : answeredTopics.length || declined.length
         ? []
@@ -552,7 +586,7 @@ function fromRefine(
 
   return {
     ...state,
-    stage: asking ? "refine" : "done",
+    stage: asking ? "refine" : "screen",
     draft,
     brief,
     settled,

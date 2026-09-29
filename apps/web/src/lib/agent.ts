@@ -26,6 +26,24 @@ import {
 } from "@/lib/applicants"
 import { performanceFor, worstDrop } from "@/lib/dashboard"
 import { criteriaFrom, recentSearchesFor, searchHref } from "@/lib/database"
+import {
+  advanceSearch,
+  personOf,
+  roleOf,
+  searchCriteria,
+  searchHrefFor as searchHrefOf,
+  searchItems,
+  searchPool,
+  searchReviewees,
+  searchRows,
+  searchSummary,
+  searchWidenings,
+  SEARCH_NOW,
+  startSearch,
+  type SearchInput,
+  type SearchPerson,
+  type SearchState,
+} from "@/lib/search-intake"
 import { CITIES, DEMAND, NATIONAL_MEDIAN, SALARY_SUMMARY } from "@/lib/insights"
 import {
   describePosting,
@@ -42,11 +60,14 @@ import {
 import { baseItem, describesRole, startItem } from "@/lib/job-start"
 import {
   briefRows,
+  advance,
   decodeAnswers,
+  decodeChange,
   LABELS,
   pendingTopics,
   POST_NOW,
   refineItem,
+  screeningItem,
   searchHrefFor,
   unknownCompanies,
   type IntakeInput,
@@ -132,6 +153,32 @@ export type Block =
       form?: { label: string; to: string }
       /** "Skip, post it now" — in refinement, beside the card, not inside it. */
       postNow?: string
+      /** What that link says, where it is not about posting. */
+      postNowLabel?: string
+    }
+  | {
+      /**
+       * The three people a search ranks first, each with the verdict lines
+       * that put them there, and thumbs up or down on each — the answer is
+       * one turn (`calibrate`), and it re-orders the criteria.
+       */
+      kind: "calibrate"
+      people: SearchPerson[]
+    }
+  | {
+      /** A search ready to open: how many it finds, on what, and where. */
+      kind: "search"
+      role: string | null
+      matching: number
+      total: number
+      /** The criteria in their final order — Best match's order. */
+      criteria: string[]
+      /** Whether calibration set the order, or the brief implied it. */
+      calibrated: boolean
+      rows: { label: string; value: string }[]
+      href: string
+      /** Ways to widen a search that found too few, each a counted link. */
+      widenings: { label: string; gain: number; href: string }[]
     }
   | {
       /** A posting ready for review: its facts, its description, and the form. */
@@ -145,6 +192,8 @@ export type Block =
       briefNote?: string
       /** Search Resume, opened on the brief. */
       search: string
+      /** What candidates answer when they apply. */
+      screening: string[]
     }
   | {
       /**
@@ -1264,7 +1313,7 @@ function routeFor(prompt: string): Skill | null {
  * leaving the chat half-way through loses nothing.
  */
 export function intakeReply(state: IntakeState, brand: Brand): Answer {
-  const to = postingHref(state.draft)
+  const to = postingHref(state.draft, { industries: state.brief.industries })
 
   // FIRST, HOW IT STARTS — a clarifying card, because a JD or an old posting
   // changes every question after it (`lib/job-start.ts`).
@@ -1348,7 +1397,9 @@ export function intakeReply(state: IntakeState, brand: Brand): Answer {
         )
       : state.stage === "refine"
         ? pendingTopics(state).map((topic) => refineItem(topic, state, brand))
-        : []
+        : state.stage === "screen"
+          ? [screeningItem(state)]
+          : []
 
   if (items.length) {
     const again = Boolean(state.unread?.length)
@@ -1357,9 +1408,11 @@ export function intakeReply(state: IntakeState, brand: Brand): Answer {
         ? again
           ? "A couple still need an answer."
           : "A few more things for the posting."
-        : state.settled.length === 0
-          ? "That's the posting. Before it goes up, a few quick questions to sharpen who we look for."
-          : "One more go at these."
+        : state.stage === "screen"
+          ? "That's the selection criteria. One optional addition — should candidates answer a few questions when they apply?"
+          : state.settled.length === 0
+            ? "That's the posting. Before it goes up, a few quick questions to sharpen who we look for."
+            : "One more go at these."
     return {
       said: [state.heard, lead].filter(Boolean).join(" "),
       noted: state.noted,
@@ -1367,7 +1420,12 @@ export function intakeReply(state: IntakeState, brand: Brand): Answer {
         {
           kind: "questionnaire",
           items,
-          submit: state.stage === "posting" ? "Continue" : "Finish",
+          submit:
+            state.stage === "posting"
+              ? "Continue"
+              : state.stage === "screen"
+                ? "Set questions"
+                : "Finish",
           ...(state.stage === "posting"
             ? { form: { label: "Fill in a form instead", to } }
             : { postNow: POST_NOW }),
@@ -1410,6 +1468,7 @@ export function intakeReply(state: IntakeState, brand: Brand): Answer {
         brief,
         briefNote: notes.join(" "),
         search: searchHrefFor(state, brand),
+        screening: state.draft.screening,
       },
     ],
   }
@@ -1461,12 +1520,21 @@ export function answersFor(
   pending: PendingReading | null
   /** The latest posting conversation's state, for the rail beside it. */
   posting: IntakeState | null
+  /** The latest search conversation's state, likewise. */
+  search: SearchState | null
+  /** Which of the two started last — whose rail the page shows. */
+  flow: "posting" | "search" | null
 } {
   const answers: (Answer | null)[] = []
   let intake: IntakeState | null = null
   let posting: IntakeState | null = null
   let turns: string[] = []
   let pending: PendingReading | null = null
+  // THE SEARCH CONVERSATION, folded the same way but never pending: its
+  // readers are rules, so every turn resolves here.
+  let searching: SearchState | null = null
+  let search: SearchState | null = null
+  let flow: "posting" | "search" | null = null
 
   for (const prompt of prompts) {
     if (pending) {
@@ -1477,12 +1545,99 @@ export function answersFor(
     const attached = attachmentIn(prompt)
     const exact = skillFor(prompt)
 
+    // A change from the rail, or a card answered late, while a search is the
+    // conversation on screen.
+    if (flow === "search" && search && !exact) {
+      const change =
+        decodeChange(prompt) ?? (!searching ? decodeAnswers(prompt) : null)
+      if (change) {
+        const before = search
+        search = advanceSearch(search, { change }, brand)
+        searching = search.stage === "done" ? null : search
+        answers.push({
+          ...searchReply(search, brand),
+          step: searchStepFor(before, search, brand),
+        })
+        continue
+      }
+    }
+
+    // A SEARCH STARTS on the pill, the `/` skill, or a sentence that asks to
+    // find people. The pill asks who you are looking for; a sentence is the
+    // answer to that already, and is read as the requirement.
+    if (
+      (exact && exact.id === "find") ||
+      (!intake &&
+        !searching &&
+        !exact &&
+        attached === null &&
+        startsSearch(prompt))
+    ) {
+      intake = null
+      flow = "search"
+      let next = startSearch()
+      if (!exact) next = advanceSearch(next, { text: prompt }, brand)
+      search = next
+      searching = next.stage === "done" ? null : next
+      answers.push(searchReply(next, brand))
+      continue
+    }
+
+    if (searching && !exact) {
+      const submitted = decodeAnswers(prompt)
+      const input: SearchInput = submitted
+        ? { answers: submitted }
+        : { text: prompt }
+      const before = searching
+      search = advanceSearch(searching, input, brand)
+      searching = search.stage === "done" ? null : search
+      answers.push({
+        ...searchReply(search, brand),
+        step: searchStepFor(before, search, brand),
+      })
+      continue
+    }
+
+    // A CHANGE FROM THE RAIL, at any point after the posting began — even
+    // after "That's everything", when the intake has already been handed
+    // back. It is read by the page, so it is never pending, and the reply
+    // is the conversation as it stands: the same card again, corrected.
+    // A QUESTIONNAIRE ANSWER THAT ARRIVES AFTER THE INTAKE HAS CLOSED IS A
+    // CHANGE. It can happen: Gemini re-reads a conversation in every new tab
+    // and does not always pick the same refinement topics, so a card
+    // answered under one plan can land after another plan has finished. A
+    // late answer to a posting question means the same thing a pencil
+    // does, and is read the same way — never as a question about the queue.
+    const late =
+      !intake && posting && flow === "posting" ? decodeAnswers(prompt) : null
+    const change =
+      flow === "posting"
+        ? (decodeChange(prompt) ??
+          (late && !("start" in late) && !("base" in late) ? late : null))
+        : null
+    if (change) {
+      const base = intake ?? posting
+      if (base) {
+        intake = advance(base, { change }, brand)
+        posting = intake
+        turns = [...turns, prompt]
+        answers.push({
+          ...intakeReply(intake, brand),
+          step: stepFor(base, intake),
+        })
+        if (intake.stage === "done") intake = null
+        continue
+      }
+    }
+
     if (
       (exact && exact.id === "posting") ||
       (!intake && !exact && attached === null && startsPosting(prompt))
     ) {
       intake = startIntake()
       posting = intake
+      searching = null
+      flow = "posting"
       // "Hire an FMCG product manager in Delhi" has already answered how it
       // starts — from scratch, with this sentence — so it is read as the
       // opener below rather than asked "How would you like to start?".
@@ -1542,7 +1697,127 @@ export function answersFor(
     answers.push(answerFor(prompt, brand, files))
   }
 
-  return { answers, pending, posting }
+  return { answers, pending, posting, search, flow }
+}
+
+/** The search skill, found the way free text finds it. */
+function startsSearch(prompt: string) {
+  if (prompt === byId("find").prompt) return true
+  return routeFor(prompt)?.id === "find"
+}
+
+/** What one search turn changed — the rail's rows, before and after. */
+function searchStepFor(
+  before: SearchState,
+  after: SearchState,
+  brand: Brand
+): WorkStep {
+  const rows = (state: SearchState) => {
+    const all = searchRows(state, brand)
+    return new Map(
+      [
+        ...all.requirement,
+        ...all.criteria,
+        { label: "Skills", value: all.skills.join(", ") || null },
+      ].map((row) => [row.label, row.value ?? "—"])
+    )
+  }
+  const was = rows(before)
+  const recorded = [...rows(after)]
+    .filter(([label, value]) => was.get(label) !== value && value !== "—")
+    .map(([label, value]) => ({ label, value }))
+  if (after.criteria && !before.criteria)
+    recorded.push({ label: "Criteria", value: after.criteria.join(" › ") })
+  return { by: "rules", recorded }
+}
+
+/**
+ * A turn of the search conversation, as a reply.
+ *
+ * The four stages in turn: ask for the requirement; ask what the sentence
+ * left out, as one card, with a way straight to the people; put the three
+ * the search ranks first up for a verdict; and open the search on all of it.
+ * Everything said is computed from the same pool Search Resume draws from.
+ */
+export function searchReply(state: SearchState, brand: Brand): Answer {
+  if (state.stage === "opener") {
+    return {
+      said: state.missed
+        ? (state.heard ??
+          "Who are you looking for? Say it in a sentence — the role, the city, how senior, and the skills that matter.")
+        : "Who are you looking for? Say it in a sentence — the role, the city, how senior, and the skills that matter. I'll only ask about what's missing.",
+      blocks: [],
+    }
+  }
+
+  if (state.stage === "criteria") {
+    const items = searchItems(state, brand)
+    const summary = searchSummary(state, brand)
+    return {
+      said: [
+        state.heard,
+        summary && !state.noted?.length ? `Looking for ${summary}.` : null,
+        "A few things the search can use — every one of them is a filter on the results.",
+      ]
+        .filter(Boolean)
+        .join(" "),
+      noted: state.noted,
+      blocks: [
+        {
+          kind: "questionnaire",
+          items,
+          submit: "Continue",
+          postNow: SEARCH_NOW,
+          postNowLabel: SEARCH_NOW,
+        },
+      ],
+    }
+  }
+
+  if (state.stage === "calibrate") {
+    const people = searchReviewees(state, brand).map(personOf)
+    return {
+      said: [
+        state.heard,
+        people.length
+          ? "These are the three the search ranks first. Say whether each is what you meant — it changes what counts, and it's optional."
+          : "The filters leave nobody to calibrate against — loosen one on the search, or open it as it is.",
+      ]
+        .filter(Boolean)
+        .join(" "),
+      noted: state.noted,
+      blocks: people.length ? [{ kind: "calibrate", people }] : [],
+    }
+  }
+
+  const pool = searchPool(state, brand)
+  const rows = searchRows(state, brand)
+  return {
+    said: [state.heard, "That's the search."].filter(Boolean).join(" "),
+    noted: state.noted,
+    blocks: [
+      {
+        kind: "search",
+        role: roleOf(state, brand),
+        matching: pool.matching.length,
+        total: pool.all.length,
+        criteria: searchCriteria(state, brand),
+        calibrated: state.criteria !== null,
+        rows: [
+          ...rows.requirement,
+          { label: "Skills", value: rows.skills.join(", ") || null },
+          ...rows.criteria,
+        ]
+          .filter((row) => row.value !== null)
+          .map((row) => ({ label: row.label, value: row.value! })),
+        href: searchHrefOf(state, brand),
+        // Offered only when the search found too few to be worth opening
+        // as it stands: fewer than the three calibration would have shown.
+        widenings:
+          pool.matching.length < 3 ? searchWidenings(state, brand) : [],
+      },
+    ],
+  }
 }
 
 /**

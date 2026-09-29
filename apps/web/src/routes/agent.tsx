@@ -5,6 +5,8 @@ import {
   CircleCheckIcon,
   ListChecksIcon,
   SparklesIcon,
+  MessageCircleIcon,
+  XIcon,
 } from "lucide-react"
 
 import { useBrand } from "@workspace/ui/components/brand-provider"
@@ -29,6 +31,7 @@ import {
   MessageScrollerViewport,
 } from "@workspace/ui/components/message-scroller"
 import { Spinner } from "@workspace/ui/components/spinner"
+import { toast } from "@workspace/ui/components/toast"
 import { cn } from "@workspace/ui/lib/utils"
 
 import { AgentComposer } from "@/components/agent-composer"
@@ -36,7 +39,10 @@ import { Aura, AuraStill } from "@/components/aura"
 import { StatTiles, WorkSections } from "@/components/overview"
 import { AgentQuestionnaire } from "@/components/agent-questionnaire"
 import { AgentBlocks } from "@/components/agent-reply"
-import { PostingRail } from "@/components/posting-rail"
+import { PostingFormPanel } from "@/components/posting-form-panel"
+import { PostingWizard } from "@/components/posting-wizard"
+import { PostingStatusCard } from "@/components/posting-status-card"
+import { PlanBar, PostingRail } from "@/components/posting-rail"
 import { useCollapseNav } from "@/components/use-collapse-nav"
 import {
   answersFor,
@@ -48,6 +54,7 @@ import {
   type WorkStep,
 } from "@/lib/agent"
 import { useAgentLandingVariant } from "@/lib/agent-landing-variant"
+import { usePostingVariant } from "@/lib/posting-variant"
 import {
   isSessionId,
   localTurns,
@@ -58,11 +65,20 @@ import {
 } from "@/lib/agent-sessions"
 import { dictationVocabulary } from "@/lib/dictation"
 import { openerChecks } from "@/lib/job-start"
-import { railFor } from "@/lib/posting-rail"
+import { railFor, searchRailFor } from "@/lib/posting-rail"
+import { searchChangeItem, SEARCH_LABELS } from "@/lib/search-intake"
 import { play } from "@/lib/sound"
 import type { IntakeState } from "@/lib/job-intake"
 import { advanceWithAi } from "@/lib/job-intake-ai"
-import { decodeAnswers, LABELS } from "@/lib/job-refine"
+import {
+  changeItem,
+  decodeAnswers,
+  decodeChange,
+  encodeChange,
+  LABELS,
+  type RefineId,
+} from "@/lib/job-refine"
+import type { FieldId } from "@/lib/job-intake"
 
 /**
  * The Agent — one box, and the whole product behind it.
@@ -242,9 +258,9 @@ export function AgentPage() {
 
   // Answered as a whole rather than turn by turn: a reply inside the posting
   // conversation depends on the turns before it (see `answersFor`).
-  const { turns, pending, posting } = React.useMemo(() => {
+  const { turns, pending, posting, search, flow } = React.useMemo(() => {
     const prompts = transcript ? transcript.split("\u0000") : []
-    const { answers, pending, posting } = answersFor(
+    const { answers, pending, posting, search, flow } = answersFor(
       prompts,
       brand,
       files,
@@ -253,6 +269,8 @@ export function AgentPage() {
     return {
       pending,
       posting,
+      search,
+      flow,
       turns: prompts.map((prompt, index) => ({
         id: `${index}-${prompt}`,
         prompt,
@@ -311,11 +329,78 @@ export function AgentPage() {
 
   // The rail beside a posting conversation: the steps, what has been
   // gathered, and how many people it would find. Only while there is one.
+  // Whichever conversation started last owns the rail.
   const rail = React.useMemo(
-    () => (posting ? railFor(posting, brand) : null),
-    [posting, brand]
+    () =>
+      flow === "search" && search
+        ? searchRailFor(search, brand)
+        : flow === "posting" && posting
+          ? railFor(posting, brand)
+          : null,
+    [flow, search, posting, brand]
   )
+  // What the form beside the chat still needs — for the chat's status card.
+  const [formMissing, setFormMissing] = React.useState<string[]>([])
   const showCard = Boolean(docked && last && closed !== last.id)
+
+  // "Form beside chat" (`lib/posting-variant.ts`): the post-a-job form takes
+  // the rail's place on the left and the chat becomes a column on the right.
+  // Only while there is a posting to fill; any other question is the plain
+  // conversation either way. "Chat, then form" is the same layout, entered
+  // only once the posting is gathered — the rail while it asks, the form
+  // at "Review and post".
+  const { variant: postingVariant } = usePostingVariant()
+  const formBeside =
+    flow === "posting" &&
+    posting !== null &&
+    rail !== null &&
+    (postingVariant === "form" ||
+      (postingVariant === "hybrid" && posting.stage === "done"))
+  // What the form beside the chat still needs, and whether the chat is
+  // tucked away to give the form the width — both cues from Hiremate's
+  // assistant: its last card is the form's submit, and it can be hidden.
+  // "Chat with rail v2": the plan across the top, the rail without it — and
+  // the questions asked IN the transcript, at the end of the reply that asks
+  // them, rather than docked where the box is. The box stays a plain reply
+  // box. A change card from the rail's pencil is a side action and still
+  // docks.
+  const planBar = postingVariant === "rail2" && rail !== null
+  const inlineCards = postingVariant === "rail2"
+  const [chatHidden, setChatHidden] = React.useState(false)
+
+  /**
+   * A CHANGE FROM THE RAIL: one question, asked again in the composer's
+   * place, over whatever card was there. `key` makes each press a fresh
+   * card, so a second pencil on the same row starts from the answer as it
+   * is now rather than from a half-edited one. Submit sends a change turn
+   * (`encodeChange`) and the reply re-docks whatever was being asked.
+   */
+  // A change belongs to the conversation it was opened in: tagged with its
+  // id, and treated as none once the page shows another — otherwise a card
+  // opened on one posting sat over the first question of the next.
+  const [edit, setEditing] = React.useState<{
+    id: string
+    key: number
+    session: string | null
+  } | null>(null)
+  const editing = edit && edit.session === id ? edit : null
+  const editItem = React.useMemo(() => {
+    if (!editing) return null
+    if (flow === "search" && search)
+      return searchChangeItem(editing.id, search, brand)
+    if (flow === "posting" && posting)
+      return changeItem(
+        editing.id as FieldId | RefineId | "screening",
+        posting,
+        brand
+      )
+    return null
+  }, [editing, flow, search, posting, brand])
+  // The status card takes the composer's place once the posting is gathered
+  // and nothing else is being asked.
+  const statusCard = Boolean(
+    formBeside && posting?.stage === "done" && !editing && !docked
+  )
   // What the transcriber should expect if the recruiter dictates next.
   const vocabulary = React.useMemo(
     () => dictationVocabulary(brand, posting),
@@ -334,6 +419,8 @@ export function AgentPage() {
 
   // …and an example of a good opening answer, where it can be read rather
   // than tapped, while the from-scratch question waits.
+  // …and for a search, the same, in its own words.
+  const waitingForSearch = flow === "search" && search?.stage === "opener"
   const waitingForRole = Boolean(
     posting?.stage === "posting" &&
     posting.opener &&
@@ -353,6 +440,34 @@ export function AgentPage() {
   if (id && session.id === id && session.status !== "ready")
     return <SessionState status={session.status} />
 
+  // "Chat alt" (`lib/posting-variant.ts`): the posting as an onboarding —
+  // one question at a time on the left, the tracker of every question on
+  // the right. The same turns; only how they are asked differs.
+  if (postingVariant === "wizard" && flow === "posting" && posting && rail)
+    return (
+      <div className="-mt-4 -mb-4 flex h-[calc(100svh-var(--header-height))] flex-col md:-mt-6 md:-mb-6 md:h-svh">
+        <PostingWizard
+          posting={posting}
+          brand={brand}
+          answer={last?.answer}
+          thinking={thinking}
+          docked={docked}
+          editItem={editing ? editItem : null}
+          people={rail.people}
+          vocabulary={vocabulary}
+          checklist={checklist}
+          waitingForJd={waitingForJd}
+          waitingForRole={waitingForRole}
+          onAsk={ask}
+          onAttach={attach}
+          onEdit={(field) =>
+            setEditing({ id: field, key: Date.now(), session: id })
+          }
+          onCancelEdit={() => setEditing(null)}
+        />
+      </div>
+    )
+
   return (
     // The conversation owns the screen below the header: a transcript that
     // scrolls and a box that does not. `-mt-4 md:-mt-6` takes back the shell's
@@ -361,146 +476,302 @@ export function AgentPage() {
     // page `py-4 md:py-6`; cancelling only the top left the view 24px taller
     // than the screen, so the whole page scrolled and the header slid away
     // under the docked card. The split view cancels its bottom the same way.
-    <div className="-mt-4 -mb-4 flex h-[calc(100svh-var(--header-height))] md:-mt-6 md:-mb-6">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <MessageScrollerProvider autoScroll defaultScrollPosition="end">
-          <MessageScroller className="min-h-0 flex-1">
-            <MessageScrollerViewport>
-              <MessageScrollerContent className="mx-auto w-full max-w-3xl px-4 py-6 lg:px-6">
-                {turns.map((turn, index) => {
-                  // The newest turn waits for the beat; ANY turn waits while it is
-                  // being read — which, on a link opened cold, is every posting
-                  // answer in turn.
-                  const waiting =
-                    turn.answer === null ||
-                    (thinking && index === turns.length - 1)
-                  const answer = turn.answer
-                  return (
-                    <MessageScrollerItem
-                      key={turn.id}
-                      messageId={turn.id}
-                      scrollAnchor
-                    >
-                      <div className="flex flex-col gap-4">
-                        <Message align="end">
-                          <MessageContent>
-                            <Bubble align="end">
-                              <BubbleContent>
-                                <Prompt prompt={turn.prompt} />
-                              </BubbleContent>
-                            </Bubble>
-                          </MessageContent>
-                        </Message>
-
-                        {waiting || !answer ? (
-                          <Marker>
-                            <MarkerIcon>
-                              <Spinner />
-                            </MarkerIcon>
-                            <MarkerContent>
-                              {turn.answer === null
-                                ? "Reading your answer…"
-                                : "Working it out…"}
-                            </MarkerContent>
-                          </Marker>
-                        ) : (
-                          <>
-                            {answer.step ? (
-                              <WorkStepRow step={answer.step} />
-                            ) : null}
-                            <Message>
-                              <Head live={index === turns.length - 1} />
-                              <MessageContent>
-                                <Bubble variant="secondary">
-                                  <BubbleContent>
-                                    <Said answer={answer} />
-                                  </BubbleContent>
-                                </Bubble>
-                                <div className="mt-1 w-full">
-                                  <AgentBlocks
-                                    blocks={answer.blocks}
-                                    onAsk={ask}
-                                    live={index === turns.length - 1}
-                                  />
-                                </div>
-                              </MessageContent>
-                            </Message>
-                          </>
-                        )}
-                      </div>
-                    </MessageScrollerItem>
-                  )
-                })}
-              </MessageScrollerContent>
-            </MessageScrollerViewport>
-            <MessageScrollerButton />
-          </MessageScroller>
-        </MessageScrollerProvider>
-
-        {/* No band of its own — no white fill, no rule above. The box and the
-          card have their own edges, so the transcript's canvas runs under
-          them and a strip around them would be a box drawn twice. */}
-        <div>
-          <div className="mx-auto w-full max-w-3xl px-4 py-4 lg:px-6">
-            {/* The card sits ON the reply box, not instead of it: answering the
-              questions is the likeliest next thing, but saying something else
-              should never take closing a card first. */}
-            {showCard && docked && last ? (
-              <AgentQuestionnaire
-                // A new card is a new form: answers from the last one must not
-                // carry over into questions that happen to share a name.
-                key={last.id}
-                items={docked.items}
-                submit={docked.submit}
-                form={docked.form}
-                postNow={docked.postNow}
-                onAsk={ask}
-                onClose={() => setClosed(last.id)}
-              />
-            ) : docked ? (
-              // Closed, not answered: the questions are still open and typed
-              // text is read against them, so the way back stays in view.
-              <Button
-                variant="outline"
-                size="sm"
-                className="mb-2"
-                onClick={() => setClosed(null)}
-              >
-                <ListChecksIcon data-icon="inline-start" />
-                Answer the questions
-              </Button>
-            ) : null}
-            {/* No suggestion row under the conversation: the `/` menu is the
-              list of what it can do, and a permanent row of the same prompts
-              would be the transcript's own furniture repeated. */}
-            <AgentComposer
-              vocabulary={vocabulary}
-              checklist={waitingForRole ? checklist : undefined}
-              peekOnFocus={!showCard && !waitingForJd && !waitingForRole}
-              className={showCard ? "mt-3" : undefined}
-              placeholder={
-                showCard
-                  ? "Or reply directly…"
-                  : waitingForJd
-                    ? "Paste the job description, or drop a PDF or Word doc here…"
-                    : waitingForRole
-                      ? "e.g. Head of Marketing, Mumbai, 12+ years, FMCG — brand strategy, P&L, team leadership"
-                      : undefined
-              }
-              onSubmit={ask}
-              onAttach={attach}
+    // From `md` up the shell draws no header here at all (`bare` in
+    // `app-shell.tsx`), so the conversation takes the whole height.
+    <div className="-mt-4 -mb-4 flex h-[calc(100svh-var(--header-height))] flex-col md:-mt-6 md:-mb-6 md:h-svh">
+      <div className="flex min-h-0 flex-1">
+        {/* The form, where there is room for both; below that the chat is the
+          page, as it is under the rail variant. */}
+        {formBeside && posting && rail ? (
+          // Keyed on the variant so the hybrid's arrival — the rail giving
+          // way to the form — plays the entrance once, not on every render.
+          <div
+            key={postingVariant}
+            className="hidden h-full min-w-0 flex-1 @3xl/main:block @3xl/main:animate-in @3xl/main:duration-300 @3xl/main:fade-in @3xl/main:slide-in-from-left-4"
+          >
+            <PostingFormPanel
+              posting={posting}
+              people={rail.people}
+              reading={Boolean(pending)}
+              onAsk={ask}
+              onStatus={setFormMissing}
             />
           </div>
-        </div>
-      </div>
+        ) : null}
+        <div
+          className={cn(
+            "flex min-w-0 flex-1 flex-col",
+            // Beside the form it is a panel, not a column: white, lifted off
+            // the page by a shadow rather than ruled off by a border.
+            formBeside &&
+              "@3xl/main:w-[26rem] @3xl/main:flex-none @3xl/main:bg-background @3xl/main:shadow-[-4px_0_24px_rgba(9,30,66,0.06)]",
+            formBeside && chatHidden && "@3xl/main:hidden"
+          )}
+        >
+          {/* The plan, inside the chat: the conversation's progress. */}
+          {planBar && rail ? (
+            <PlanBar steps={rail.steps} reading={Boolean(pending)} />
+          ) : null}
+          {formBeside ? (
+            <div className="hidden items-center gap-3 border-b px-4 py-3 @3xl/main:flex">
+              <Aura size={32} state={pending ? "thinking" : "idle"} />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold">Posting assistant</p>
+                <p
+                  className="truncate text-xs text-muted-foreground"
+                  aria-live="polite"
+                >
+                  {pending ? "Reading your answer…" : rail?.status}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Hide the chat"
+                onClick={() => setChatHidden(true)}
+                className="grid size-7 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              >
+                <XIcon className="size-4" />
+              </button>
+            </div>
+          ) : null}
+          <MessageScrollerProvider autoScroll defaultScrollPosition="end">
+            <MessageScroller className="min-h-0 flex-1">
+              <MessageScrollerViewport>
+                <MessageScrollerContent className="mx-auto w-full max-w-3xl px-4 py-6 lg:px-6">
+                  {turns.map((turn, index) => {
+                    // The newest turn waits for the beat; ANY turn waits while it is
+                    // being read — which, on a link opened cold, is every posting
+                    // answer in turn.
+                    const waiting =
+                      turn.answer === null ||
+                      (thinking && index === turns.length - 1)
+                    const answer = turn.answer
+                    return (
+                      <MessageScrollerItem
+                        key={turn.id}
+                        messageId={turn.id}
+                        scrollAnchor
+                      >
+                        <div className="flex flex-col gap-4">
+                          <Message align="end">
+                            <MessageContent>
+                              <Bubble align="end">
+                                <BubbleContent>
+                                  <Prompt prompt={turn.prompt} />
+                                </BubbleContent>
+                              </Bubble>
+                            </MessageContent>
+                          </Message>
 
-      {/* Beside the conversation where there is room, and nowhere below that:
-          on a narrow column the transcript already is the page. */}
-      {rail ? (
-        <div className="hidden h-full @3xl/main:block">
-          <PostingRail model={rail} reading={Boolean(pending)} />
+                          {waiting || !answer ? (
+                            <Marker>
+                              <MarkerIcon>
+                                <Spinner />
+                              </MarkerIcon>
+                              <MarkerContent>
+                                {turn.answer === null
+                                  ? "Reading your answer…"
+                                  : "Working it out…"}
+                              </MarkerContent>
+                            </Marker>
+                          ) : (
+                            <>
+                              {answer.step ? (
+                                <WorkStepRow step={answer.step} />
+                              ) : null}
+                              <Message>
+                                <Head live={index === turns.length - 1} />
+                                <MessageContent>
+                                  {formBeside ? (
+                                    // In the narrow panel the reply is plain
+                                    // text, as an assistant's is; the bubble
+                                    // was the width it does not have.
+                                    <div className="px-1 py-1.5 text-sm leading-relaxed">
+                                      <Said answer={answer} />
+                                    </div>
+                                  ) : (
+                                    <Bubble variant="secondary">
+                                      <BubbleContent>
+                                        <Said answer={answer} />
+                                      </BubbleContent>
+                                    </Bubble>
+                                  )}
+                                  <div className="mt-1 w-full">
+                                    <AgentBlocks
+                                      // The finish card's posting block is the
+                                      // form's job when the form is beside it.
+                                      blocks={
+                                        formBeside
+                                          ? answer.blocks.filter(
+                                              (block) =>
+                                                block.kind !== "posting"
+                                            )
+                                          : answer.blocks
+                                      }
+                                      onAsk={ask}
+                                      live={index === turns.length - 1}
+                                    />
+                                  </div>
+                                  {inlineCards &&
+                                  index === turns.length - 1 &&
+                                  docked ? (
+                                    <div className="mt-3 w-full">
+                                      {showCard ? (
+                                        <AgentQuestionnaire
+                                          key={turn.id}
+                                          items={docked.items}
+                                          submit={docked.submit}
+                                          form={docked.form}
+                                          postNow={docked.postNow}
+                                          postNowLabel={docked.postNowLabel}
+                                          onAsk={ask}
+                                          onClose={() => setClosed(turn.id)}
+                                        />
+                                      ) : (
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => setClosed(null)}
+                                        >
+                                          <ListChecksIcon data-icon="inline-start" />
+                                          Answer the questions
+                                        </Button>
+                                      )}
+                                    </div>
+                                  ) : null}
+                                </MessageContent>
+                              </Message>
+                            </>
+                          )}
+                        </div>
+                      </MessageScrollerItem>
+                    )
+                  })}
+                </MessageScrollerContent>
+              </MessageScrollerViewport>
+              <MessageScrollerButton />
+            </MessageScroller>
+          </MessageScrollerProvider>
+
+          {/* No band of its own — no white fill, no rule above. The box and the
+          card have their own edges, so the transcript's canvas runs under
+          them and a strip around them would be a box drawn twice. */}
+          <div>
+            <div className="mx-auto w-full max-w-3xl px-4 py-4 lg:px-6">
+              {/* The card sits ON the reply box, not instead of it: answering the
+              questions is the likeliest next thing, but saying something else
+              should never take closing a card first. */}
+              {editing && editItem ? (
+                <AgentQuestionnaire
+                  key={`edit-${editing.key}`}
+                  items={[editItem]}
+                  submit="Save"
+                  encode={encodeChange}
+                  onAsk={(prompt) => {
+                    setEditing(null)
+                    ask(prompt)
+                  }}
+                  onClose={() => setEditing(null)}
+                />
+              ) : !inlineCards && showCard && docked && last ? (
+                <AgentQuestionnaire
+                  // A new card is a new form: answers from the last one must not
+                  // carry over into questions that happen to share a name.
+                  key={last.id}
+                  items={docked.items}
+                  submit={docked.submit}
+                  form={docked.form}
+                  postNow={docked.postNow}
+                  postNowLabel={docked.postNowLabel}
+                  onAsk={ask}
+                  onClose={() => setClosed(last.id)}
+                />
+              ) : !inlineCards && docked ? (
+                // Closed, not answered: the questions are still open and typed
+                // text is read against them, so the way back stays in view.
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mb-2"
+                  onClick={() => setClosed(null)}
+                >
+                  <ListChecksIcon data-icon="inline-start" />
+                  Answer the questions
+                </Button>
+              ) : statusCard && posting ? (
+                <PostingStatusCard
+                  missing={formMissing}
+                  search={rail?.people?.href}
+                  onPost={() =>
+                    toast.add({
+                      title: `Ready to post: ${posting.draft.title}`,
+                      description:
+                        "Publishing isn't wired up in this prototype. This is where the posting would go to moderation.",
+                    })
+                  }
+                />
+              ) : null}
+              {/* No suggestion row under the conversation: the `/` menu is the
+              list of what it can do, and a permanent row of the same prompts
+              would be the transcript's own furniture repeated. */}
+              <AgentComposer
+                vocabulary={vocabulary}
+                checklist={waitingForRole ? checklist : undefined}
+                peekOnFocus={
+                  !showCard &&
+                  !waitingForJd &&
+                  !waitingForRole &&
+                  !waitingForSearch
+                }
+                className={
+                  (showCard && !inlineCards) || statusCard ? "mt-3" : undefined
+                }
+                placeholder={
+                  showCard
+                    ? "Or reply directly…"
+                    : waitingForJd
+                      ? "Paste the job description, or drop a PDF or Word doc here…"
+                      : waitingForSearch
+                        ? "e.g. Product managers in Pune, 8+ years, FMCG — brand strategy, P&L"
+                        : waitingForRole
+                          ? "e.g. Head of Marketing, Mumbai, 12+ years, FMCG — brand strategy, P&L, team leadership"
+                          : undefined
+                }
+                onSubmit={ask}
+                onAttach={attach}
+              />
+            </div>
+          </div>
         </div>
-      ) : null}
+
+        {/* Beside the conversation where there is room, and nowhere below that:
+          on a narrow column the transcript already is the page. */}
+        {/* The chat, tucked away: a pill in the corner brings it back. */}
+        {formBeside && chatHidden ? (
+          <button
+            type="button"
+            onClick={() => setChatHidden(false)}
+            className="fixed right-6 bottom-6 z-30 hidden items-center gap-2 rounded-full border bg-background py-2 pr-4 pl-2 text-sm font-medium shadow-lg transition-colors hover:bg-muted @3xl/main:flex"
+          >
+            <Aura size={24} state={pending ? "thinking" : "idle"} />
+            <MessageCircleIcon className="size-4 text-muted-foreground" />
+            Open the chat
+          </button>
+        ) : null}
+
+        {rail && !formBeside ? (
+          <div className="hidden h-full @3xl/main:block">
+            <PostingRail
+              model={rail}
+              reading={Boolean(pending)}
+              onEdit={(field) =>
+                setEditing({ id: field, key: Date.now(), session: id })
+              }
+              plan={!planBar}
+            />
+          </div>
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -760,8 +1031,9 @@ function Head({ live }: { live: boolean }) {
 
 // Versioned: a reading is a whole `IntakeState`. v2 added the stage and the
 // brief; v3 the opener and the batch shape the questionnaire needs; v4 how
-// the posting started; v5 what an answer recorded, as rows (`noted`).
-const READINGS_KEY = "agent:intake-readings:v5"
+// the posting started; v5 what an answer recorded, as rows (`noted`); v6
+// the screening questions on the draft, and the stage that asks them.
+const READINGS_KEY = "agent:intake-readings:v6"
 
 /** Per-tab, and allowed to be empty — a cache, so losing it costs a re-read. */
 function loadReadings(): Record<string, IntakeState> {
@@ -804,8 +1076,12 @@ function Said({ answer }: { answer: Answer }) {
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
         {answer.noted.map((row) => (
           <div key={row.label} className="contents">
-            <dt className="text-muted-foreground">{row.label}</dt>
-            <dd className="min-w-0 font-medium">{row.value}</dd>
+            <dt className="py-0.5 text-xs leading-5 text-muted-foreground">
+              {row.label}
+            </dt>
+            <dd className="min-w-0 py-0.5 leading-5 font-medium">
+              {row.value}
+            </dd>
           </div>
         ))}
       </dl>
@@ -821,21 +1097,41 @@ function Said({ answer }: { answer: Answer }) {
  * holds, one line per question, in the order they were asked.
  */
 function Prompt({ prompt }: { prompt: string }) {
-  const answers = decodeAnswers(prompt)
+  const change = decodeChange(prompt)
+  const answers = decodeAnswers(prompt) ?? change
   if (!answers) return prompt
 
   return (
     <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-left">
       {Object.entries(answers).map(([id, answer]) => (
         <div key={id} className="contents">
-          <dt className="opacity-75">
-            {LABELS[id as keyof typeof LABELS] ?? id}
+          <dt className="py-0.5 text-xs leading-5 opacity-75">
+            {LABELS[id as keyof typeof LABELS] ??
+              SEARCH_LABELS[id as keyof typeof SEARCH_LABELS] ??
+              id}
           </dt>
-          <dd className={cn("min-w-0", answer === null && "opacity-75")}>
-            {answer ?? "Skipped"}
+          <dd
+            className={cn(
+              "min-w-0 py-0.5 leading-5 font-medium whitespace-pre-line",
+              answer === null && "opacity-75"
+            )}
+          >
+            {answer === null
+              ? "Skipped"
+              : id === "calibrate"
+                ? calibrationSaid(answer)
+                : answer}
           </dd>
         </div>
       ))}
     </dl>
   )
+}
+
+/** "2 kept, 1 not a fit" — the calibration turn, said rather than printed. */
+function calibrationSaid(answer: string) {
+  const verdicts = answer.split("\n").map((line) => line.split("=")[1])
+  const kept = verdicts.filter((v) => v === "kept").length
+  const dropped = verdicts.filter((v) => v === "dropped").length
+  return `${kept} kept, ${dropped} not a fit`
 }
