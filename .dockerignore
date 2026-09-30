@@ -1,0 +1,15 @@
+# The build context for the repo-root Dockerfile (deploy on push). Keep secrets
+# and anything the image rebuilds for itself out of it.
+**/node_modules
+**/dist
+**/.turbo
+**/storybook-static
+**/*.tsbuildinfo
+**/.env*
+!**/.env.example
+**/*.zip
+.git
+.claude
+.ued-launchpad.json
+avatar-kit
+**/.DS_Store

@@ -1028,6 +1028,18 @@ Agent conversations (`/dashboard/c/<id>`) are kept in `/app/data/sessions.json` 
 (`SESSIONS_FILE`, set in the Dockerfile): a restart keeps them, a redeploy starts empty, and a
 recruiter's own browser still has theirs either way.
 
+**It deploys on push to `master`** through Launchpad's Gitea pipeline, from
+`http://10.120.2.26:1000/admin/unified-recruitment-platform` (there is no `main`; `master` is the
+branch everything lands on). A push is built from the repo by the **root `Dockerfile`**, a two-stage
+build (`npm ci`, `npm run build -w web`, then the same `server/` + `public/` image as below), with
+`.dockerignore` keeping every `.env*`, `node_modules`, zips and `avatar-kit/` out of the context.
+Only a pushed commit deploys; a failed build keeps the previous site. Check what is live with
+`GET /api/projects/{id}/pipeline` — `commit` is the last successful deploy, `lastBuild` the latest
+attempt. Turning it off is `{ "enabled": false }` on the same endpoint, and a manual redeploy still
+works. The pipeline's Gitea token is stored on the Launchpad server, never here.
+
+The ZIP route below still works as a manual fallback, and `apps/ai/Dockerfile` is its Dockerfile.
+
 **Build from the committed tree, not the working copy**, which usually holds WIP: a detached
 `git worktree` in a scratch directory, `npm ci`, `npm run build -w web`, then a bundle of
 `apps/ai/Dockerfile` at the root, `apps/ai` (no `.env*`) as `server/` and `apps/web/dist` as
