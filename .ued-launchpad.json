@@ -2,15 +2,17 @@
   "baseUrl": "http://10.120.2.26:6001",
   "projectId": "ccde703cc71b9052",
   "name": "Unified Recruitment Platform",
-  "source": "zip",
+  "source": "gitea",
   "sitePort": 6100,
   "root": ".",
   "builder": "dockerfile",
-  "archiveSha256": "2829aa7feca60d3c1d11891d8bb327ebdb734771b74e64167f4785f1c25415dd",
-  "notes": "One Docker container: apps/ai serves /api and the built apps/web (STATIC_DIR). Bundle = apps/ai/Dockerfile at the root, apps/ai as server/, apps/web/dist as public/. GEMINI_API_KEY is in the project env (not here). Guest-created; updates use the key in ~/.config/ued-launchpad/keys/<id>.",
+  "notes": "One Docker container: apps/ai serves /api and the built apps/web (STATIC_DIR). Deploys on every push to master via the Launchpad Gitea pipeline, built by the repo-root Dockerfile; GET /api/projects/{id}/pipeline is authoritative for what is live (this file records only the deploy that set it up). The ZIP route (apps/ai/Dockerfile, bundle of server/ + public/) is a manual fallback. GEMINI_API_KEY is in the project env and the Gitea token on the server, neither here. Updates use the key in ~/.config/ued-launchpad/keys/<id>.",
   "status": "running",
-  "submittedCommit": "00b2ac1",
-  "lastDeployedAt": "2026-09-29T08:09:43.661Z",
+  "submittedCommit": "58256ad",
+  "lastDeployedAt": "2026-09-30T08:42:22.329Z",
   "dockerfile": "Dockerfile",
-  "port": 3000
+  "port": 3000,
+  "repo": "http://10.120.2.26:1000/admin/unified-recruitment-platform",
+  "branch": "master",
+  "autoDeploy": true
 }
