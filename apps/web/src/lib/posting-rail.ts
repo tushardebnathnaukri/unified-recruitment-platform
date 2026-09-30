@@ -1,6 +1,7 @@
 import {
   BriefcaseIcon,
   ListChecksIcon,
+  MessageSquareTextIcon,
   SearchIcon,
   SendIcon,
   SlidersHorizontalIcon,
@@ -12,6 +13,7 @@ import type { Brand } from "@workspace/ui/lib/brands"
 
 import { poolFor } from "@/lib/calibration"
 import {
+  criteriaOn,
   filled,
   JOB_FIELDS,
   modeLabel,
@@ -153,6 +155,11 @@ export type RailModel = {
   people: { matching: number; total: number; href: string } | null
 }
 
+/** "3 screening questions". */
+function screeningCount(count: number) {
+  return `${count} screening question${count === 1 ? "" : "s"}`
+}
+
 export function railFor(state: IntakeState, brand: Brand): RailModel {
   const { draft } = state
   const stage = state.opener ? "opener" : state.stage
@@ -216,33 +223,57 @@ export function railFor(state: IntakeState, brand: Brand): RailModel {
                 : "waiting"
             : "done",
     },
-    {
-      icon: SlidersHorizontalIcon,
-      label: "Selection criteria",
-      private: true,
-      // Two asks in one step: the refinement topics, then — optional — the
-      // screening questions. The count is the topics'; the questions are
-      // said once they are set.
-      detail:
-        stage === "refine" || stage === "screen" || stage === "done"
-          ? [
-              state.plan.length
-                ? `${answered} of ${state.plan.length}`
-                : "Nothing to ask",
-              stage === "done" && draft.screening.length
-                ? `${draft.screening.length} screening question${draft.screening.length === 1 ? "" : "s"}`
-                : null,
-            ]
-              .filter(Boolean)
-              .join(" · ")
-          : undefined,
-      state:
-        stage === "refine" || stage === "screen"
-          ? "active"
-          : stage === "done"
-            ? "done"
-            : "waiting",
-    },
+    // Step 3: the private brief with screening as its tail — or, with
+    // Selection criteria switched off on /settings, the screening questions
+    // on their own, which are not private: candidates answer them.
+    criteriaOn(state)
+      ? {
+          icon: SlidersHorizontalIcon,
+          label: "Selection criteria",
+          private: true,
+          // Two asks in one step: the refinement topics, then — optional —
+          // the screening questions. The count is the topics'; the
+          // questions are said once they are set.
+          detail:
+            stage === "refine" || stage === "screen" || stage === "done"
+              ? [
+                  state.plan.length
+                    ? `${answered} of ${state.plan.length}`
+                    : "Nothing to ask",
+                  stage === "done" && draft.screening.length
+                    ? screeningCount(draft.screening.length)
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")
+              : undefined,
+          state:
+            stage === "refine" || stage === "screen"
+              ? "active"
+              : stage === "done"
+                ? "done"
+                : "waiting",
+        }
+      : {
+          icon: MessageSquareTextIcon,
+          label: "Screening questions",
+          detail:
+            stage === "done"
+              ? draft.screening.length
+                ? screeningCount(draft.screening.length)
+                : "None"
+              : stage === "screen"
+                ? "Optional"
+                : undefined,
+          state:
+            stage === "screen"
+              ? "active"
+              : stage === "done"
+                ? draft.screening.length
+                  ? "done"
+                  : "skipped"
+                : "waiting",
+        },
     {
       // Never ticked in the chat: posting happens on the form, and a tick
       // here would say the job is up when it is not.
@@ -265,7 +296,9 @@ export function railFor(state: IntakeState, brand: Brand): RailModel {
       ? "Filling in the candidate details"
       : "Filling in the job details",
     refine: "Setting selection criteria",
-    screen: "Setting selection criteria",
+    screen: criteriaOn(state)
+      ? "Setting selection criteria"
+      : "Setting screening questions",
     done: "Ready to review",
   }[stage]
 

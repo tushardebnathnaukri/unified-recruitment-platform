@@ -814,6 +814,24 @@ posting fields are asked **in the stepper's two groups** — `JOB_FIELDS` then `
 in `job-intake.ts`, pay before experience because it belongs to the job — and the rail, the finish
 card and the form panel use the same three section names, one name per thing.
 
+**Selection criteria can be switched off, on /settings** ("Selection criteria", beside "Post a
+job"; `useSelectionCriteria` in `lib/selection-criteria.ts`, on by default), and it applies to all
+five layouts because they read one conversation state. The flag rides on `IntakeState.criteria`
+(set by `startIntake`, passed in through `answersFor`'s options; absent reads as on, via
+`criteriaOn`, so readings cached before the flag existed still work), and **`enterRefine` is the
+one place that honours it**: both readers enter refinement there, so off means an empty plan and
+straight to the screening stage. Everything else only draws less: `briefRows` returns nothing, so
+the rail, the finish card, the form panel and the Chat alt tracker lose the brief, and
+`searchHrefFor` searches on the posting alone, which drops even an industry the opening sentence
+named. **Screening questions stay, as a step of their own**: step 3 is "Screening questions", not
+private, with its own icon, on the rail, the `PlanBar`, the tracker and the finish card, and the
+screen-stage lead says "That's the posting." Industries still reach the form's own Industry field,
+which is a public posting field. A JD's skills are all must-haves when off, since `skillsSplit` was
+a refinement topic. The readings cache key gains a marker only when off, so a toggle re-reads
+rather than replaying a reading made under the other setting. **The setting is not a turn**, so a
+toggle re-reads existing conversations: switching on re-opens the refinement card at the end of a
+finished one, and switching off turns earlier refinement answers into hidden changes.
+
 **The Dashboard's conversation is set on one type scale**: 12px for labels, eyebrows and chips
 (`text-xs`, `leading-5` in rows), 14px for body — `leading-relaxed` only for running prose in a
 bubble or a description, `leading-5` for rows, lists and the bar — 14px semibold for section and

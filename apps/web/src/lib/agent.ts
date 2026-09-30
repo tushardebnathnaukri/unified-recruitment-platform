@@ -46,6 +46,7 @@ import {
 } from "@/lib/search-intake"
 import { CITIES, DEMAND, NATIONAL_MEDIAN, SALARY_SUMMARY } from "@/lib/insights"
 import {
+  criteriaOn,
   describePosting,
   postingHref,
   postingItem,
@@ -1409,7 +1410,9 @@ export function intakeReply(state: IntakeState, brand: Brand): Answer {
           ? "A couple still need an answer."
           : "A few more things for the posting."
         : state.stage === "screen"
-          ? "That's the selection criteria. One optional addition — should candidates answer a few questions when they apply?"
+          ? criteriaOn(state)
+            ? "That's the selection criteria. One optional addition — should candidates answer a few questions when they apply?"
+            : "That's the posting. One optional addition — should candidates answer a few questions when they apply?"
           : state.settled.length === 0
             ? "That's the posting. Before it goes up, a few quick questions to sharpen who we look for."
             : "One more go at these."
@@ -1443,12 +1446,16 @@ export function intakeReply(state: IntakeState, brand: Brand): Answer {
     unknown.length
       ? `${unknown.join(", ")} ${unknown.length === 1 ? "isn't" : "aren't"} in the database, so ${unknown.length === 1 ? "it" : "they"} can't be a filter.`
       : null,
-    state.draft.skills.length ||
-    state.draft.niceSkills.length ||
-    state.brief.institutes.length ||
-    state.brief.exclusions.length
-      ? "Skills, institutes and rule-outs rank people under the Juicebox filter design and remove nobody."
-      : null,
+    !criteriaOn(state)
+      ? state.draft.skills.length || state.draft.niceSkills.length
+        ? "Skills rank people under the Juicebox filter design and remove nobody."
+        : null
+      : state.draft.skills.length ||
+          state.draft.niceSkills.length ||
+          state.brief.institutes.length ||
+          state.brief.exclusions.length
+        ? "Skills, institutes and rule-outs rank people under the Juicebox filter design and remove nobody."
+        : null,
   ].filter(Boolean)
 
   return {
@@ -1514,7 +1521,9 @@ export function answersFor(
   prompts: string[],
   brand: Brand,
   files: Record<string, string | null> = {},
-  readings: Record<string, IntakeState> = {}
+  readings: Record<string, IntakeState> = {},
+  /** The /settings switch for Selection criteria (`lib/selection-criteria.ts`). */
+  { criteria = true }: { criteria?: boolean } = {}
 ): {
   answers: (Answer | null)[]
   pending: PendingReading | null
@@ -1634,7 +1643,7 @@ export function answersFor(
       (exact && exact.id === "posting") ||
       (!intake && !exact && attached === null && startsPosting(prompt))
     ) {
-      intake = startIntake()
+      intake = startIntake({ criteria })
       posting = intake
       searching = null
       flow = "posting"
@@ -1667,7 +1676,12 @@ export function answersFor(
       }
 
       turns = [...turns, prompt]
-      const key = [brand, ...turns].join("\u0001")
+      // Marked only when the switch is off, so readings made with it on keep
+      // their keys — and a toggle re-reads rather than replaying a reading
+      // made under the other setting.
+      const key = [brand, ...(criteria ? [] : ["no-criteria"]), ...turns].join(
+        "\u0001"
+      )
       const reading = readings[key]
       if (!reading) {
         pending = { key, state: intake, input }

@@ -22,7 +22,7 @@ diff.
   `/jobs/new`, now `components/job-form.tsx`) with a "N of M people this would find · Open the
   search" footer, and the chat as a 26rem column on the right with a left border; the rail is
   gone and replies lose their posting card.
-- **Storybook:** the Settings row composition gains a fourth switcher, a five-way one ("Post a job": rail, rail v2, form, chat-then-form, Chat alt); there is no story for the
+- **Storybook:** the Settings row composition gains a fourth switcher, a five-way one ("Post a job": rail, rail v2, form, chat-then-form, Chat alt), and under it a "Selection criteria" on/off switch (`routes/settings.tsx`, `lib/selection-criteria.ts`); there is no story for the
   Dashboard's conversation layout, so nothing to redo there unless one is wanted.
 - **Figma:** the Settings composition frame, the same row.
 - [ ] Storybook

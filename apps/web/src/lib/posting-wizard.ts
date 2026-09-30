@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react"
 import {
   BriefcaseIcon,
   ListChecksIcon,
+  MessageSquareTextIcon,
   SendIcon,
   SlidersHorizontalIcon,
 } from "lucide-react"
@@ -16,6 +17,7 @@ import {
 } from "@/lib/insights"
 import {
   askFor,
+  criteriaOn,
   filled,
   JOB_FIELDS,
   REQUIREMENT_FIELDS,
@@ -134,14 +136,19 @@ export function wizardFor(state: IntakeState): WizardSection[] {
   // THE TOPICS: the plan once there is one, the rules' forecast before.
   // Topics the conversation already covered without asking (an industry in
   // the opening sentence) are done, with what the brief holds.
-  const covered = coveredTopics(state)
-  const planned: RefineId[] = state.plan.length
-    ? state.plan
-    : state.stage === "posting"
-      ? planFor(draft, null, { model: false }).filter(
-          (topic) => !covered.includes(topic)
-        )
-      : []
+  // Selection criteria switched off on /settings: no topics at all, and the
+  // section is the screening question on its own.
+  const criteria = criteriaOn(state)
+  const covered = criteria ? coveredTopics(state) : []
+  const planned: RefineId[] = !criteria
+    ? []
+    : state.plan.length
+      ? state.plan
+      : state.stage === "posting"
+        ? planFor(draft, null, { model: false }).filter(
+            (topic) => !covered.includes(topic)
+          )
+        : []
   const forecast = !state.plan.length && state.stage === "posting"
   // The skills split is the Skills step already ticked under Candidate
   // details — the ranking answers both — so it is not listed twice.
@@ -206,7 +213,7 @@ export function wizardFor(state: IntakeState): WizardSection[] {
 
   const job = [start, ...JOB_FIELDS.map(field)]
   const candidate = REQUIREMENT_FIELDS.map(field)
-  const criteria = [...topicSteps, screening]
+  const criteriaSteps = [...topicSteps, screening]
   // Sections after the one being asked are upcoming even if every step in
   // them is, by coincidence, settled — the candidate section before the
   // opener has been answered, say.
@@ -227,16 +234,16 @@ export function wizardFor(state: IntakeState): WizardSection[] {
     },
     {
       id: "criteria",
-      title: "Selection criteria",
-      icon: SlidersHorizontalIcon,
-      private: true,
+      title: criteria ? "Selection criteria" : "Screening questions",
+      icon: criteria ? SlidersHorizontalIcon : MessageSquareTextIcon,
+      private: criteria,
       state:
         state.stage === "refine" || state.stage === "screen"
           ? "active"
           : state.stage === "done"
             ? "done"
             : "upcoming",
-      steps: criteria,
+      steps: criteriaSteps,
     },
     {
       id: "review",

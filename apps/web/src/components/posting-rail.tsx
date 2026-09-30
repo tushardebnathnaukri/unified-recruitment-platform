@@ -309,13 +309,17 @@ export function PostingRail({
               {model.brief.length || model.screening !== null ? (
                 <Panel
                   icon={model.steps[2]?.icon}
-                  title="Selection criteria"
+                  // The step's own name: "Selection criteria", or "Screening
+                  // questions" when the brief is switched off on /settings.
+                  title={model.steps[2]?.label ?? "Selection criteria"}
                   aside={
                     <>
-                      <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                        <LockIcon className="size-3" />
-                        Private
-                      </span>
+                      {model.steps[2]?.private ? (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <LockIcon className="size-3" />
+                          Private
+                        </span>
+                      ) : null}
                       <StepStatus step={model.steps[2]} reading={reading} />
                     </>
                   }
@@ -333,8 +337,10 @@ export function PostingRail({
                       )}
                     >
                       <div className="flex items-center justify-between gap-2">
+                        {/* The panel is already called that when the brief
+                            is switched off. */}
                         <p className="text-xs font-medium text-muted-foreground">
-                          Screening questions
+                          {model.steps[2]?.private ? "Screening questions" : ""}
                         </p>
                         {edit ? (
                           <Pencil

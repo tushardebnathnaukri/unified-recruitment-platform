@@ -27,6 +27,7 @@ import {
   usePostingVariant,
   type PostingVariant,
 } from "@/lib/posting-variant"
+import { useSelectionCriteria } from "@/lib/selection-criteria"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { PROTOTYPE_ITEMS, PROTOTYPE_LINKS } from "@/lib/nav"
 
@@ -151,6 +152,22 @@ export function SettingsPage() {
 
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 flex-1 basis-64 flex-col gap-1">
+            <h2 className="text-sm font-medium">Selection criteria</h2>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              Ask for the private brief after the posting — industry,
+              neighbouring roles, team, institutes, budget — which becomes the
+              search's filters. Off skips it in every layout; the screening
+              questions stay, as a step of their own.
+            </p>
+          </div>
+
+          <SelectionCriteriaSwitch />
+        </div>
+
+        <Separator />
+
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 flex-1 basis-64 flex-col gap-1">
             <h2 className="text-sm font-medium">Sounds</h2>
             <p className="text-sm leading-relaxed text-muted-foreground">
               Short, quiet sounds for a reply arriving on the Dashboard, the mic
@@ -229,6 +246,17 @@ export function SettingsPage() {
 }
 
 /** On or off, so a switch rather than a toggle group. */
+function SelectionCriteriaSwitch() {
+  const { enabled, setEnabled } = useSelectionCriteria()
+  return (
+    <Switch
+      aria-label="Selection criteria"
+      checked={enabled}
+      onCheckedChange={setEnabled}
+    />
+  )
+}
+
 function SoundsSwitch() {
   const { enabled, setEnabled } = useSounds()
   return (

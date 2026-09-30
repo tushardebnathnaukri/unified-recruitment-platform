@@ -55,6 +55,7 @@ import {
 } from "@/lib/agent"
 import { useAgentLandingVariant } from "@/lib/agent-landing-variant"
 import { usePostingVariant } from "@/lib/posting-variant"
+import { useSelectionCriteria } from "@/lib/selection-criteria"
 import {
   isSessionId,
   localTurns,
@@ -256,6 +257,10 @@ export function AgentPage() {
   const [readings, setReadings] =
     React.useState<Record<string, IntakeState>>(loadReadings)
 
+  // Whether a posting asks for Selection criteria (/settings). Read here and
+  // folded into the conversation, so every layout below agrees.
+  const { enabled: criteria } = useSelectionCriteria()
+
   // Answered as a whole rather than turn by turn: a reply inside the posting
   // conversation depends on the turns before it (see `answersFor`).
   const { turns, pending, posting, search, flow } = React.useMemo(() => {
@@ -264,7 +269,8 @@ export function AgentPage() {
       prompts,
       brand,
       files,
-      readings
+      readings,
+      { criteria }
     )
     return {
       pending,
@@ -277,7 +283,7 @@ export function AgentPage() {
         answer: answers[index],
       })),
     }
-  }, [transcript, brand, files, readings])
+  }, [transcript, brand, files, readings, criteria])
 
   // Read the first unread posting answer. One at a time and in order, because
   // each is read against the draft the one before it left — `answersFor`

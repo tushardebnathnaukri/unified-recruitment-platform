@@ -897,6 +897,13 @@ export type IntakeState = {
   skipped: FieldId[]
   /** The private half — who to search for and screen on. Never posted. */
   brief: HiringBrief
+  /**
+   * Whether this posting asks for Selection criteria (the /settings switch,
+   * `lib/selection-criteria.ts`). Off, refinement is never entered and the
+   * brief is neither shown nor searched on. Optional so a reading cached
+   * before the flag existed reads as on — test it with `criteriaOn`.
+   */
+  criteria?: boolean
   /** The refinement topics this posting gets, in asking order. At most four. */
   plan: RefineId[]
   /** Refinement topics answered or skipped. */
@@ -1009,8 +1016,11 @@ export function nextQuestion(draft: PostingDraft, skipped: FieldId[]) {
   )
 }
 
-export function startIntake(): IntakeState {
+export function startIntake({
+  criteria = true,
+}: { criteria?: boolean } = {}): IntakeState {
   return {
+    criteria,
     stage: "posting",
     draft: EMPTY_DRAFT,
     skipped: [],
@@ -1024,6 +1034,11 @@ export function startIntake(): IntakeState {
     opener: true,
     origin: null,
   }
+}
+
+/** Whether the posting asks for Selection criteria. Absent means on. */
+export function criteriaOn(state: IntakeState) {
+  return state.criteria !== false
 }
 
 export type Noted = { label: string; value: string }[]

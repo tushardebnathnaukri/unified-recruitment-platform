@@ -229,13 +229,23 @@ function AgentBlock({
         </Section>
 
         {block.brief.length || block.screening.length ? (
-          <Section title="Selection criteria" className="border-t bg-muted/30">
+          <Section
+            // With the brief switched off on /settings, what is left of the
+            // step is the screening questions, and it is called that.
+            title={
+              block.brief.length ? "Selection criteria" : "Screening questions"
+            }
+            className="border-t bg-muted/30"
+          >
             {block.brief.length ? <Rows rows={block.brief} /> : null}
             {block.screening.length ? (
               <div className={cn(block.brief.length && "mt-3")}>
-                <p className="mb-1.5 text-xs font-medium text-muted-foreground">
-                  Screening questions
-                </p>
+                {/* Said by the section title when there is no brief. */}
+                {block.brief.length ? (
+                  <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                    Screening questions
+                  </p>
+                ) : null}
                 <ol className="flex list-decimal flex-col gap-1 pl-5 text-sm">
                   {block.screening.map((question) => (
                     <li key={question}>{question}</li>

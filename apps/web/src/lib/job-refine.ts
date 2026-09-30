@@ -15,6 +15,8 @@ import {
   isSkip,
   nextQuestion,
   payLabel,
+  criteriaOn,
+  EMPTY_BRIEF,
   readDescription,
   readField,
   readRanked,
@@ -356,10 +358,15 @@ export function enterRefine(
   suggested: unknown,
   { model }: { model: boolean }
 ): IntakeState {
+  // SELECTION CRITERIA SWITCHED OFF: no topics, straight to screening.
+  // Both readers enter refinement here and only here, so this one line is
+  // the whole of the behaviour; everything else just draws less.
   const covered = coveredTopics(state)
-  const plan = planFor(state.draft, suggested, { model }).filter(
-    (topic) => !covered.includes(topic)
-  )
+  const plan = criteriaOn(state)
+    ? planFor(state.draft, suggested, { model }).filter(
+        (topic) => !covered.includes(topic)
+      )
+    : []
   const asking = plan[0] ?? null
   return {
     ...state,
@@ -1281,6 +1288,9 @@ function screeningSaid(questions: string[]) {
 export function briefRows(state: IntakeState) {
   const { brief, draft } = state
   const rows: { label: string; value: string; topic: RefineId }[] = []
+  // Off, the brief is not a thing on screen — even what the opening sentence
+  // happened to fill in (an industry) stays out of sight.
+  if (!criteriaOn(state)) return rows
   if (brief.adjacentTitles.length)
     rows.push({
       topic: "adjacent",
@@ -1348,7 +1358,10 @@ export function briefRows(state: IntakeState) {
  * has never dealt would filter the list to no one.
  */
 export function searchHrefFor(state: IntakeState, brand: Brand) {
-  const { draft, brief } = state
+  const { draft } = state
+  // Off, the search is the posting's alone: nothing the recruiter cannot see
+  // on the screen narrows it.
+  const brief = criteriaOn(state) ? state.brief : EMPTY_BRIEF
   const city = draft.locations.find((place) => place !== REMOTE)
   const movers = brief.openToMovers === true
 
