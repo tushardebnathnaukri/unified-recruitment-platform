@@ -84,6 +84,26 @@ function roughly(n: number) {
   return Math.round(n / step) * step
 }
 
+/**
+ * A count of dealt people, projected onto the database the way the rail's
+ * "People this would find" is — for anything else that shows the same number
+ * (Chat v3's pool moves and filter costs), so the two cannot disagree.
+ */
+export function projected(count: number, brand: Brand) {
+  const base = DATABASE[brand]
+  return roughly(Math.min(base, (count * base) / SAMPLE))
+}
+
+export const DATABASE_SIZE = DATABASE
+
+/** The search a posting opens, and the pool it finds. */
+export function postingSearch(state: IntakeState, brand: Brand) {
+  const href = searchHrefFor(state, brand)
+  const params = new URLSearchParams(href.split("?")[1] ?? "")
+  const pool = poolFor(brand, params.get("q") ?? "", params)
+  return { href, params, pool }
+}
+
 export type RailStep = {
   label: string
   /** For the bar across the top ("Chat with rail v2"); the column uses glyphs. */
@@ -340,13 +360,10 @@ export function railFor(state: IntakeState, brand: Brand): RailModel {
 
   let people: RailModel["people"] = null
   if (draft.title) {
-    const href = searchHrefFor(state, brand)
-    const params = new URLSearchParams(href.split("?")[1] ?? "")
-    const pool = poolFor(brand, params.get("q") ?? "", params)
-    const base = DATABASE[brand]
+    const { href, pool } = postingSearch(state, brand)
     people = {
-      matching: roughly(Math.min(base, (pool.matching.length * base) / SAMPLE)),
-      total: base,
+      matching: projected(pool.matching.length, brand),
+      total: DATABASE[brand],
       href,
     }
   }

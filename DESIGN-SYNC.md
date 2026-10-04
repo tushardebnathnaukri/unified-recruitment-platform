@@ -10,6 +10,38 @@ diff.
 
 ## Pending
 
+### Post a job: "Chat v3", Chat v2 with the AI Agent's ideas
+
+- **Date:** 2026-10-01
+- **App:** a seventh "Post a job" value, `rail3`. The rail (`components/posting-rail.tsx`
+  gains an optional `extras` prop) shows a source chip under every value, a lock beside
+  it, insight Apply links, a status panel on top, Must have / Good to have requirement
+  rows with pool moves and a guardrail, a third "Candidates" view and an activity log.
+  The transcript gains lock and filter markers, a "Share the hiring manager's brief"
+  card and "See who this finds". `components/chat-v3/`, `lib/chat-v3.ts`.
+- **Storybook:** the Settings row composition's "Post a job" switcher gains a seventh
+  value. There is no composition for the Dashboard conversation; add one only if wanted.
+- **Figma:** the Settings composition frame, the same row. There is no frame for the
+  variant.
+- [ ] Storybook
+- [ ] Figma
+
+### Post a job: "AI Agent (V2.3)", a peer's prototype ported in
+
+- **Date:** 2026-10-01
+- **App:** a sixth "Post a job" value, `agent` in `lib/posting-variant.ts`, drawn by
+  `components/ai-agent/` over `lib/ai-agent/`, and mounted in `routes/agent.tsx`. It is
+  the brief screen, five steps (Role details, Job description, Screening questions,
+  Targeting, Candidates) with the agent panel beside them, then Review, "Choose how your
+  agents source" and a done page, under its own white top bar. It uses only existing
+  tokens and components. The /settings row gains the value and a sentence.
+- **Storybook:** the Settings row composition's "Post a job" switcher gains a sixth value.
+  There is no composition for the variant; add one only if wanted.
+- **Figma:** the Settings composition frame, the same row. There is no frame for the
+  variant.
+- [ ] Storybook
+- [ ] Figma
+
 ### Post a job: "Chat with rail v2", "Form beside chat" and "Chat, then form" on the Dashboard, and a /settings row
 
 - **Date:** 2026-09-28

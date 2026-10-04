@@ -30,8 +30,14 @@ import {
 import { toast } from "@workspace/ui/components/toast"
 import { cn } from "@workspace/ui/lib/utils"
 
-import { attachmentPrompt, matchCommands, type Command } from "@/lib/agent"
+import {
+  attachmentPrompt,
+  matchCommands,
+  type Command,
+  type RouteHint,
+} from "@/lib/agent"
 import { aiHealth, transcribe } from "@/lib/ai-client"
+import type { ComposeAssist, ComposeOption } from "@/lib/job-compose"
 import { readDocument } from "@/lib/read-document"
 import { play } from "@/lib/sound"
 import { useTypewriter } from "@/components/use-typewriter"
@@ -51,12 +57,13 @@ import {
  * document and wrong for a conversation, and everything typed in here is one
  * or two sentences.
  *
- * THE MENU IS OPEN WHEN THE TEXT IS A SLASH QUERY — `/`, `/int`,
- * `/interviews`, a slash and no spaces — OR when the recruiter has just
- * clicked or tabbed into an empty box (`peek`). The second shows the whole
- * list without typing anything, and the first letter typed closes it. The sparkle does not toggle anything: it
- * types the slash, which is why it reads as pressed afterwards. A space closes
- * the menu, because "/5 people in Pune" is a sentence and not a command.
+ * THE MENU IS OPEN ONLY WHILE THE TEXT IS A SLASH QUERY — `/`, `/int`,
+ * `/interviews`, a slash and no spaces. It used to open on clicking into an
+ * empty box as well, which put a list over the pills and the Create Job
+ * suggestions every time somebody went to type; the slash is now the only way
+ * in. The sparkle does not toggle anything: it types the slash, which is why
+ * it reads as pressed afterwards. A space closes the menu, because "/5 people
+ * in Pune" is a sentence and not a command.
  *
  * THREE CONTROLS, AND NONE OF THEM IS A MIME. A dead control in a hero is the
  * first thing everyone in a design review clicks, so each of these does the
@@ -76,14 +83,22 @@ import {
  */
 const NO_EXAMPLES: string[] = []
 
+/** How long typing must pause before the box says where the text will go. */
+const SETTLE_MS = 400
+
 export function AgentComposer({
   placeholder = "Ask about your postings, your applicants or the market… (press / for quick actions)",
   onSubmit,
   onAttach,
   vocabulary = [],
   checklist,
+  route,
+  pills,
+  onRoute,
+  mode,
+  assist,
+  onFocusChange,
   size = "default",
-  peekOnFocus = true,
   examples,
   className,
 }: {
@@ -100,17 +115,54 @@ export function AgentComposer({
    */
   checklist?: (text: string) => { label: string; done: boolean }[]
   /**
+   * Where the text would go if sent now (`routeHint` in `lib/agent.ts`), read
+   * once typing pauses. A clear match says what Enter will do beside the send
+   * button. Only where typed text is routed — not while it answers a question.
+   */
+  route?: (text: string) => RouteHint | null
+  /**
+   * Skills the page draws as pills of its own (the landing's four). A match to
+   * one of them lights the pill through `onRoute` instead of being named in
+   * the box, so the same thing is never said twice.
+   */
+  pills?: string[]
+  /**
+   * The skills the paused text points at — one for a clear match, several for
+   * a tie, none otherwise. Pass a stable function (a state setter).
+   */
+  onRoute?: (ids: string[]) => void
+  /**
+   * A pill the page has pressed — Create Job — that the box is now writing
+   * for. Drawn as a chip in the box with its own ✕; Esc, or Backspace in an
+   * empty box, lets go of it too. Pressing it puts the caret in the box.
+   */
+  mode?: {
+    label: string
+    onExit: () => void
+    /**
+     * What Enter sends from an EMPTY box — the pill's own question, which is
+     * what pressing it did before it was a mode. Selecting a pill therefore
+     * costs one key, not a detour.
+     */
+    submitEmpty?: string
+  }
+  /**
+   * While in a mode: what the text covers, ticked inside the box, and what to
+   * add next, offered under it (`composeAssist` in `lib/job-compose.ts`).
+   */
+  assist?: (text: string) => ComposeAssist
+  /**
+   * Whether focus is anywhere in the box — the text, its buttons, its
+   * suggestions — so the page can dim what is around it. A press on the mic or
+   * the ✕ moves focus within the box and does not count as leaving.
+   */
+  onFocusChange?: (focused: boolean) => void
+  /**
    * `hero` is the chat landing's box: taller, attach and quick actions behind
    * a "+" on the left, the mic on the right, and a send arrow that appears
    * only once there is something to send.
    */
   size?: "default" | "hero"
-  /**
-   * Whether focusing the empty box shows the quick actions. Off while the
-   * conversation waits for a posting answer, where the list would cover the
-   * question card or the opener's checklist.
-   */
-  peekOnFocus?: boolean
   /**
    * Example questions typed out in turn as the placeholder while the box is
    * empty and unfocused (`useTypewriter`); focusing it stops on the whole of
@@ -130,24 +182,12 @@ export function AgentComposer({
   const [dragging, setDragging] = React.useState(false)
 
   /**
-   * THE LIST ALSO OPENS WHEN YOU CLICK OR TAB INTO AN EMPTY BOX — shown, not
-   * typed, so the box stays empty and the first letter typed closes it. Only a
-   * focus the RECRUITER made opens it: the mic taking the box, or the "+" menu
-   * handing focus back, are the page moving focus, and a list popping open for
-   * those would be the page talking over them. `quiet` marks those.
-   *
    * NOTHING FOCUSES THE BOX ON ARRIVAL. A page that opens with the caret
    * already blinking reads as a form waiting to be filled in; this one opens
    * on the greeting and the pills, and the box is one click away.
    */
-  const [peek, setPeek] = React.useState(false)
   const [focused, setFocused] = React.useState(false)
-  const quiet = React.useRef(false)
-  const focusBox = () => {
-    quiet.current = true
-    box.current?.focus()
-    quiet.current = false
-  }
+  const focusBox = () => box.current?.focus()
 
   /**
    * DICTATION, TWO WAYS. With the AI server up, the mic RECORDS and Gemini
@@ -297,25 +337,25 @@ export function AgentComposer({
   // A slash and no whitespace. The capture is everything typed after it, which
   // is what filters the list.
   const typed = /^\/(\S*)$/.exec(text)?.[1]
-  const query = typed ?? (peek && text === "" && peekOnFocus ? "" : undefined)
   const matches = React.useMemo(
-    () => (query === undefined ? [] : matchCommands(query)),
-    [query]
+    () => (typed === undefined ? [] : matchCommands(typed)),
+    [typed]
   )
   const open = matches.length > 0
 
   // A query that has changed is a different list, so the highlight goes back to
   // the top rather than landing wherever the last one left it. Derived during
   // render — an effect would paint the old highlight for a frame first.
-  const [lastQuery, setLastQuery] = React.useState(query)
-  if (query !== lastQuery) {
-    setLastQuery(query)
+  const [lastQuery, setLastQuery] = React.useState(typed)
+  if (typed !== lastQuery) {
+    setLastQuery(typed)
     setActive(0)
   }
 
   // A file on its own is a question, so the arrow lights up for one even with
   // nothing typed.
-  const ready = text.trim().length > 0 || attached !== null
+  const ready =
+    text.trim().length > 0 || attached !== null || Boolean(mode?.submitEmpty)
 
   /**
    * ONE PRESS, ONE TURN — and a file wins.
@@ -335,13 +375,12 @@ export function AgentComposer({
       return
     }
 
-    onSubmit(text.trim())
+    onSubmit(text.trim() || mode?.submitEmpty || "")
     setText("")
   }
 
   const run = (command: Command) => {
     setText("")
-    setPeek(false)
     if (command.kind === "go") navigate(command.to)
     else onSubmit(command.prompt)
   }
@@ -385,7 +424,40 @@ export function AgentComposer({
       }
     : {}
 
+  /**
+   * A suggestion taken: the box holds the new sentence, caret at its end — or,
+   * for a row of whole questions, the question is simply asked.
+   */
+  const take = (option: ComposeOption, send = false) => {
+    if (send) {
+      onSubmit(option.text)
+      setText("")
+      return
+    }
+    setText(option.text)
+    requestAnimationFrame(() => {
+      const el = box.current
+      if (!el) return
+      el.focus()
+      el.setSelectionRange(el.value.length, el.value.length)
+    })
+  }
+
   const onKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mode && !open) {
+      // Tab finishes the word, as the Smart Hire bar's ghost did.
+      if (event.key === "Tab" && !event.shiftKey && finish) {
+        event.preventDefault()
+        take(finish)
+        return
+      }
+      if (event.key === "Escape" || (event.key === "Backspace" && !text)) {
+        event.preventDefault()
+        mode.onExit()
+        return
+      }
+    }
+
     if (open) {
       if (event.key === "ArrowDown" || event.key === "ArrowUp") {
         event.preventDefault()
@@ -405,7 +477,6 @@ export function AgentComposer({
       if (event.key === "Escape") {
         event.preventDefault()
         setText("")
-        setPeek(false)
         return
       }
     }
@@ -494,9 +565,56 @@ export function AgentComposer({
   )
 
   const checks = checklist?.(text)
+  // Recomputed per keystroke: rules over cached pools, never the model.
+  const help = mode && assist ? assist(text) : null
+  const finish =
+    help?.rows[0]?.kind === "complete" ? help.rows[0].options[0] : null
+
+  // Pressing the pill puts the caret in the box — the next thing to do is
+  // type, and the suggestions only show while it has focus.
+  const modeLabel = mode?.label
+  React.useEffect(() => {
+    if (!modeLabel) return
+    box.current?.focus()
+  }, [modeLabel])
+
+  // WHERE IT WILL GO, READ ONCE TYPING PAUSES. Per keystroke it flickered —
+  // "I want to hire" names one thing and the next word another — so the text
+  // is read 400ms after the last key, and only from two words on. Not over the
+  // `/` menu, a file waiting to send, the checklist or the mic.
+  const [settled, setSettled] = React.useState("")
+  React.useEffect(() => {
+    if (!route) return
+    const timer = setTimeout(() => setSettled(text), SETTLE_MS)
+    return () => clearTimeout(timer)
+  }, [text, route])
+  const hint =
+    route &&
+    text.trim() &&
+    settled.trim().split(/\s+/).length > 1 &&
+    !open &&
+    !attached &&
+    !checks?.length &&
+    !micTimer
+      ? route(settled)
+      : null
+  const lit = hint ? (hint.kind === "clear" ? hint.id : hint.ids.join(",")) : ""
+  React.useEffect(() => {
+    onRoute?.(lit ? lit.split(",") : [])
+  }, [lit, onRoute])
+  // A pill the page lights says it already; the box names the rest.
+  const outcome =
+    hint?.kind === "clear" && !pills?.includes(hint.id) ? hint.action : null
 
   return (
-    <div className={cn("relative", className)}>
+    <div
+      className={cn("relative", className)}
+      onFocus={() => onFocusChange?.(true)}
+      onBlur={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+          onFocusChange?.(false)
+      }}
+    >
       {/* Above the box, where the eye is while typing: what the sentence
           already covers, ticked as it is written. */}
       {checks?.length ? (
@@ -563,16 +681,9 @@ export function AgentComposer({
           value={text}
           onChange={(event) => {
             setText(event.target.value)
-            setPeek(false)
           }}
-          onFocus={() => {
-            setFocused(true)
-            if (!quiet.current) setPeek(true)
-          }}
-          onBlur={() => {
-            setFocused(false)
-            setPeek(false)
-          }}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           onKeyDown={onKeyDown}
           data-fading={
             examples?.length && !focused && example.fading ? "" : undefined
@@ -621,6 +732,38 @@ export function AgentComposer({
               <span className="sr-only">— remove</span>
             </button>
           </div>
+        ) : null}
+
+        {/* What the description covers so far, inside the box, so it is
+            there from the moment the pill is pressed and nothing outside the
+            box moves as it fills. Ticked by the posting's own readers. */}
+        {help && help.checks.length > 0 ? (
+          <ul
+            aria-label="What your description covers"
+            className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2.5 pb-1 text-xs"
+          >
+            {help.checks.map((check) => (
+              <li
+                key={check.field}
+                className={cn(
+                  "flex items-center gap-1 transition-colors",
+                  check.done
+                    ? "font-medium text-foreground"
+                    : "text-muted-foreground"
+                )}
+              >
+                {check.done ? (
+                  <CheckIcon className="size-3.5 text-primary" />
+                ) : (
+                  <CircleDashedIcon className="size-3.5 text-muted-foreground/60" />
+                )}
+                {check.label}
+                <span className="sr-only">
+                  {check.done ? " — covered" : " — not yet"}
+                </span>
+              </li>
+            ))}
+          </ul>
         ) : null}
 
         <div className="flex items-center gap-1 px-1 pt-1">
@@ -717,7 +860,34 @@ export function AgentComposer({
             </>
           )}
 
-          <div className="flex-1" />
+          {mode ? (
+            <span className="ml-1 inline-flex items-center gap-0.5 rounded-full bg-primary/10 py-1 pr-1 pl-2.5 text-xs font-medium text-primary">
+              {mode.label}
+              <button
+                type="button"
+                onClick={mode.onExit}
+                className="grid size-4 place-items-center rounded-full transition-colors outline-none hover:bg-primary/15 focus-visible:ring-2 focus-visible:ring-ring/50"
+              >
+                <XIcon className="size-3" />
+                <span className="sr-only">Clear {mode.label}</span>
+              </button>
+            </span>
+          ) : null}
+
+          {/* What Enter will do, beside the button that does it — inside the
+              box, in space that is already there, so nothing moves when it
+              comes and goes. */}
+          <div
+            aria-live="polite"
+            className="flex min-w-0 flex-1 justify-end px-2"
+          >
+            {outcome ? (
+              <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                <Kbd>↵</Kbd>
+                <span className="truncate">{outcome}</span>
+              </span>
+            ) : null}
+          </div>
 
           {hero ? (
             <>
@@ -750,6 +920,76 @@ export function AgentComposer({
           )}
         </div>
       </div>
+
+      {/* WHAT TO ADD NEXT, under the box while it has focus. Laid over the
+          page rather than pushing it down, so the overview below does not jump
+          with every keystroke. A press keeps the caret in the box
+          (`preventDefault` on mouse-down) and writes the pick into the
+          sentence, where it can be edited like anything typed. */}
+      {help && help.rows.length > 0 && focused ? (
+        <div
+          onMouseDown={(event) => event.preventDefault()}
+          className="absolute inset-x-0 top-full z-30 mt-2 flex flex-col gap-3 rounded-2xl border bg-popover p-3 text-popover-foreground shadow-lg"
+        >
+          {help.rows.map((row) => (
+            <div key={row.title} className="flex flex-col gap-1.5">
+              <p className="flex items-center gap-2 px-1 text-xs">
+                <span className="font-medium">{row.title}</span>
+                {row.note ? (
+                  <span className="text-muted-foreground">{row.note}</span>
+                ) : null}
+                {row.kind === "complete" ? (
+                  <span className="ml-auto text-muted-foreground">
+                    <Kbd>Tab</Kbd>
+                  </span>
+                ) : null}
+              </p>
+              {/* Whole questions read as a list of things to ask, each sent
+                  on press; parts of a sentence are chips added to it. */}
+              <div
+                className={cn(
+                  "flex gap-1.5",
+                  row.send ? "flex-col" : "flex-wrap"
+                )}
+              >
+                {row.options.map((option) =>
+                  row.send ? (
+                    <button
+                      key={option.label}
+                      type="button"
+                      onClick={() => take(option, true)}
+                      className="group flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition-colors outline-none hover:bg-muted focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                    >
+                      <SparklesIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1">{option.label}</span>
+                      {option.detail ? (
+                        <span className="shrink-0 truncate text-xs text-muted-foreground tabular-nums">
+                          {option.detail}
+                        </span>
+                      ) : null}
+                      <ArrowUpIcon className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                    </button>
+                  ) : (
+                    <button
+                      key={option.label}
+                      type="button"
+                      onClick={() => take(option)}
+                      className="inline-flex items-center gap-1.5 rounded-full border bg-background px-3 py-1 text-xs font-medium transition-colors outline-none hover:bg-muted focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                    >
+                      {option.label}
+                      {option.detail ? (
+                        <span className="font-normal text-muted-foreground tabular-nums">
+                          {option.detail}
+                        </span>
+                      ) : null}
+                    </button>
+                  )
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
     </div>
   )
 }

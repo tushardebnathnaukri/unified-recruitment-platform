@@ -311,7 +311,6 @@ export function PostingWizard({
                     <AgentComposer
                       vocabulary={vocabulary}
                       checklist={waitingForRole ? checklist : undefined}
-                      peekOnFocus={false}
                       placeholder={
                         waitingForJd
                           ? "Paste the job description, or drop a PDF or Word doc here…"

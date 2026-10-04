@@ -83,6 +83,29 @@ export async function askIntake(
 }
 
 /**
+ * Which Dashboard skill a sentence asks for, read by the model — only asked
+ * when the page's keywords tie or miss (`lib/agent-route-ai.ts`). Throws with
+ * the server's reason on failure.
+ */
+export async function askRoute(
+  text: string
+): Promise<{ model: string; result: unknown }> {
+  const response = await fetch(`${BASE}/api/route`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  })
+  const body = (await response.json().catch(() => ({}))) as {
+    error?: string
+    model?: string
+    result?: unknown
+  }
+  if (!response.ok)
+    throw new Error(body.error ?? `AI server returned ${response.status}`)
+  return { model: body.model ?? "", result: body.result }
+}
+
+/**
  * A recording, transcribed by Gemini on the AI server. `vocabulary` is the
  * words this conversation is likely to hold — cities, pay words, the role and
  * its skills — which the transcriber is told to expect.

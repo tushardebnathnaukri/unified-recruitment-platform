@@ -96,7 +96,8 @@ and `PageHeaderProvider` (a portal slot, not state).
 - **`packages/ui`** (`@workspace/ui`) — shadcn/ui components on Base UI primitives, documented in Storybook.
 - **`apps/ai`** — a small Node server that holds the Gemini key, so the page never does. Node ≥
   22.18 runs its TypeScript directly (type stripping): no dependencies, no build, `tsc --noEmit`
-  only to check. Four routes — `GET /api/health`, `POST /api/intake`, `POST /api/transcribe`, and
+  only to check. Five routes — `GET /api/health`, `POST /api/intake`, `POST /api/route` (which
+  Dashboard skill a sentence asks for), `POST /api/transcribe`, and
   `GET|PUT /api/sessions/:id` (an Agent conversation's turns, no key needed) —
   each deliberately narrow (a fixed schema in, a fixed shape out), with a per-IP rate limit
   (40 per 5 minutes) and CORS from `ALLOWED_ORIGINS` (localhost when unset). Vite's dev and
@@ -679,7 +680,53 @@ to start?" — a JD, a form, "let's chat about it", or one of my jobs as a base
 **A sentence that starts a posting AND describes the role skips the question** ("hire an FMCG
 product manager in Delhi" — `describesRole`): it is read as the from-scratch opener. Free text is
 routed by `routeFor` in `lib/agent.ts` — whole words, a phrase weighing its word count — because
-substring matching let "new" in "New Delhi" send a hiring sentence to "What changed". A base job copies the title,
+substring matching let "new" in "New Delhi" send a hiring sentence to "What changed".
+**Keywords first, Gemini only on a tie or a miss.** A sentence one skill wins outright is
+answered at once; a tie ("hiring insights" — posting's "hiring", the market's "insights") or a
+miss ("mujhe ek sales head chahiye") waits on `/api/route` (`apps/ai/src/route.ts`, `routeWithAi`
+in `lib/agent-route-ai.ts`), cached like a reading (`routes`, `pendingRoute`, sessionStorage
+`agent:routes:v1`, only Gemini's kept). The model picks a skill id from a fixed list and the page
+answers from its own data. **A tie never goes to the first skill any more**: unsure (the model's,
+or the keywords' when the server is down) is a "Which did you mean?" card of the options' own
+prompts, and none is the refusal — its buttons carry the pill's own name (`labels` on a
+`prompts` block), since `ROUTE_LABELS` call a skill what its pill does ("Create Job", "Hiring
+Insights"). **Where the text is heading is shown, not said** (`routeHint`, keywords only, read
+400ms after typing pauses and from two words, so it does not flicker): on the chat landing the
+matching pill lights (`data-lit`, both for a tie); any other clear match prints what Enter will
+DO beside the send button inside the box ("↵ Show this week's interviews", `ROUTE_ACTIONS`) —
+an outcome rather than "Goes to", and in space already there, so nothing moves. A miss shows
+nothing. A first pass printed "Goes to Post a job" as a line above the box: it named the pill
+above it by a different name, jumped the box each time it appeared, and changed on every word.
+**Every pill is a mode, not a question** (`MODES` in `routes/agent.tsx`). Create Job is described
+below; **Search Resume** is the same box over `composeAssist(…, "search")` — no CTC, because a
+search asks pay after the sentence rather than reading it, and an empty box offers your recent
+searches whole, then your postings' titles; its turn starts the search with the sentence as the
+requirement. **Review applicants** and **Hiring Insights** are asked rather than described: the
+box offers their questions (`askAssist`, sent on press) and anything typed stays in the pill's
+family (`MODE_FAMILY` — the queue, the strongest, what changed, the note, the diary; or your
+funnel, the market, the cheapest city), falling back to the pill's own question. **A clear
+match breaks out of any pill** (`modeTarget`): "hire a sales head" under Review applicants starts a
+posting, and the work step says "Create Job, not Review applicants" — **except a sentence that
+describes a role** under Create Job or Search Resume, because descriptions hit keywords by accident
+("Product Manager, Pune" is a clear win for the best-value city). A tie across the pill's edge is
+not the pill's to settle and is routed like typed text (Gemini, then "Which did you mean?"). The
+composer says so before send (`modeHint`): the pill it is leaving for lights, or the line by the
+send button names the outcome; staying says nothing. In every mode an empty Enter is the pill's
+old question (`submitEmpty`). While the box has focus a scrim dims
+the page, leaving the box and the pills lit. **Create Job**, pressed, fills with the brand; the box takes the caret and carries a
+"Create Job ✕" chip (Esc, or Backspace in an empty box, lets go), a Role · Location · Experience ·
+CTC · Industry · Skills tick row sits inside the box, and under it `composeAssist`
+(`lib/job-compose.ts`) offers what to add next — two rows at a time, each pick appended to the
+sentence in plain words ("in Mumbai", ", 12–17 years", ", ₹60–80 LPA", ", FMCG", "— Brand
+Strategy"). **Every option is read off the pool a search for the role finds** (`poolFor`, as Chat
+v3's suggestions are): cities by share, years and CTC as the pool's thirds (the top years band
+open-ended), sectors by share; skills are `skillsForTitle`. Words are finished from the Smart
+Hire vocabulary (`matchesFor`, Tab takes the first) — the bar whose ghost text was taken off the
+Dashboard; this only appears after the recruiter has said they are writing a job. A known title is
+matched whole and longest first, because titles hold commas and dashes ("Vice President,
+Enterprise Sales"). The sent turn is **`Ask: {"skill":"posting","text":…}`** (`encodeAsk`), so it
+starts a posting whatever its words, always as the from-scratch opener, and the bubble shows the
+sentence under "Create Job". A base job copies the title,
 the city and `requiredSkillsFor` and asks for the rest, since a posting in `lib/jobs.ts` carries
 no experience, pay or work mode. From scratch opens on one plain ask for title, location, years,
 industry and skills, with a **checklist bar in the composer** (`openerChecks`) ticking as they
@@ -699,7 +746,7 @@ asked which were must-haves; refinement's `skillsSplit` now only appears when th
 JD or the opener and were never ranked (`state.ranked`), and draws the same list. The card's answer is
 words — "Must have: A, B · Good to have: C" — read by the page, not the model, like the institutes.
 
-**The posting conversation has five layouts, picked on /settings** ("Post a job",
+**The posting conversation has seven layouts, picked on /settings** ("Post a job",
 `usePostingVariant` in `lib/posting-variant.ts`): **Chat with rail** (the default), **Chat with rail
 v2** (the same, with the Plan lifted out of the rail and drawn across the top of the page by
 `PlanBar` in `posting-rail.tsx`, inside the chat column rather than across the rail — five equal
@@ -776,6 +823,81 @@ closes it and asks that question. One guard went into the
 Gemini reader for it: **a card can only skip what it asked** — shown one question, the model
 reported the fields it was not shown as skipped, so `reply.skipped` is filtered to the answered
 keys.
+
+**"Chat v3" is Chat with rail v2 with the AI Agent's best ideas, on our own conversation**
+(`rail3` in `lib/posting-variant.ts`; logic in `lib/chat-v3.ts`, drawing in `components/chat-v3/`).
+Same turns, same Gemini readers with rules fallback, same `PlanBar` and inline cards; what it adds is
+switched on by `answersFor`'s `suggest` option, which only v3 passes, so every other layout reads
+exactly as before.
+- **The agent fills what the pool can tell it** (`withSuggestions`): once the title is known, empty
+  years, pay, city and skills are filled from the people a search for that title finds — the middle
+  third of their years, the middle third of what the ones inside those years expect, where most of
+  them are, and `skillsForTitle` ranked by `rankFor`. **Derived in the fold, never a turn**, so it
+  replays. Because the readers never overwrite a filled field, **the suggested values are taken back
+  out before every reading** (`withoutSuggestions`) and refilled after, so an answer can still set
+  them. The middle half was tried first and read "8–15 years, ₹75L–1.26Cr" on a senior pool.
+- **Every value says where it came from** (`provenanceFor`, over the `states` array `answersFor` now
+  returns — the posting state after each turn): From your brief / JD / job, You answered, Edited by
+  you, From the hiring manager, Suggested, Needs input — under the value on the rail.
+- **Locks are `Lock: {…}` turns**, honoured centrally in `withSuggestions`: whichever reader ran, a
+  locked field gets its old value back and the reply says so. Gemini does take corrections, which is
+  what a lock is for.
+- **Must have narrows, Good to have ranks**, because in `searchHrefFor` skills are `crit` lines and
+  never filters. The Must have row is the posting's filters (city, years, industry, team, companies,
+  pay ceiling), each with the people relaxing it would bring back (`requirementsOf`, counted with
+  `poolCount`, which projects exactly as the rail's count does — `projected` / `postingSearch` in
+  `lib/posting-rail.ts`). **A filter made a good-to-have is `HiringBrief.relaxed`**, set by a
+  `Filter: {…}` turn, which `searchHrefFor` writes as a ranking line instead of a param. Skills move
+  between key and nice through the ranked `Change:` turn and say plainly that they remove nobody. The
+  last move is said with the pool before and after and an Undo (the inverse turn, `lastMoveOf`), and
+  under `THIN_POOL` the guardrail offers the single relax that recovers the most people.
+- **Every layout recognises `Lock:` and `Filter:` turns and only v3 applies them** — a conversation
+  opened under another layout skips them rather than sending them to Gemini as answers, which it did
+  until that was fixed.
+- **Insights carry an Apply** (`nudgesFor`): the next city by `/insights`' share, raising pay to the
+  market's middle when it is below it, and widening years with the pool's own count. Each is a
+  `Change:` turn; none on a locked field.
+- **Candidates** is a third rail view: the top three from `toReview` over the posting's own search,
+  drawn with the search flow's `PersonCard`, "Meets N of M key skills"; the finish card's "See who
+  this finds" opens it.
+- **The hiring manager's note** (`components/chat-v3/note.tsx`) appears at Selection criteria:
+  recorded (Gemini transcribes, the browser's recogniser otherwise) or typed, read back in a box, then
+  sent as a `Note: …` turn and read by the existing readers — Gemini's schema already reads posting
+  fields and the brief from any free text, so it needed no reader of its own. Undo drops the turn
+  while it is the newest.
+- **The status panel** at the top of the rail: Needs you, Recent (`changesFor`), Working on next; an
+  activity log of every reading at the foot.
+
+**"AI Agent (V2.3)" is a peer's prototype, ported whole rather than built on this conversation**
+(`agent` in `lib/posting-variant.ts`; `components/ai-agent/`, its logic in `lib/ai-agent/`). It came
+as a self-unpacking single HTML file in another design system: one class component with about 150
+state keys and a template runtime. It is rebuilt here in this system's components and tokens, but
+**its logic and data are its own**: four canned roles (`detectRole` — sales, HR, marketing,
+product), its own pools, companies, colleges and "calculus" insights in `lib/ai-agent/data.ts`, no
+Gemini, no turns, no Search Resume. The flow is a brief, five steps the agent fills in with a staged
+"thinking" reveal (Role details, Job description, Screening questions, Targeting, Candidates) beside
+its 400px agent panel (a Drawer below `@5xl/main`), then Review, "Choose how your agents source" and
+done. **The controller is the class, kept line for line**: `AgentController` in `controller.ts`
+extends `Store` (`store.ts`), a `state` / `setState` / timers class read through
+`useSyncExternalStore`, because rewriting forty methods that chain timers and re-read `this.state`
+as reducer actions would have meant re-deriving each one. The prototype's 3,900-line render
+function is split into typed derivations per screen (`view.ts`, `targeting.ts`, `finish.ts`), each a
+function of the controller and its state; the components only draw them. `poolFor` reads the
+must/good buckets as module state, as it did there, so `syncBuckets()` runs before every render.
+**Progress is per session id in this browser's `localStorage`** (`agent:ai-agent:<id>`,
+`persist.ts`); a reload settles whatever was mid-animation, and a shared link opens on its owner's
+browser state, not the recipient's. A sentence that describes a role (`describesRole`) arrives as
+the brief, already typed. The top bar keeps the prototype's two prototype controls (Paid / Free,
+Auto-advance) behind a dashed "V2.3.1 · AI AGENT" menu, and "Classic form" opens `/jobs/new`. Its
+data is management hiring, iimjobs' domain; on hirist only the product name changes, which is the
+prototype's scope, not a fork. **Two traps it has.** The Targeting step's sticky slim bar measures
+against the flow's own scrolling column, not the document, and uses a scroll listener, since an
+IntersectionObserver only reports a crossing and a jump past the line skips it. **Its purple AI
+accent is gone, on purpose**: an `--ai` token set was tried and pulled, so the agent's tiles, the
+must-have chips and the recommended offer take `--primary`, its lilac surfaces take `--muted`, and
+its purple buttons are the default and outline `Button`. The source chips (`SOURCE_TAG` in
+`components/ai-agent/shared.ts`) tell sources apart by fill and outline instead of hue: yours in the
+brand tint, the agent's suggestion a plain outline, a data recommendation outlined in the brand.
 
 **Questions are asked as a questionnaire docked in the composer's place**, the way Claude asks in
 plan mode (`components/agent-questionnaire.tsx`, over `@shadcn/react/questionnaire` in

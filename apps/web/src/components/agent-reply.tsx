@@ -135,14 +135,14 @@ function AgentBlock({
   if (block.kind === "prompts") {
     return (
       <div className="flex flex-wrap gap-2">
-        {block.prompts.map((prompt) => (
+        {block.prompts.map((prompt, index) => (
           <button
             key={prompt}
             type="button"
             onClick={() => onAsk(prompt)}
             className="rounded-4xl border bg-background px-3 py-1.5 text-xs font-medium transition-colors outline-none hover:bg-muted focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
           >
-            {prompt}
+            {block.labels?.[index] ?? prompt}
           </button>
         ))}
       </div>

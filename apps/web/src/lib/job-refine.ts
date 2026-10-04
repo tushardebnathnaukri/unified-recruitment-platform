@@ -116,7 +116,22 @@ export type HiringBrief = {
   budget: { firm: boolean; upTo: number | null } | null
   /** Who to rule out, in words. Private; screened for protected traits. */
   exclusions: string[]
+  /**
+   * CHAT V3 ONLY: filters the recruiter made good-to-haves. Each still counts
+   * — as a ranking line (`crit`) instead of a filter — so the search ranks on
+   * it and removes nobody for it. Absent everywhere else.
+   */
+  relaxed?: FilterId[]
 }
+
+/** The posting's filters: the things that narrow the pool rather than rank it. */
+export type FilterId =
+  | "city"
+  | "years"
+  | "industries"
+  | "team"
+  | "companies"
+  | "budget"
 
 export const POST_NOW = "Skip, post it now"
 
@@ -1362,6 +1377,9 @@ export function searchHrefFor(state: IntakeState, brand: Brand) {
   // Off, the search is the posting's alone: nothing the recruiter cannot see
   // on the screen narrows it.
   const brief = criteriaOn(state) ? state.brief : EMPTY_BRIEF
+  // What Chat v3 turned from a filter into a ranking line. Empty everywhere
+  // else, so every other layout's search is exactly what it was.
+  const relaxed = new Set(state.brief.relaxed ?? [])
   const city = draft.locations.find((place) => place !== REMOTE)
   const movers = brief.openToMovers === true
 
@@ -1370,8 +1388,10 @@ export function searchHrefFor(state: IntakeState, brand: Brand) {
   // location; people who would move are asked for by preference instead.
   const query = [
     titles.join(" or "),
-    city && !movers ? `in ${city}` : null,
-    draft.experience ? yearsLabel(draft.experience) : null,
+    city && !movers && !relaxed.has("city") ? `in ${city}` : null,
+    draft.experience && !relaxed.has("years")
+      ? yearsLabel(draft.experience)
+      : null,
   ]
     .filter(Boolean)
     .join(", ")
@@ -1380,19 +1400,22 @@ export function searchHrefFor(state: IntakeState, brand: Brand) {
     searchHref({ query, mode: "natural" }).split("?")[1] ?? ""
   )
 
-  if (city && movers) {
+  if (city && movers && !relaxed.has("city")) {
     const spelled = criteriaFrom(city).location
     if (spelled) params.append("pref", spelled)
   }
-  for (const industry of brief.industries) params.append("ind", industry)
-  if (brief.ledTeam) params.set("team", "yes")
+  if (!relaxed.has("industries"))
+    for (const industry of brief.industries) params.append("ind", industry)
+  if (brief.ledTeam && !relaxed.has("team")) params.set("team", "yes")
   const known = companiesFor(brand)
-  for (const company of brief.targetCompanies) {
-    if (known.includes(company)) params.append("org", company)
-  }
+  if (!relaxed.has("companies"))
+    for (const company of brief.targetCompanies) {
+      if (known.includes(company)) params.append("org", company)
+    }
   const ceiling =
     brief.budget?.upTo ?? (brief.budget?.firm ? draft.pay?.max : null)
-  if (ceiling) params.set("ectc", writeRange(null, ceiling)!)
+  if (ceiling && !relaxed.has("budget"))
+    params.set("ectc", writeRange(null, ceiling)!)
 
   for (const skill of draft.skills) params.append("crit", `Has ${skill}`)
   for (const skill of draft.niceSkills)
@@ -1406,6 +1429,24 @@ export function searchHrefFor(state: IntakeState, brand: Brand) {
     )
   for (const exclusion of brief.exclusions)
     params.append("crit", `Not: ${exclusion}`)
+
+  // The relaxed filters, as the lines they became — ranked after the skills.
+  if (relaxed.has("city") && city) params.append("crit", `Based in ${city}`)
+  if (relaxed.has("years") && draft.experience)
+    params.append(
+      "crit",
+      `Has at least ${draft.experience.min} years behind them`
+    )
+  if (relaxed.has("industries"))
+    for (const industry of brief.industries)
+      params.append("crit", `Has worked in ${industryLabel(industry)}`)
+  if (relaxed.has("team") && brief.ledTeam)
+    params.append("crit", "Has led a team")
+  if (relaxed.has("companies"))
+    for (const company of brief.targetCompanies)
+      params.append("crit", `Has worked at ${company}`)
+  if (relaxed.has("budget") && ceiling)
+    params.append("crit", `Expects up to ₹${ceiling}L`)
 
   return `/database?${params.toString()}`
 }

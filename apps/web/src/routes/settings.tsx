@@ -140,8 +140,15 @@ export function SettingsPage() {
               answer is read and editable by hand, with the chat as a panel on
               the right; Chat, then form is the rail while the chat is asking
               and the form once it has — "Review and post" brings the form in
-              beside the chat instead of sending you to it. Whichever it is,
-              every change is a turn in the conversation.
+              beside the chat instead of sending you to it. Chat v3 is v2 with
+              an agent that fills what the pool can tell it, says where every
+              value came from, lets you lock one, and checks the pool and sample
+              people as you go. Chat alt asks one question at a time beside a
+              tracker of them all. In each of those, every change is a turn in
+              the conversation. AI Agent (V2.3) is a peer's prototype ported
+              whole: one brief, then five steps the agent fills in, on its own
+              sample data and saved in this browser rather than in the
+              conversation.
             </p>
           </div>
 

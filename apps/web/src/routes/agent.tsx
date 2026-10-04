@@ -7,9 +7,15 @@ import {
   SparklesIcon,
   MessageCircleIcon,
   XIcon,
+  ArrowRightLeftIcon,
+  LockIcon,
+  LockOpenIcon,
+  Undo2Icon,
+  UsersIcon,
 } from "lucide-react"
 
 import { useBrand } from "@workspace/ui/components/brand-provider"
+import type { Brand } from "@workspace/ui/lib/brands"
 import { Bubble, BubbleContent } from "@workspace/ui/components/bubble"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -41,20 +47,42 @@ import { AgentQuestionnaire } from "@/components/agent-questionnaire"
 import { AgentBlocks } from "@/components/agent-reply"
 import { PostingFormPanel } from "@/components/posting-form-panel"
 import { PostingWizard } from "@/components/posting-wizard"
+import { AiAgentFlow } from "@/components/ai-agent"
 import { PostingStatusCard } from "@/components/posting-status-card"
 import { PlanBar, PostingRail } from "@/components/posting-rail"
+import { ChatV3Rail } from "@/components/chat-v3/rail"
+import { HiringManagerNote } from "@/components/chat-v3/note"
 import { useCollapseNav } from "@/components/use-collapse-nav"
 import {
   answersFor,
   CARDS,
   HERO_ACTIONS,
   heroExamples,
+  ROUTE_IDS,
+  routeHint,
+  askAssist,
+  askLabel,
+  modeHint,
+  decodeAsk,
+  encodeAsk,
+  skillFor,
   type Answer,
   type Block,
   type WorkStep,
+  attachmentIn,
 } from "@/lib/agent"
+import { routeWithAi, type RouteDecision } from "@/lib/agent-route-ai"
+import { composeAssist, type ComposeAssist } from "@/lib/job-compose"
 import { useAgentLandingVariant } from "@/lib/agent-landing-variant"
 import { usePostingVariant } from "@/lib/posting-variant"
+import {
+  FIELD_LABEL,
+  FILTER_LABEL,
+  decodeFilter,
+  decodeLock,
+  decodeNote,
+  provenanceFor,
+} from "@/lib/chat-v3"
 import { useSelectionCriteria } from "@/lib/selection-criteria"
 import {
   isSessionId,
@@ -65,7 +93,7 @@ import {
   sessionPath,
 } from "@/lib/agent-sessions"
 import { dictationVocabulary } from "@/lib/dictation"
-import { openerChecks } from "@/lib/job-start"
+import { describesRole, openerChecks } from "@/lib/job-start"
 import { railFor, searchRailFor } from "@/lib/posting-rail"
 import { searchChangeItem, SEARCH_LABELS } from "@/lib/search-intake"
 import { play } from "@/lib/sound"
@@ -221,6 +249,15 @@ export function AgentPage() {
   // Asked in THIS visit — a reply to it pops; a transcript rebuilt from a
   // link or a reload arrives silently, because nobody is waiting for it.
   const askedHere = React.useRef(false)
+  // Takes the newest turn back — a hiring manager's note undone while it is
+  // still the last thing said. The conversation is its turns, so this is all
+  // an undo needs to be.
+  const unsay = () => {
+    if (!id || session.id !== id || !asked.length) return
+    const turns = asked.slice(0, -1)
+    setSession({ ...session, turns })
+    saveSession(id, turns)
+  }
   const ask = (prompt: string) => {
     askedHere.current = true
     const turns = [...asked, prompt]
@@ -257,33 +294,74 @@ export function AgentPage() {
   const [readings, setReadings] =
     React.useState<Record<string, IntakeState>>(loadReadings)
 
+  /**
+   * Where each sentence the keywords could not route was sent — by Gemini, or
+   * by the rules standing in. The same kind of cache as `readings`, keyed by
+   * the sentence alone, because where it goes does not depend on the turns
+   * before it.
+   */
+  const [routes, setRoutes] =
+    React.useState<Record<string, RouteDecision>>(loadRoutes)
+
   // Whether a posting asks for Selection criteria (/settings). Read here and
   // folded into the conversation, so every layout below agrees.
   const { enabled: criteria } = useSelectionCriteria()
+  // Which layout a posting is drawn in — and, for Chat v3, how it is read.
+  const { variant: postingVariant } = usePostingVariant()
+  const v3 = postingVariant === "rail3"
 
   // Answered as a whole rather than turn by turn: a reply inside the posting
   // conversation depends on the turns before it (see `answersFor`).
-  const { turns, pending, posting, search, flow } = React.useMemo(() => {
+  const {
+    turns,
+    pending,
+    pendingRoute,
+    routable,
+    posting,
+    search,
+    flow,
+    provenance,
+    prompts,
+    states,
+  } = React.useMemo(() => {
     const prompts = transcript ? transcript.split("\u0000") : []
-    const { answers, pending, posting, search, flow } = answersFor(
-      prompts,
-      brand,
-      files,
-      readings,
-      { criteria }
-    )
-    return {
+    const {
+      answers,
       pending,
+      pendingRoute,
+      routable,
       posting,
       search,
       flow,
+      states,
+    } = answersFor(prompts, brand, files, readings, {
+      criteria,
+      suggest: v3,
+      routes,
+    })
+    return {
+      pending,
+      pendingRoute,
+      routable,
+      posting,
+      search,
+      flow,
+      prompts,
+      states,
+      provenance: v3
+        ? provenanceFor(
+            prompts,
+            states,
+            (prompt) => attachmentIn(prompt) !== null
+          )
+        : null,
       turns: prompts.map((prompt, index) => ({
         id: `${index}-${prompt}`,
         prompt,
         answer: answers[index],
       })),
     }
-  }, [transcript, brand, files, readings, criteria])
+  }, [transcript, brand, files, readings, criteria, v3, routes])
 
   // Read the first unread posting answer. One at a time and in order, because
   // each is read against the draft the one before it left — `answersFor`
@@ -306,6 +384,24 @@ export function AgentPage() {
       })
     })
   }, [pending, brand])
+
+  // Route the first sentence the keywords could not, the same way: one at a
+  // time, in order, guarded against a second send while one is in flight.
+  const routing = React.useRef<string | null>(null)
+  React.useEffect(() => {
+    if (!pendingRoute || routing.current === pendingRoute.prompt) return
+    routing.current = pendingRoute.prompt
+    const { prompt, tied } = pendingRoute
+    const started = performance.now()
+    void routeWithAi(prompt, tied, ROUTE_IDS).then((decision) => {
+      const took = Math.round(performance.now() - started)
+      setRoutes((current) => {
+        const next = { ...current, [prompt]: { ...decision, took } }
+        saveRoutes(next)
+        return next
+      })
+    })
+  }, [pendingRoute])
 
   /**
    * THE LIVE CARD, IF THERE IS ONE. The newest turn's questionnaire, once its
@@ -355,7 +451,6 @@ export function AgentPage() {
   // conversation either way. "Chat, then form" is the same layout, entered
   // only once the posting is gathered — the rail while it asks, the form
   // at "Review and post".
-  const { variant: postingVariant } = usePostingVariant()
   const formBeside =
     flow === "posting" &&
     posting !== null &&
@@ -370,9 +465,12 @@ export function AgentPage() {
   // them, rather than docked where the box is. The box stays a plain reply
   // box. A change card from the rail's pencil is a side action and still
   // docks.
-  const planBar = postingVariant === "rail2" && rail !== null
-  const inlineCards = postingVariant === "rail2"
+  // Chat v3 is v2's layout with more on it, so both flags hold for it too.
+  const planBar = (postingVariant === "rail2" || v3) && rail !== null
+  const inlineCards = postingVariant === "rail2" || v3
   const [chatHidden, setChatHidden] = React.useState(false)
+  // Chat v3: the finish card asks the rail to show who the posting finds.
+  const [openView, setOpenView] = React.useState<string | null>(null)
 
   /**
    * A CHANGE FROM THE RAIL: one question, asked again in the composer's
@@ -445,6 +543,27 @@ export function AgentPage() {
 
   if (id && session.id === id && session.status !== "ready")
     return <SessionState status={session.status} />
+
+  // "AI Agent (V2.3)" (`lib/posting-variant.ts`): a peer's prototype, ported.
+  // It takes over the posting from its own brief screen and keeps its own
+  // logic, so only the start of the posting is read from the turns — and a
+  // first sentence that already describes the role becomes its brief.
+  // The first sentence, as said — a Create Job turn carries it inside.
+  const opener = turns[0]
+    ? (decodeAsk(turns[0].prompt)?.text ?? turns[0].prompt)
+    : null
+  if (postingVariant === "agent" && flow === "posting")
+    return (
+      <div className="-mt-4 -mb-4 flex h-[calc(100svh-var(--header-height))] flex-col md:-mt-6 md:-mb-6 md:h-svh">
+        <AiAgentFlow
+          key={id ?? "new"}
+          sessionId={id}
+          initialBrief={
+            opener && describesRole(opener, brand) ? opener : undefined
+          }
+        />
+      </div>
+    )
 
   // "Chat alt" (`lib/posting-variant.ts`): the posting as an onboarding —
   // one question at a time on the left, the tracker of every question on
@@ -552,6 +671,82 @@ export function AgentPage() {
                       turn.answer === null ||
                       (thinking && index === turns.length - 1)
                     const answer = turn.answer
+                    // The live card, at the end of the newest turn — after a
+                    // reply, or under a marker, which asks nothing new.
+                    const inlineCard =
+                      inlineCards && index === turns.length - 1 && docked ? (
+                        <div className="mt-3 w-full">
+                          {showCard ? (
+                            <AgentQuestionnaire
+                              key={turn.id}
+                              items={docked.items}
+                              submit={docked.submit}
+                              form={docked.form}
+                              postNow={docked.postNow}
+                              postNowLabel={docked.postNowLabel}
+                              onAsk={ask}
+                              onClose={() => setClosed(turn.id)}
+                            />
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setClosed(null)}
+                            >
+                              <ListChecksIcon data-icon="inline-start" />
+                              Answer the questions
+                            </Button>
+                          )}
+                        </div>
+                      ) : null
+                    // A lock is a marker in the transcript, not a message:
+                    // nothing was said, only what the agent may change.
+                    const lock = decodeLock(turn.prompt)
+                    const filterMove = decodeFilter(turn.prompt)
+                    // Outside Chat v3 its own turns are not drawn at all:
+                    // nothing there applies them.
+                    if ((lock || filterMove) && !v3)
+                      return inlineCard ? (
+                        <MessageScrollerItem key={turn.id} messageId={turn.id}>
+                          {inlineCard}
+                        </MessageScrollerItem>
+                      ) : null
+                    if (filterMove)
+                      return (
+                        <MessageScrollerItem key={turn.id} messageId={turn.id}>
+                          <Marker className="my-1">
+                            <MarkerIcon>
+                              <ArrowRightLeftIcon />
+                            </MarkerIcon>
+                            <MarkerContent>
+                              {filterMove.to === "none"
+                                ? `Removed ${FILTER_LABEL[filterMove.id].toLowerCase()}`
+                                : `${FILTER_LABEL[filterMove.id]} is now a ${
+                                    filterMove.to === "must"
+                                      ? "must-have"
+                                      : "good-to-have"
+                                  }`}
+                            </MarkerContent>
+                          </Marker>
+                          {inlineCard}
+                        </MessageScrollerItem>
+                      )
+                    if (lock)
+                      return (
+                        <MessageScrollerItem key={turn.id} messageId={turn.id}>
+                          <Marker className="my-1">
+                            <MarkerIcon>
+                              {lock.on ? <LockIcon /> : <LockOpenIcon />}
+                            </MarkerIcon>
+                            <MarkerContent>
+                              {lock.on ? "Locked" : "Unlocked"}{" "}
+                              {FIELD_LABEL[lock.field].toLowerCase()}
+                              {lock.on ? ": the agent won't change it" : ""}
+                            </MarkerContent>
+                          </Marker>
+                          {inlineCard}
+                        </MessageScrollerItem>
+                      )
                     return (
                       <MessageScrollerItem
                         key={turn.id}
@@ -575,9 +770,11 @@ export function AgentPage() {
                                 <Spinner />
                               </MarkerIcon>
                               <MarkerContent>
-                                {turn.answer === null
-                                  ? "Reading your answer…"
-                                  : "Working it out…"}
+                                {pendingRoute?.index === index
+                                  ? "Working out what you mean…"
+                                  : turn.answer === null
+                                    ? "Reading your answer…"
+                                    : "Working it out…"}
                               </MarkerContent>
                             </Marker>
                           ) : (
@@ -618,33 +815,53 @@ export function AgentPage() {
                                       live={index === turns.length - 1}
                                     />
                                   </div>
-                                  {inlineCards &&
+                                  {v3 &&
                                   index === turns.length - 1 &&
-                                  docked ? (
+                                  answer.blocks.some(
+                                    (block) => block.kind === "posting"
+                                  ) ? (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="mt-2 hidden @3xl/main:inline-flex"
+                                      onClick={() =>
+                                        setOpenView(`candidates#${Date.now()}`)
+                                      }
+                                    >
+                                      <UsersIcon data-icon="inline-start" />
+                                      See who this finds
+                                    </Button>
+                                  ) : null}
+                                  {v3 &&
+                                  index === turns.length - 1 &&
+                                  decodeNote(turn.prompt) !== null ? (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      className="mt-1"
+                                      onClick={unsay}
+                                    >
+                                      <Undo2Icon data-icon="inline-start" />
+                                      Undo these changes
+                                    </Button>
+                                  ) : null}
+                                  {v3 &&
+                                  index === turns.length - 1 &&
+                                  flow === "posting" &&
+                                  posting &&
+                                  (posting.stage === "refine" ||
+                                    posting.stage === "screen") &&
+                                  !prompts.some(
+                                    (prompt) => decodeNote(prompt) !== null
+                                  ) ? (
                                     <div className="mt-3 w-full">
-                                      {showCard ? (
-                                        <AgentQuestionnaire
-                                          key={turn.id}
-                                          items={docked.items}
-                                          submit={docked.submit}
-                                          form={docked.form}
-                                          postNow={docked.postNow}
-                                          postNowLabel={docked.postNowLabel}
-                                          onAsk={ask}
-                                          onClose={() => setClosed(turn.id)}
-                                        />
-                                      ) : (
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => setClosed(null)}
-                                        >
-                                          <ListChecksIcon data-icon="inline-start" />
-                                          Answer the questions
-                                        </Button>
-                                      )}
+                                      <HiringManagerNote
+                                        vocabulary={vocabulary}
+                                        onAsk={ask}
+                                      />
                                     </div>
                                   ) : null}
+                                  {inlineCard}
                                 </MessageContent>
                               </Message>
                             </>
@@ -723,12 +940,7 @@ export function AgentPage() {
               <AgentComposer
                 vocabulary={vocabulary}
                 checklist={waitingForRole ? checklist : undefined}
-                peekOnFocus={
-                  !showCard &&
-                  !waitingForJd &&
-                  !waitingForRole &&
-                  !waitingForSearch
-                }
+                route={routable ? routeHint : undefined}
                 className={
                   (showCard && !inlineCards) || statusCard ? "mt-3" : undefined
                 }
@@ -765,7 +977,32 @@ export function AgentPage() {
           </button>
         ) : null}
 
-        {rail && !formBeside ? (
+        {rail &&
+        !formBeside &&
+        v3 &&
+        flow === "posting" &&
+        posting &&
+        provenance ? (
+          <div className="hidden h-full @3xl/main:block">
+            <ChatV3Rail
+              model={rail}
+              posting={posting}
+              provenance={provenance}
+              prompts={prompts}
+              states={states}
+              steps={turns.flatMap((turn) =>
+                turn.answer?.step ? [turn.answer.step] : []
+              )}
+              brand={brand}
+              openView={openView}
+              reading={Boolean(pending)}
+              onEdit={(field) =>
+                setEditing({ id: field, key: Date.now(), session: id })
+              }
+              onAsk={ask}
+            />
+          </div>
+        ) : rail && !formBeside ? (
           <div className="hidden h-full @3xl/main:block">
             <PostingRail
               model={rail}
@@ -873,6 +1110,50 @@ function WorkStepRow({ step }: { step: WorkStep }) {
  * as the face above it (`lib/aura/presets.js`), so it does not turn orange on
  * hirist, and it is faint enough to sit behind either theme.
  */
+/** The skills the chat landing draws as pills, lit rather than named in the box. */
+const PILLS = HERO_ACTIONS.map((action) => action.skill)
+
+/**
+ * WHAT EACH PILL TURNS THE BOX INTO once pressed. Create Job and Search Resume
+ * are described, so the box helps write the description — the parts it
+ * covers ticked inside it, the next part offered under it (`composeAssist`).
+ * Review applicants and Hiring Insights are asked, so the box offers their
+ * questions to send as they are (`askAssist`), and stays out of the way while
+ * something is being typed. An empty Enter is the pill's own question either
+ * way (`submitEmpty`), which is what pressing it used to do.
+ */
+const MODES: Record<
+  string,
+  {
+    placeholder: string
+    assist: (text: string, brand: Brand) => ComposeAssist
+  }
+> = {
+  posting: {
+    placeholder:
+      "Start with the role — e.g. Head of Marketing in Mumbai, 12+ years",
+    assist: (text, brand) => composeAssist(text, brand, "posting"),
+  },
+  find: {
+    placeholder:
+      "Who are you looking for? — e.g. Product managers in Pune, 8+ years, FMCG",
+    assist: (text, brand) => composeAssist(text, brand, "search"),
+  },
+  decisions: {
+    placeholder:
+      "Ask about your applicants — or press Enter for who's waiting on you",
+    assist: (text, brand) =>
+      text.trim() ? NOTHING : askAssist("decisions", brand),
+  },
+  funnel: {
+    placeholder: "Ask about your hiring — or press Enter for how it's going",
+    assist: (text, brand) =>
+      text.trim() ? NOTHING : askAssist("funnel", brand),
+  },
+}
+
+const NOTHING: ComposeAssist = { checks: [], rows: [] }
+
 function ChatLanding({
   onAsk,
   onAttach,
@@ -886,11 +1167,55 @@ function ChatLanding({
     [brand]
   )
   const examples = React.useMemo(() => heroExamples(brand), [brand])
+  // The pills the box's text is heading for, once typing pauses — one for a
+  // clear match, both for a tie. The pill is the hint: same name, same place,
+  // nothing new on screen and nothing moving.
+  const [lit, setLit] = React.useState<string[]>([])
+  // The pressed pill, if any — the box is writing or asking for it.
+  const [mode, setMode] = React.useState<string | null>(null)
+  // Whether the box has focus — the page behind it dims while it does.
+  const [focused, setFocused] = React.useState(false)
+  const pressed = HERO_ACTIONS.find((action) => action.skill === mode)
+  const assist = React.useCallback(
+    (text: string) => (mode ? MODES[mode].assist(text, brand) : NOTHING),
+    [mode, brand]
+  )
+  // Under a pill, the hint speaks only when the sentence is about to leave it
+  // — the pill it is heading for lights, or the line by the send button says
+  // what Enter will do instead.
+  const route = React.useCallback(
+    (text: string) => (mode ? modeHint(mode, text, brand) : routeHint(text)),
+    [mode, brand]
+  )
+  // Written under a pill, the sentence goes where the pill said. A file, or
+  // a `/` command picked from the menu, is still its own turn.
+  const submit = (text: string) =>
+    onAsk(
+      mode && attachmentIn(text) === null && !skillFor(text)
+        ? encodeAsk(mode, text)
+        : text
+    )
   return (
     <div className="flex flex-col items-center px-4 pb-10 lg:px-6">
       {/* The hero: its own positioned box, so the glow sits behind the box
           and the pills rather than drifting down the page with the overview. */}
-      <div className="relative isolate flex w-full flex-col items-center pt-[6svh]">
+      {/* Raised while the box has focus, so the scrim inside it covers the
+          overview below and the nav beside it rather than sitting under them. */}
+      <div
+        className={cn(
+          "relative isolate flex w-full flex-col items-center pt-[6svh]",
+          focused && "z-20"
+        )}
+      >
+        {/* THE SCRIM: everything but the box and the pills dims while the box
+            has focus — the pills stay lit because they are part of the same
+            act (Create Job pressed, a pill lighting as you type). A press on
+            it leaves the box, which is what takes it away. */}
+        <div
+          aria-hidden
+          data-on={focused ? "" : undefined}
+          className="pointer-events-none fixed inset-0 z-40 bg-black/20 opacity-0 transition-opacity duration-200 data-on:pointer-events-auto data-on:opacity-100 supports-backdrop-filter:backdrop-blur-xs dark:bg-black/50"
+        />
         <div
           aria-hidden
           className="pointer-events-none absolute inset-x-0 top-1/2 -z-10 mx-auto h-[28rem] max-w-5xl -translate-y-1/4 blur-3xl dark:opacity-50"
@@ -913,18 +1238,40 @@ function ChatLanding({
           Ask about your postings, your applicants, your diary or the market.
         </p>
 
-        <div className="mt-10 flex max-w-4xl flex-wrap justify-center gap-3">
+        <div
+          className={cn(
+            "relative mt-10 flex max-w-4xl flex-wrap justify-center gap-3",
+            focused && "z-50"
+          )}
+        >
           {HERO_ACTIONS.map((action) => {
             const count = action.count?.(brand)
+            const on = lit.includes(action.skill)
+            const moded = action.skill in MODES
+            const selected = mode === action.skill
             return (
               <button
                 key={action.label}
                 type="button"
-                onClick={() => onAsk(action.prompt)}
-                className="flex items-center gap-2 rounded-full border bg-background px-4 py-2 text-sm font-medium shadow-xs transition-colors outline-none hover:bg-muted focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                onClick={() =>
+                  moded
+                    ? setMode(selected ? null : action.skill)
+                    : onAsk(action.prompt)
+                }
+                aria-pressed={moded ? selected : undefined}
+                data-lit={on ? "" : undefined}
+                data-selected={selected ? "" : undefined}
+                className="group flex items-center gap-2 rounded-full border bg-background px-4 py-2 text-sm font-medium shadow-xs transition-[color,background-color,border-color,box-shadow] outline-none hover:bg-muted focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 data-lit:border-primary/50 data-lit:bg-primary/5 data-lit:ring-[3px] data-lit:ring-primary/15 data-selected:border-primary data-selected:bg-primary data-selected:text-primary-foreground data-selected:hover:bg-primary/90"
               >
-                <action.icon className="size-4 text-muted-foreground" />
+                <action.icon className="size-4 text-muted-foreground transition-colors group-data-lit:text-primary group-data-selected:text-primary-foreground" />
                 {action.label}
+                {on ? (
+                  <span className="sr-only">
+                    {lit.length > 1
+                      ? " — one of what your message could mean"
+                      : " — what Enter will do"}
+                  </span>
+                ) : null}
                 {count ? (
                   <span className="-mr-1.5 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary tabular-nums">
                     {count}
@@ -938,9 +1285,24 @@ function ChatLanding({
         <AgentComposer
           size="hero"
           vocabulary={vocabulary}
-          examples={examples}
-          className="mt-6 w-full max-w-4xl"
-          onSubmit={onAsk}
+          examples={pressed ? undefined : examples}
+          placeholder={pressed ? MODES[pressed.skill].placeholder : undefined}
+          route={route}
+          pills={PILLS}
+          onRoute={setLit}
+          mode={
+            pressed
+              ? {
+                  label: pressed.label,
+                  onExit: () => setMode(null),
+                  submitEmpty: pressed.prompt,
+                }
+              : undefined
+          }
+          assist={pressed ? assist : undefined}
+          onFocusChange={setFocused}
+          className={cn("mt-6 w-full max-w-4xl", focused && "z-50")}
+          onSubmit={submit}
           onAttach={onAttach}
         />
       </div>
@@ -1009,6 +1371,7 @@ function Landing({
 
       <AgentComposer
         vocabulary={landingVocabulary}
+        route={routeHint}
         className="mt-10 w-full"
         onSubmit={onAsk}
         onAttach={onAttach}
@@ -1069,6 +1432,31 @@ function saveReadings(readings: Record<string, IntakeState>) {
   }
 }
 
+// Versioned like the readings: a decision is a `RouteDecision`.
+const ROUTES_KEY = "agent:routes:v1"
+
+/** Per-tab, and allowed to be empty — losing it costs a re-route. */
+function loadRoutes(): Record<string, RouteDecision> {
+  try {
+    const raw = sessionStorage.getItem(ROUTES_KEY)
+    return raw ? (JSON.parse(raw) as Record<string, RouteDecision>) : {}
+  } catch {
+    return {}
+  }
+}
+
+/** Only Gemini's decisions outlive a reload, for the readings' reason. */
+function saveRoutes(routes: Record<string, RouteDecision>) {
+  try {
+    const kept = Object.fromEntries(
+      Object.entries(routes).filter(([, decision]) => decision.by === "gemini")
+    )
+    sessionStorage.setItem(ROUTES_KEY, JSON.stringify(kept))
+  } catch {
+    // Private mode or a full quota: the page still works, it just re-routes.
+  }
+}
+
 /**
  * What the agent said, in its bubble. What the last answer recorded comes
  * first, as "Got it." and a label beside each value — the same grid the
@@ -1103,6 +1491,24 @@ function Said({ answer }: { answer: Answer }) {
  * holds, one line per question, in the order they were asked.
  */
 function Prompt({ prompt }: { prompt: string }) {
+  // A sentence written under a pill: said under the pill's name.
+  const asked = decodeAsk(prompt)
+  if (asked)
+    return (
+      <span className="flex flex-col gap-1 text-left">
+        <span className="text-xs opacity-75">{askLabel(asked.skill)}</span>
+        <span className="whitespace-pre-line">{asked.text}</span>
+      </span>
+    )
+  // Chat v3's hiring manager's note: said as whose words they are.
+  const note = decodeNote(prompt)
+  if (note !== null)
+    return (
+      <span className="flex flex-col gap-1 text-left">
+        <span className="text-xs opacity-75">From the hiring manager</span>
+        <span className="whitespace-pre-line">{note}</span>
+      </span>
+    )
   const change = decodeChange(prompt)
   const answers = decodeAnswers(prompt) ?? change
   if (!answers) return prompt

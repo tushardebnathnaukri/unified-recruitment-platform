@@ -66,13 +66,38 @@ import type { RailModel, RailRow, RailStep } from "@/lib/posting-rail"
  * current; while a reading is in flight it says "Updating…" instead.
  */
 /** The record, or the posting as a candidate meets it — in the list, then opened. */
-type View = "details" | "preview"
+type View = string
+
+/**
+ * What Chat v3 (`components/chat-v3/`) adds to the rail, slot by slot. Every
+ * slot is optional and absent everywhere else, so the other layouts draw the
+ * rail exactly as before.
+ */
+export type RailExtras = {
+  /** Beside a row's value: where it came from, and its lock. */
+  rowAside?: (id: string) => React.ReactNode
+  /** Under a row: what the market says about it. */
+  rowBelow?: (id: string) => React.ReactNode
+  /** Rows reveal in turn as they fill — this row's place in that order. */
+  rowReveal?: (id: string) => number | null
+  /** Above the sections, in Details. */
+  top?: React.ReactNode
+  /** Instead of Candidate details' skills chips. */
+  requirements?: React.ReactNode
+  /** Another view beside Details and Preview. */
+  view?: { id: string; label: string; content: React.ReactNode }
+  /** Asked to open a view — a finish card's "See who this finds" — as "id#n". */
+  openView?: string | null
+  /** Under everything, in Details. */
+  bottom?: React.ReactNode
+}
 
 export function PostingRail({
   model,
   reading,
   onEdit,
   plan = true,
+  extras,
 }: {
   model: RailModel
   /** An answer is being read — the numbers below are about to change. */
@@ -81,6 +106,7 @@ export function PostingRail({
   onEdit?: (id: string) => void
   /** The Plan section — off when `PlanBar` draws the steps across the top. */
   plan?: boolean
+  extras?: RailExtras
 }) {
   const edit = reading ? undefined : onEdit
   // WHAT HAS BEEN GATHERED, OR WHAT IT WILL LOOK LIKE. Details is the record
@@ -89,6 +115,19 @@ export function PostingRail({
   // opens to. Local to the rail: which way you are looking is not worth a
   // link.
   const [view, setView] = React.useState<View>("details")
+  // A request to open a view, from outside: followed when it changes.
+  const [opened, setOpened] = React.useState<string | null>(null)
+  if ((extras?.openView ?? null) !== opened) {
+    setOpened(extras?.openView ?? null)
+    // "candidates#3": the view, and which press asked — so a second press
+    // after looking elsewhere opens it again.
+    if (extras?.openView) setView(extras.openView.split("#")[0])
+  }
+  const rowProps = {
+    aside: extras?.rowAside,
+    below: extras?.rowBelow,
+    reveal: extras?.rowReveal,
+  }
   const { people } = model
   // 375px — a phone's width, so the job card reads at the size a candidate
   // would see it.
@@ -105,6 +144,11 @@ export function PostingRail({
           <TabsList className="w-full" aria-label="How to see the posting">
             <TabsTrigger value="details">Details</TabsTrigger>
             <TabsTrigger value="preview">Preview</TabsTrigger>
+            {extras?.view ? (
+              <TabsTrigger value={extras.view.id}>
+                {extras.view.label}
+              </TabsTrigger>
+            ) : null}
           </TabsList>
         </Tabs>
       </div>
@@ -157,8 +201,15 @@ export function PostingRail({
         </div>
       ) : null}
 
+      {extras?.view && view === extras.view.id ? (
+        <div className="flex flex-col gap-3 px-4 pb-4">
+          {extras.view.content}
+        </div>
+      ) : null}
+
       {view === "details" ? (
         <div className="flex flex-col gap-3 px-4 pb-4">
+          {extras?.top}
           {plan ? (
             <Panel title="Plan">
               <ol className="flex flex-col">
@@ -269,7 +320,7 @@ export function PostingRail({
                 title="Job details"
                 aside={<StepStatus step={model.steps[0]} reading={reading} />}
               >
-                <Rows rows={model.job} onEdit={edit} />
+                <Rows rows={model.job} onEdit={edit} {...rowProps} />
               </Panel>
 
               <Panel
@@ -277,33 +328,37 @@ export function PostingRail({
                 title="Candidate details"
                 aside={<StepStatus step={model.steps[1]} reading={reading} />}
               >
-                <Rows rows={model.requirements} onEdit={edit} />
-                <div className="flex flex-col gap-2 border-t pt-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-xs font-medium text-muted-foreground">
-                      {model.nice.length ? "Must have" : "Skills"}
-                    </p>
-                    {edit && model.must.length ? (
-                      <Pencil
-                        label="Change the skills"
-                        onClick={() => edit("skills")}
-                      />
+                <Rows rows={model.requirements} onEdit={edit} {...rowProps} />
+                {extras?.requirements ? (
+                  <div className="border-t pt-3">{extras.requirements}</div>
+                ) : (
+                  <div className="flex flex-col gap-2 border-t pt-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        {model.nice.length ? "Must have" : "Skills"}
+                      </p>
+                      {edit && model.must.length ? (
+                        <Pencil
+                          label="Change the skills"
+                          onClick={() => edit("skills")}
+                        />
+                      ) : null}
+                    </div>
+                    {model.must.length ? (
+                      <Chips chips={model.must} tone="strong" />
+                    ) : (
+                      <Dash />
+                    )}
+                    {model.nice.length ? (
+                      <>
+                        <p className="mt-1 text-xs font-medium text-muted-foreground">
+                          Good to have
+                        </p>
+                        <Chips chips={model.nice} />
+                      </>
                     ) : null}
                   </div>
-                  {model.must.length ? (
-                    <Chips chips={model.must} tone="strong" />
-                  ) : (
-                    <Dash />
-                  )}
-                  {model.nice.length ? (
-                    <>
-                      <p className="mt-1 text-xs font-medium text-muted-foreground">
-                        Good to have
-                      </p>
-                      <Chips chips={model.nice} />
-                    </>
-                  ) : null}
-                </div>
+                )}
               </Panel>
 
               {model.brief.length || model.screening !== null ? (
@@ -325,7 +380,7 @@ export function PostingRail({
                   }
                 >
                   {model.brief.length ? (
-                    <Rows rows={model.brief} onEdit={edit} />
+                    <Rows rows={model.brief} onEdit={edit} {...rowProps} />
                   ) : null}
                   {/* The optional tail of the step: what candidates answer when
                   they apply. Drawn once the step has reached it. */}
@@ -401,6 +456,7 @@ export function PostingRail({
               </Link>
             </Panel>
           ) : null}
+          {extras?.bottom}
         </div>
       ) : null}
     </aside>
@@ -618,31 +674,59 @@ export function PlanBar({
 function Rows({
   rows,
   onEdit,
+  aside,
+  below,
+  reveal,
 }: {
   rows: RailRow[]
   onEdit?: (id: string) => void
+  aside?: RailExtras["rowAside"]
+  below?: RailExtras["rowBelow"]
+  reveal?: RailExtras["rowReveal"]
 }) {
   return (
     <dl className="grid grid-cols-[minmax(5.5rem,auto)_1fr] gap-x-3 gap-y-1.5 text-sm">
       {rows.map((row) => {
         const id = row.id
         const editable = onEdit && id && row.value !== null
+        const order = id && reveal ? reveal(id) : null
+        const under = id && below ? below(id) : null
         return (
-          <div key={row.label} className="group/row contents">
+          // Keyed on the value where rows reveal, so a row that fills plays
+          // its entrance then and only then.
+          <div
+            key={reveal ? `${row.label}\u0001${row.value}` : row.label}
+            className="group/row contents"
+          >
             <dt className="py-0.5 text-xs leading-5 text-muted-foreground">
               {row.label}
             </dt>
-            <dd className="flex min-w-0 items-start gap-1 py-0.5 leading-5">
-              <span className="min-w-0 flex-1 font-medium break-words">
-                {row.value ?? <Dash />}
+            <dd
+              className={cn(
+                "flex min-w-0 flex-col gap-1 py-0.5 leading-5",
+                order !== null &&
+                  "animate-in duration-500 fill-mode-both fade-in slide-in-from-left-1"
+              )}
+              style={
+                order !== null
+                  ? { animationDelay: `${order * 140}ms` }
+                  : undefined
+              }
+            >
+              <span className="flex min-w-0 items-start gap-1">
+                <span className="min-w-0 flex-1 font-medium break-words">
+                  {row.value ?? <Dash />}
+                </span>
+                {id && aside ? aside(id) : null}
+                {editable ? (
+                  <Pencil
+                    label={`Change ${row.label.toLowerCase()}`}
+                    onClick={() => onEdit(id)}
+                    className="-my-0.5 opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"
+                  />
+                ) : null}
               </span>
-              {editable ? (
-                <Pencil
-                  label={`Change ${row.label.toLowerCase()}`}
-                  onClick={() => onEdit(id)}
-                  className="-my-0.5 opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100"
-                />
-              ) : null}
+              {under}
             </dd>
           </div>
         )
@@ -798,7 +882,7 @@ function Chips({
  * score, and the verdict lines that put them there — the same lines the
  * result cards draw, from the same `verdictsFor`.
  */
-function PersonCard({ person }: { person: SearchPerson }) {
+export function PersonCard({ person }: { person: SearchPerson }) {
   return (
     <div className="flex flex-col gap-2 rounded-2xl border bg-background p-3">
       <div className="flex items-start gap-3">

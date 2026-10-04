@@ -963,6 +963,14 @@ export type IntakeState = {
   /** Questions that were answered but could not be read — asked again. */
   unread?: string[]
   /**
+   * CHAT V3 ONLY (`lib/chat-v3.ts`). The fields whose value the agent filled
+   * from the pool rather than the recruiter gave — taken back out before every
+   * reading, so an answer can still set them.
+   */
+  suggested?: FieldId[]
+  /** Chat v3 only: fields the recruiter locked, which no reader may change. */
+  locked?: FieldId[]
+  /**
    * How long the recruiter waited for this reading, in ms — measured by the
    * page around the call, so it includes the network and not only the model.
    */

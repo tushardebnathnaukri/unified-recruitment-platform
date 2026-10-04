@@ -7,6 +7,7 @@ import {
 import { dirname, extname, join, resolve, sep } from "node:path"
 
 import { geminiBody, parseRequest, resultFrom } from "./intake.ts"
+import { parseRoute, routeBody } from "./route.ts"
 import {
   MAX_TRANSCRIBE_BODY,
   parseTranscribe,
@@ -28,9 +29,11 @@ import {
  * from the repo root starts it beside the web app, and `npm start` in this
  * folder is the whole of a deployment.
  *
- * FOUR ROUTES.
+ * FIVE ROUTES.
  *   GET  /api/health       — whether a key is configured, and which models.
  *   POST /api/intake       — one answer read into a job posting (`intake.ts`).
+ *   POST /api/route        — which Dashboard skill a sentence asks for, when
+ *                            its keywords cannot tell (`route.ts`).
  *   POST /api/transcribe   — a short recording, as text (`transcribe.ts`).
  *   GET|PUT /api/sessions/:id — an Agent conversation's turns, by id, so a
  *                            `/agent/c/<id>` link opens for anyone (no key needed).
@@ -88,6 +91,8 @@ function originAllowed(origin: string | undefined, host: string | undefined) {
 const WINDOW_MS = 5 * 60 * 1000
 const LIMIT = 40
 const calls = new Map<string, number[]>()
+/** Routing has its own budget, so a few odd sentences never cost a posting. */
+const routeCalls = new Map<string, number[]>()
 
 function overLimit(address: string, limit = LIMIT, log = calls) {
   const now = Date.now()
@@ -240,6 +245,49 @@ const server = createServer(async (req, res) => {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       console.error(`[intake] ${message}`)
+      return send(res, 502, { error: message })
+    }
+  }
+
+  // Free text the page's keywords could not route (`route.ts`).
+  if (req.method === "POST" && path === "/api/route") {
+    if (!KEY) {
+      return send(res, 503, {
+        error:
+          "GEMINI_API_KEY is not set. Put it in apps/ai/.env.local and restart.",
+      })
+    }
+    if (overLimit(callerOf(req), LIMIT, routeCalls))
+      return send(res, 429, { error: "Too many requests" })
+
+    try {
+      const request = parseRoute(JSON.parse(await readBody(req)))
+      if (typeof request === "string") return send(res, 400, { error: request })
+
+      const upstream = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
+        {
+          method: "POST",
+          headers: {
+            "x-goog-api-key": KEY,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(routeBody(request)),
+        }
+      )
+      const payload: unknown = await upstream.json()
+      if (!upstream.ok) {
+        const message =
+          (payload as { error?: { message?: string } }).error?.message ??
+          `Gemini returned ${upstream.status}`
+        console.error(`[route] ${upstream.status} ${message}`)
+        return send(res, 502, { error: message })
+      }
+
+      return send(res, 200, { model: MODEL, result: resultFrom(payload) })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`[route] ${message}`)
       return send(res, 502, { error: message })
     }
   }
