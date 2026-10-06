@@ -146,3 +146,11 @@ export type TableFilters = Partial<
   >
 >
 
+/**
+ * The cities the list is being hired INTO — a posting's location — so a card
+ * can say whether each person is there, or would go there, rather than only
+ * where they are. Empty where there is no such place (a search, My Lists, a
+ * posting in "Multiple locations"), and the card then says what it always did.
+ * Only the Snapshot card reads it so far.
+ */
+export const TargetCitiesContext = React.createContext<string[]>([])

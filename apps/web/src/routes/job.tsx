@@ -86,6 +86,11 @@ export function JobDetailPage() {
 function ResponseManager({ job }: { job: Job }) {
   const people = React.useMemo(() => applicantsFor(job), [job])
   const requiredSkills = React.useMemo(() => requiredSkillsFor(job), [job])
+  // "Multiple locations" names no place a card could compare against.
+  const targetCities = React.useMemo(
+    () => (job.location === "Multiple locations" ? [] : [job.location]),
+    [job]
+  )
   useAthenaOnPosting(job, people, requiredSkills)
 
   return (
@@ -97,6 +102,7 @@ function ResponseManager({ job }: { job: Job }) {
       <CandidateList
         people={people}
         requiredSkills={requiredSkills}
+        targetCities={targetCities}
         empty={<NoResponsesYet job={job} />}
         candidateSource={(applicant) => jobSource(job, applicant.id)}
       />

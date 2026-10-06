@@ -15,7 +15,8 @@ import { persistedAtom } from "@/lib/persisted"
  * the name of this file is what is left of that. It syncs across tabs like the
  * other settings, so a design review with two windows open stays in step.
  */
-export type CardVariant = "stacked" | "columns" | "sections"
+export type CardVariant =
+  "stacked" | "columns" | "sections" | "snapshot" | "screening"
 
 export const CARD_VARIANTS: {
   value: CardVariant
@@ -36,6 +37,16 @@ export const CARD_VARIANTS: {
     value: "sections",
     label: "Sections",
     hint: "Full-width bands with a rule between. No label column, so nothing wraps.",
+  },
+  {
+    value: "snapshot",
+    label: "Snapshot",
+    hint: "The four numbers you compare in a strip, the career as a timeline, the skills as a score.",
+  },
+  {
+    value: "screening",
+    label: "Screening",
+    hint: "Ordered as a recruiter screens: who, then the must-haves in one panel, then the record.",
   },
 ]
 

@@ -1,8 +1,9 @@
 import * as React from "react"
-import { ChevronDownIcon } from "lucide-react"
+import { CheckIcon, ChevronDownIcon, MinusIcon, TagIcon } from "lucide-react"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
 import { Item } from "@workspace/ui/components/item"
+import { cn } from "@workspace/ui/lib/utils"
 import {
   useCardVariant,
   type CardVariant,
@@ -18,18 +19,22 @@ import {
   TooltipTrigger,
 } from "@workspace/ui/components/tooltip"
 import {
+  CURRENT_YEAR,
   isNew,
   tagsFor,
   type Position,
   type Applicant,
   type ApplicantStatus,
 } from "@/lib/applicants"
+import { toProfile } from "@/lib/database-filters"
 import { useListCopy } from "@/lib/list-source"
 import type { Verdict } from "@/lib/criteria"
 import { CriteriaEvidence } from "@/components/criteria-evidence"
 import { PickBox } from "@/components/candidate-list/selection"
+import { TargetCitiesContext } from "@/components/candidate-list/shared"
 import {
   CardActions,
+  QuietCardActions,
   RowActions,
 } from "@/components/candidate-list/applicant-actions"
 
@@ -52,7 +57,7 @@ import {
  * shared — a variant decides where a fact sits, never what the card knows.
  */
 const BUCKETS_FOR: Record<
-  CardVariant,
+  Exclude<CardVariant, "snapshot" | "screening">,
   (props: BucketProps) => React.ReactNode
 > = {
   stacked: BucketRows,
@@ -97,7 +102,59 @@ export function ApplicantCard({
   onOpenProfile: (id: string) => void
 }) {
   const { variant } = useCardVariant()
-  const Buckets = BUCKETS_FOR[variant]
+
+  // SNAPSHOT AND SCREENING ARE WHOLE CARDS, NOT ANOTHER SET OF BUCKETS: they
+  // move the decisions and the header too, so they cannot be drawn by swapping
+  // the block in the middle the way the other three are. They still read the
+  // same facts.
+  if (variant === "snapshot" || variant === "screening") {
+    const props = {
+      applicant,
+      requiredSkills,
+      verdicts,
+      annotation,
+      onDecide,
+      onOpenProfile,
+    }
+    return variant === "snapshot" ? (
+      <SnapshotCard {...props} />
+    ) : (
+      <ScreeningCard {...props} />
+    )
+  }
+
+  return (
+    <BucketCard
+      Buckets={BUCKETS_FOR[variant]}
+      applicant={applicant}
+      requiredSkills={requiredSkills}
+      verdicts={verdicts}
+      annotation={annotation}
+      onDecide={onDecide}
+      onOpenProfile={onOpenProfile}
+    />
+  )
+}
+
+type CardProps = {
+  applicant: Applicant
+  requiredSkills: string[]
+  verdicts?: Verdict[]
+  annotation?: React.ReactNode
+  onDecide: (id: string, status: ApplicantStatus) => void
+  onOpenProfile: (id: string) => void
+}
+
+/** Stacked, Columns and Sections: one header and footer, three middles. */
+function BucketCard({
+  Buckets,
+  applicant,
+  requiredSkills,
+  verdicts,
+  annotation,
+  onDecide,
+  onOpenProfile,
+}: CardProps & { Buckets: (props: BucketProps) => React.ReactNode }) {
   const copy = useListCopy()
   const [showAllRoles, setShowAllRoles] = React.useState(false)
   const roles = showAllRoles
@@ -187,6 +244,967 @@ export function ApplicantCard({
         onOpenProfile={onOpenProfile}
       />
     </Item>
+  )
+}
+
+/**
+ * Snapshot: the card a recruiter reads in two seconds and decides from.
+ *
+ * READ TOP TO BOTTOM IT ANSWERS THE QUESTIONS IN THE ORDER THEY ARE ASKED:
+ * who is this, the numbers I compare, do they have what this job asks for, how
+ * did they get here, and then the decision. The order was set by an audit of
+ * the first version, which had the fit to the posting — the one fact on the
+ * card about THIS job — last, under a career and an education.
+ *
+ * THE FOUR NUMBERS EVERYBODY COMPARES SIT IN ONE STRIP, in the same place on
+ * every card — experience, notice, current pay, location. The other layouts
+ * put them in sentences ("45 days notice · ₹110L current"), which is fine on
+ * one card and has to be re-read on the next; a strip with each figure at the
+ * same x is a column down the list, so "who can join soonest" is a glance down
+ * the second cell rather than a read of twenty lines.
+ *
+ * THREE TEXT LEVELS, NO MORE, AND EACH LOOKS DIFFERENT. The name is the one
+ * 18px thing on the card, so it outranks the strip's 16px figures rather than
+ * tying with them. Section headings ("Skills match", "Previously") are 14px
+ * semibold in the foreground; the strip's cell labels are 12px muted. They were
+ * both small and grey, a weight apart, which read as one level.
+ *
+ * NOTHING IS SAID TWICE. The current role is the header's ("… at ICICI Bank ·
+ * since 2023"), so the timeline starts at the role BEFORE it, under
+ * "Previously"; "Top institute" sits on the school it is about rather than
+ * among the tags 60px from it.
+ *
+ * ON A PHONE THE DECISIONS GO TO THE FOOT, WITH WORDS. Beside the name they cost
+ * the name its width (on 343px the group and the ⋯ leave ~150px for a name and
+ * a title), and three bare icons are a guess on a screen with no hover to
+ * explain them. At the foot they are full-width, labelled, and under the thumb
+ * — and they come after the facts, which is the order a decision is made in.
+ * On a card wider than `@xl` they go back up to the top-right corner the other
+ * layouts use, icons only. It is ONE `RowActions` moved by the grid, not two
+ * copies shown and hidden, so its interview dialog and menu exist once — and
+ * since it is after the facts in the DOM, the tab order is read, then decide.
+ *
+ * Everything measures the CARD (`@…/card`), not the window, for the reason
+ * `BucketColumns` gives: the card is half the screen beside the filter rail.
+ */
+function SnapshotCard({
+  applicant,
+  requiredSkills,
+  verdicts,
+  annotation,
+  onDecide,
+  onOpenProfile,
+}: CardProps) {
+  const copy = useListCopy()
+  const [showAllRoles, setShowAllRoles] = React.useState(false)
+  const allTags = React.useMemo(() => tagsFor(applicant), [applicant])
+  const topInstitute = allTags.includes(TOP_INSTITUTE)
+  const tags = allTags.filter((tag) => tag !== TOP_INSTITUTE)
+  const matched = applicant.skills.filter((skill) =>
+    requiredSkills.includes(skill)
+  )
+  const [current, ...earlier] = applicant.positions
+  const since = current && current.to === null ? current.from : null
+
+  return (
+    <Item className="@container/card flex-col items-stretch bg-card px-4 py-4 ring-1 ring-foreground/10 @xl/card:px-5">
+      {/* The grid is a child because a container query cannot style the
+          container itself. One column until `@xl`; then a second, `auto`,
+          which only the decisions use — `grid-area: 1/2` lifts them beside the
+          name while everything else spans both. It is `grid-area` with `!`
+          because the span-everything rule is on the parent's `[&>*]`, and a
+          `col-span-1!` would have reset the column start with it. */}
+      <div className="grid w-full grid-cols-[minmax(0,1fr)] gap-4 @xl/card:grid-cols-[minmax(0,1fr)_auto] [&>*]:col-span-full">
+        {/* WHO AND WHAT, nothing else: the name with when they arrived beside
+            it, and the role with how long they have held it. "New" is left to
+            the dot on the photo, as on every other card. */}
+        <div className="flex min-w-0 items-center gap-3.5 @xl/card:[grid-area:1/1]!">
+          <PickBox applicant={applicant} />
+          <ApplicantAvatar
+            name={applicant.name}
+            photo={applicant.photo}
+            fresh={isNew(applicant)}
+            className="size-12"
+          />
+
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-2.5">
+              {/* The name opens the profile — see the note in `BucketCard`. */}
+              <button
+                type="button"
+                onClick={() => onOpenProfile(applicant.id)}
+                className="min-w-0 truncate rounded-sm text-left font-heading text-lg leading-6 font-semibold outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                {applicant.name}
+              </button>
+              <ApplicantStatusBadge status={applicant.status} />
+              <span className="text-xs text-muted-foreground">
+                {/* The dot on the photo says new; this is for a screen
+                    reader, which cannot see it. */}
+                {isNew(applicant) && <span className="sr-only">New, </span>}
+                {copy.arrived} {applicant.appliedAgo}
+              </span>
+            </div>
+            <p className="line-clamp-2 text-sm leading-5">
+              <span className="font-medium">{applicant.title}</span>{" "}
+              <span className="text-muted-foreground">
+                at {applicant.company}
+                {since !== null && <> · since {since}</>}
+              </span>
+            </p>
+          </div>
+        </div>
+
+        <SnapshotStats applicant={applicant} />
+
+        <SnapshotSkills
+          applicant={applicant}
+          requiredSkills={requiredSkills}
+          matched={matched}
+        />
+
+        <div className="grid gap-x-8 gap-y-4 @2xl/card:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+          {earlier.length > 0 && (
+            <section className="flex min-w-0 flex-col gap-2">
+              <h3 className="text-sm leading-5 font-semibold">Previously</h3>
+              <CareerTimeline
+                roles={earlier}
+                showAll={showAllRoles}
+                onToggle={() => setShowAllRoles((shown) => !shown)}
+              />
+            </section>
+          )}
+
+          {/* Education and the tags share the narrower column: beside a
+              career it was mostly air, and a line of tags under it costs the
+              card no height at all. */}
+          <div className="flex min-w-0 flex-col gap-4">
+            <section className="flex min-w-0 flex-col gap-2">
+              <h3 className="text-sm leading-5 font-semibold">Education</h3>
+              <div className="flex flex-col items-start text-sm leading-5">
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="font-medium">
+                    {applicant.education.school}
+                  </span>
+                  {/* The tag, on the school it is about. */}
+                  {topInstitute && (
+                    <Badge variant="secondary" className="font-normal">
+                      {TOP_INSTITUTE}
+                    </Badge>
+                  )}
+                </span>
+                <span className="text-muted-foreground">
+                  {applicant.education.degree} · {applicant.education.from}–
+                  {applicant.education.to}
+                </span>
+              </div>
+            </section>
+            {/* THE TAGS ARE A LINE OF WORDS, not chips, and last of the facts.
+                As chips they were a third family beside the matched skills and
+                the other skills, all pills, and read as more skills at a
+                glance; on the strip they read as part of the numbers. Words
+                with a tag glyph say "a description", which is what they are. */}
+            {tags.length > 0 && (
+              <p className="flex items-start gap-2 text-sm leading-5 text-muted-foreground">
+                <TagIcon aria-hidden className="mt-0.5 size-4 shrink-0" />
+                <span>
+                  <span className="sr-only">Tags: </span>
+                  {tags.join(" · ")}
+                </span>
+              </p>
+            )}
+          </div>
+        </div>
+
+        {verdicts && verdicts.length > 0 && (
+          <CriteriaEvidence verdicts={verdicts} />
+        )}
+
+        {annotation}
+
+        {/* Full width with words at the foot of a narrow card, icons in the
+            top-right corner of a wide one. The words stay in the DOM as
+            `sr-only` up there; the `aria-label` names each one regardless. */}
+        <RowActions
+          applicant={applicant}
+          onDecide={onDecide}
+          className="border-t border-border pt-4 @xl/card:-my-1.5 @xl/card:-mr-2 @xl/card:self-start @xl/card:border-t-0 @xl/card:pt-0 @xl/card:[grid-area:1/2]!"
+          decisionClassName="flex-1 *:flex-1 *:shrink @xl/card:flex-none @xl/card:*:flex-none @xl/card:*:shrink-0"
+          labelClassName="@xl/card:sr-only"
+        />
+
+        <QuietCardActions
+          applicant={applicant}
+          onDecide={onDecide}
+          onOpenProfile={onOpenProfile}
+        />
+      </div>
+    </Item>
+  )
+}
+
+/**
+ * The strip. Two by two on a phone, four across from `@lg`, where a rule
+ * between the cells takes over from the gap. A cell is a label, the figure and
+ * an optional line of context under it — a cell with no context leaves the
+ * line out rather than padding it, so the figures still share a baseline.
+ *
+ * Pay is "₹110L/yr" in one figure: "per annum" under it was a line as loud as
+ * the label above it that said nothing a recruiter in this market does not
+ * already assume.
+ */
+export function SnapshotStats({ applicant }: { applicant: Applicant }) {
+  const targets = React.useContext(TargetCitiesContext)
+  const fit = locationFit(applicant, targets)
+
+  const cells: {
+    label: string
+    value: string
+    unit?: string
+    detail?: string
+    /** Whether the detail answers the posting's question yes or no. */
+    verdict?: "yes" | "no"
+  }[] = [
+    {
+      label: "Experience",
+      value: `${applicant.experienceYears} yrs`,
+      detail: `${applicant.positions.length} roles`,
+    },
+    {
+      label: "Notice",
+      value:
+        applicant.noticeDays === 0
+          ? "Immediate"
+          : `${applicant.noticeDays} days`,
+      detail: applicant.noticeDays === 0 ? "Can join now" : undefined,
+    },
+    {
+      label: "Current pay",
+      value: `₹${applicant.currentCtcLakh}L`,
+      unit: "/yr",
+    },
+    {
+      label: "Location",
+      value: applicant.location,
+      detail: fit.detail,
+      verdict: fit.verdict,
+    },
+  ]
+
+  return (
+    <dl className="grid grid-cols-2 gap-x-4 gap-y-3 rounded-xl bg-muted/60 px-4 py-3 @lg/card:grid-cols-4 @lg/card:gap-x-0 @lg/card:[&>div]:pr-4 @lg/card:[&>div+div]:border-l @lg/card:[&>div+div]:border-border @lg/card:[&>div+div]:pl-4">
+      {cells.map((cell) => (
+        <div key={cell.label} className="flex min-w-0 flex-col">
+          <dt className="text-xs text-muted-foreground">{cell.label}</dt>
+          <dd className="truncate text-base leading-6 font-semibold tabular-nums">
+            {cell.value}
+            {cell.unit && (
+              <span className="text-xs font-normal text-muted-foreground">
+                {cell.unit}
+              </span>
+            )}
+          </dd>
+          {cell.detail && (
+            <dd
+              className={cn(
+                "flex min-w-0 items-start gap-1 text-xs leading-4",
+                cell.verdict === "yes"
+                  ? "font-medium text-foreground"
+                  : "text-muted-foreground"
+              )}
+              title={cell.detail}
+            >
+              {cell.verdict === "yes" && (
+                <CheckIcon aria-hidden className="mt-0.5 size-3 shrink-0" />
+              )}
+              {cell.verdict === "no" && (
+                <MinusIcon aria-hidden className="mt-0.5 size-3 shrink-0" />
+              )}
+              <span className="line-clamp-2">{cell.detail}</span>
+            </dd>
+          )}
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+/** How many of their other skills show before the rest are counted. */
+const OTHER_SKILLS_SHOWN = 4
+
+/**
+ * The fit to the posting, straight under the strip: the score, then the chips.
+ *
+ * THE SCORE IS READ FIRST, so it is the section's own figure — "1 of 4" at the
+ * heading's size beside the heading, with the bar — rather than 12px pushed to
+ * the far edge. Then the matched chips, a few of their own skills in plain
+ * outline, and the asked-for ones they lack as a line of words: dashed chips
+ * beside solid ones were too quiet a difference to read as "not there", and a
+ * gap should not look like something they have.
+ *
+ * NO GREEN HERE, unlike the other layouts. On iimjobs the brand is emerald, so
+ * the checkbox, the new dot, the bookmark and "this skill matched" all came out
+ * the same green and the match stopped meaning anything. Matched is a filled
+ * chip with a tick and weight in the foreground; their other skills are
+ * outlines in muted text; the bar fills in the foreground. Fill against
+ * outline is the difference, and it reads the same on both brands and in dark.
+ *
+ * With nothing asked (a search that named no skills) there is no score to keep,
+ * so it is the person's skills alone under a plain "Skills".
+ */
+export function SnapshotSkills({
+  applicant,
+  requiredSkills,
+  matched,
+}: {
+  applicant: Applicant
+  requiredSkills: string[]
+  matched: string[]
+}) {
+  const asked = requiredSkills.length > 0
+  const missing = requiredSkills.filter((skill) => !matched.includes(skill))
+  const others = applicant.skills.filter((skill) => !matched.includes(skill))
+  const shown = others.slice(0, OTHER_SKILLS_SHOWN)
+  const rest = others.slice(OTHER_SKILLS_SHOWN)
+
+  return (
+    <section className="flex min-w-0 flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <h3 className="text-sm leading-5 font-semibold">
+          {asked ? "Skills match" : "Skills"}
+        </h3>
+        {asked && (
+          <div className="flex items-center gap-2">
+            <div
+              role="meter"
+              aria-label="Skills matched"
+              aria-valuemin={0}
+              aria-valuemax={requiredSkills.length}
+              aria-valuenow={matched.length}
+              className="flex gap-0.5"
+            >
+              {requiredSkills.map((skill, index) => (
+                <span
+                  key={skill}
+                  className={
+                    index < matched.length
+                      ? "h-1.5 w-5 rounded-full bg-foreground"
+                      : "h-1.5 w-5 rounded-full bg-muted"
+                  }
+                />
+              ))}
+            </div>
+            <span className="text-sm leading-5 text-muted-foreground tabular-nums">
+              <span className="font-semibold text-foreground">
+                {matched.length}
+              </span>{" "}
+              of {requiredSkills.length}
+            </span>
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {matched.map((skill) => (
+          <Badge key={skill} variant="secondary">
+            <CheckIcon data-icon="inline-start" />
+            {skill}
+            <span className="sr-only"> (asked for)</span>
+          </Badge>
+        ))}
+        {shown.map((skill) => (
+          <Badge
+            key={skill}
+            variant="outline"
+            className="font-normal text-muted-foreground"
+          >
+            {skill}
+          </Badge>
+        ))}
+        {rest.length > 0 && (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Badge
+                  variant="outline"
+                  className="font-normal text-muted-foreground"
+                />
+              }
+            >
+              +{rest.length}
+              <span className="sr-only"> more: {rest.join(", ")}</span>
+            </TooltipTrigger>
+            <TooltipContent>{rest.join(" · ")}</TooltipContent>
+          </Tooltip>
+        )}
+      </div>
+
+      {asked && missing.length > 0 && (
+        <p className="text-xs leading-5 text-muted-foreground">
+          Missing <span className="text-foreground">{missing.join(" · ")}</span>
+        </p>
+      )}
+    </section>
+  )
+}
+
+/**
+ * Screening: the card a recruiter shortlists from.
+ *
+ * IT BEGAN AS A REORGANISATION OF SNAPSHOT, after reading how recruiters
+ * screen, and is kept beside it rather than replacing it so the two can be
+ * compared: the same facts, Snapshot ordered by what is easiest to compare,
+ * this one by the order a decision is made in.
+ *
+ * IT IS ORDERED BY HOW A SHORTLIST IS ACTUALLY MADE, which is two passes, not
+ * one read. The first pass is knockouts — the handful of must-haves a person
+ * either clears or does not: the skills, whether they can be in the city, when
+ * they could start, whether the pay can work — and it takes seconds. Only the
+ * people who clear it get the second pass, which is the record: who they have
+ * worked for and for how long, rising or drifting, and where they studied. So
+ * the card is three blocks in that order: who this is, the gates, the record.
+ *
+ * WHO is the name and the current title, employer and time in the role. The
+ * Ladders eye-tracking study (2018) found a recruiter's first look at a CV goes
+ * to exactly that — name, current title and employer, its dates — then the
+ * previous role and the education, which are the third block.
+ *
+ * THE GATES ARE ONE GREY PANEL (`ScreeningGates`), so "do they clear what this
+ * posting asks" is one place to look rather than three. The comparable figures
+ * run across it in the same positions on every card, and under them the
+ * posting's own skills, in the posting's own order, each ticked or not.
+ *
+ * THE RECORD is the roles before this one, each with how long it lasted; the
+ * signals `tagsFor` reads off them; and the school, with "Top institute" on it.
+ *
+ * Every verdict on the card is a tick or a minus in the card's own greys —
+ * never green, which on iimjobs is the brand, and never red, which would make
+ * a missing skill look like an error rather than an answer.
+ *
+ * The decisions, the footer and the grid that moves them are Snapshot's, for
+ * Snapshot's reasons — see `SnapshotCard`.
+ */
+function ScreeningCard({
+  applicant,
+  requiredSkills,
+  verdicts,
+  annotation,
+  onDecide,
+  onOpenProfile,
+}: CardProps) {
+  const copy = useListCopy()
+  const [showAllRoles, setShowAllRoles] = React.useState(false)
+  const allTags = React.useMemo(() => tagsFor(applicant), [applicant])
+  const topInstitute = allTags.includes(TOP_INSTITUTE)
+  const signals = allTags.filter((tag) => tag !== TOP_INSTITUTE)
+  const [current, ...earlier] = applicant.positions
+  const inRole =
+    current && current.to === null ? CURRENT_YEAR - current.from : null
+
+  return (
+    <Item className="@container/card flex-col items-stretch bg-card px-4 py-4 ring-1 ring-foreground/10 @xl/card:px-5">
+      {/* The grid is a child because a container query cannot style the
+          container itself. One column until `@xl`; then a second, `auto`,
+          which only the decisions use — `grid-area: 1/2` lifts them beside the
+          name while everything else spans both. It is `grid-area` with `!`
+          because the span-everything rule is on the parent's `[&>*]`, and a
+          `col-span-1!` would have reset the column start with it. */}
+      <div className="grid w-full grid-cols-[minmax(0,1fr)] gap-4 @xl/card:grid-cols-[minmax(0,1fr)_auto] [&>*]:col-span-full">
+        {/* WHO: the name with when they arrived beside it, and the role with
+            how long they have held it — a duration, so nobody subtracts.
+            "New" is left to the dot on the photo, as on every other card. */}
+        <div className="flex min-w-0 items-center gap-3.5 @xl/card:[grid-area:1/1]!">
+          <PickBox applicant={applicant} />
+          <ApplicantAvatar
+            name={applicant.name}
+            photo={applicant.photo}
+            fresh={isNew(applicant)}
+            className="size-12"
+          />
+
+          <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+            <div className="flex min-w-0 flex-wrap items-baseline gap-x-2.5">
+              {/* The name opens the profile — see the note in `BucketCard`. */}
+              <button
+                type="button"
+                onClick={() => onOpenProfile(applicant.id)}
+                className="min-w-0 truncate rounded-sm text-left font-heading text-lg leading-6 font-semibold outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              >
+                {applicant.name}
+              </button>
+              <ApplicantStatusBadge status={applicant.status} />
+              <span className="text-xs text-muted-foreground">
+                {/* The dot on the photo says new; this is for a screen
+                    reader, which cannot see it. */}
+                {isNew(applicant) && <span className="sr-only">New, </span>}
+                {copy.arrived} {applicant.appliedAgo}
+              </span>
+            </div>
+            <p className="line-clamp-2 text-sm leading-5">
+              <span className="font-medium">{applicant.title}</span>{" "}
+              <span className="text-muted-foreground">
+                at {applicant.company}
+                {inRole !== null && <> · {yearsSaid(inRole)} in role</>}
+              </span>
+            </p>
+          </div>
+        </div>
+
+        <ScreeningGates applicant={applicant} requiredSkills={requiredSkills} />
+
+        {/* A search's criteria are gates too — what the search asked of each
+            person, answered — so they follow the panel rather than the
+            record. */}
+        {verdicts && verdicts.length > 0 && (
+          <CriteriaEvidence verdicts={verdicts} />
+        )}
+
+        {/* THE RECORD, the second pass. The roles take the wide column
+            because they are the list; the signals and the school share the
+            narrow one, signals first because they are read off the roles
+            beside them and change a decision more often than a degree does. */}
+        <div className="grid gap-x-8 gap-y-4 @2xl/card:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+          {earlier.length > 0 && (
+            <section className="flex min-w-0 flex-col gap-2">
+              <h3 className="text-sm leading-5 font-semibold">Previously</h3>
+              <CareerTimeline
+                roles={earlier}
+                showAll={showAllRoles}
+                onToggle={() => setShowAllRoles((shown) => !shown)}
+                durations
+              />
+            </section>
+          )}
+
+          <div className="flex min-w-0 flex-col gap-4">
+            {signals.length > 0 && (
+              <section className="flex min-w-0 flex-col gap-2">
+                <h3 className="text-sm leading-5 font-semibold">Signals</h3>
+                <p className="text-sm leading-5">{signals.join(" · ")}</p>
+              </section>
+            )}
+
+            <section className="flex min-w-0 flex-col gap-2">
+              <h3 className="text-sm leading-5 font-semibold">Education</h3>
+              <div className="flex flex-col items-start text-sm leading-5">
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  <span className="font-medium">
+                    {applicant.education.school}
+                  </span>
+                  {/* The tag, on the school it is about. */}
+                  {topInstitute && (
+                    <Badge variant="secondary" className="font-normal">
+                      {TOP_INSTITUTE}
+                    </Badge>
+                  )}
+                </span>
+                <span className="text-muted-foreground">
+                  {applicant.education.degree} · {applicant.education.from}–
+                  {applicant.education.to}
+                </span>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        {annotation}
+
+        {/* Full width with words at the foot of a narrow card, icons in the
+            top-right corner of a wide one. The words stay in the DOM as
+            `sr-only` up there; the `aria-label` names each one regardless. */}
+        <RowActions
+          applicant={applicant}
+          onDecide={onDecide}
+          className="border-t border-border pt-4 @xl/card:-my-1.5 @xl/card:-mr-2 @xl/card:self-start @xl/card:border-t-0 @xl/card:pt-0 @xl/card:[grid-area:1/2]!"
+          decisionClassName="flex-1 *:flex-1 *:shrink @xl/card:flex-none @xl/card:*:flex-none @xl/card:*:shrink-0"
+          labelClassName="@xl/card:sr-only"
+        />
+
+        <QuietCardActions
+          applicant={applicant}
+          onDecide={onDecide}
+          onOpenProfile={onOpenProfile}
+        />
+      </div>
+    </Item>
+  )
+}
+
+/** The `tagsFor` tag Snapshot draws on the school rather than with the rest. */
+const TOP_INSTITUTE = "Top institute"
+
+/** A tenure as a duration — "2 yrs" — so nobody subtracts one year from another. */
+function yearsSaid(years: number) {
+  if (years < 1) return "under 1 yr"
+  return years === 1 ? "1 yr" : `${years} yrs`
+}
+
+/**
+ * The gates: everything a first pass asks of a person, in one panel.
+ *
+ * THE FIGURES RUN ACROSS IN FIXED POSITIONS — experience, location, notice,
+ * expected pay — two by two on a phone, four across from `@lg`, with a rule
+ * between. The same figure at the same x on every card is a column down the
+ * list, so "who can join soonest" is a glance down the third cell rather than
+ * a read of twenty sentences.
+ *
+ * EXPECTED PAY, NOT CURRENT, IS THE FIGURE. Recruiters in this market check
+ * the expected CTC against the budget before anything is scheduled, and the
+ * current one is the context for it — so current is the line under it, with
+ * the jump between them ("now ₹110L · +25%"), where a 60% ask stands out on
+ * its own. It is `toProfile`'s figure, the same one Search Resume's Expected
+ * CTC filter narrows on, so the card and that filter cannot disagree.
+ *
+ * THE SKILLS ARE THE POSTING'S, NOT THE PERSON'S — see `SkillsChecklist`.
+ *
+ * Only location and skills carry a verdict, because they are the only two
+ * things a posting here says it wants. A posting does not yet carry an
+ * experience band, a notice limit or a budget (`lib/jobs.ts`); when it does,
+ * those three cells take a tick or a minus the same way location does.
+ */
+function ScreeningGates({
+  applicant,
+  requiredSkills,
+}: {
+  applicant: Applicant
+  requiredSkills: string[]
+}) {
+  const copy = useListCopy()
+  const targets = React.useContext(TargetCitiesContext)
+  const fit = locationFit(applicant, targets)
+  const expected = React.useMemo(
+    () => toProfile(applicant).expectedCtcLakh,
+    [applicant]
+  )
+  const jump = Math.round((expected / applicant.currentCtcLakh - 1) * 100)
+
+  const cells: {
+    label: string
+    value: string
+    unit?: string
+    detail?: string
+    /** Whether the detail answers the posting's question yes or no. */
+    verdict?: "yes" | "no"
+  }[] = [
+    {
+      label: "Experience",
+      value: `${applicant.experienceYears} yrs`,
+      detail: `${applicant.positions.length} roles`,
+    },
+    {
+      label: "Location",
+      value: applicant.location,
+      detail: fit.detail,
+      verdict: fit.verdict,
+    },
+    {
+      label: "Notice",
+      value:
+        applicant.noticeDays === 0
+          ? "Immediate"
+          : `${applicant.noticeDays} days`,
+      detail: applicant.noticeDays === 0 ? "Can join now" : undefined,
+    },
+    {
+      label: "Expected pay",
+      value: `₹${expected}L`,
+      unit: "/yr",
+      detail: `now ₹${applicant.currentCtcLakh}L · ${jump >= 0 ? "+" : ""}${jump}%`,
+    },
+  ]
+
+  return (
+    <section className="flex flex-col gap-3 rounded-xl bg-muted/60 px-4 py-3">
+      <h3 className="sr-only">Against what {copy.askedFor}</h3>
+
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 @lg/card:grid-cols-4 @lg/card:gap-x-0 @lg/card:[&>div]:pr-4 @lg/card:[&>div+div]:border-l @lg/card:[&>div+div]:border-border @lg/card:[&>div+div]:pl-4">
+        {cells.map((cell) => (
+          <div key={cell.label} className="flex min-w-0 flex-col">
+            <dt className="text-xs text-muted-foreground">{cell.label}</dt>
+            <dd className="truncate text-base leading-6 font-semibold tabular-nums">
+              {cell.value}
+              {cell.unit && (
+                <span className="text-xs font-normal text-muted-foreground">
+                  {cell.unit}
+                </span>
+              )}
+            </dd>
+            {cell.detail && (
+              <dd
+                className={cn(
+                  "flex min-w-0 items-start gap-1 text-xs leading-4",
+                  cell.verdict === "yes"
+                    ? "font-medium text-foreground"
+                    : "text-muted-foreground"
+                )}
+                title={cell.detail}
+              >
+                {cell.verdict === "yes" && (
+                  <CheckIcon aria-hidden className="mt-0.5 size-3 shrink-0" />
+                )}
+                {cell.verdict === "no" && (
+                  <MinusIcon aria-hidden className="mt-0.5 size-3 shrink-0" />
+                )}
+                <span className="line-clamp-2">{cell.detail}</span>
+              </dd>
+            )}
+          </div>
+        ))}
+      </dl>
+
+      <div className="border-t border-border pt-3">
+        <SkillsChecklist
+          applicant={applicant}
+          requiredSkills={requiredSkills}
+        />
+      </div>
+    </section>
+  )
+}
+
+/**
+ * The posting's skills, in the posting's order, each ticked or not — a
+ * checklist, not a pile of chips.
+ *
+ * THE SAME NAMES IN THE SAME ORDER ON EVERY CARD is the point. The first
+ * version drew the person's matched skills first and the missing ones as a
+ * line under them, so the order changed from card to card and "has Channel
+ * sales" was somewhere different each time. Fixed, the eye learns where each
+ * requirement sits and reads the pattern of ticks down the list — the same
+ * reason the figures above sit in fixed cells.
+ *
+ * Had is a white chip with a tick; missing is a dashed outline with a minus,
+ * in muted text. The dashed outline alone was too quiet to read as "not
+ * there" when it was the only difference; with the tick and the minus it is
+ * the second cue, not the only one. Their other skills — ones nobody asked for
+ * — are context, so they are a count with the names on hover.
+ *
+ * With nothing asked (a search that named no skills) there is nothing to tick
+ * against, so it is the person's skills as they are.
+ *
+ * The count sits in the panel's first column, label over figure like the cells
+ * above, and the chips start after the same rule — so on a wide card the first
+ * divider runs down through both rows.
+ */
+function SkillsChecklist({
+  applicant,
+  requiredSkills,
+}: {
+  applicant: Applicant
+  requiredSkills: string[]
+}) {
+  const copy = useListCopy()
+  const has = (skill: string) => applicant.skills.includes(skill)
+  const matched = requiredSkills.filter(has)
+  const others = applicant.skills.filter(
+    (skill) => !requiredSkills.includes(skill)
+  )
+
+  if (requiredSkills.length === 0) {
+    return (
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <span className="text-xs text-muted-foreground">Skills</span>
+        <div className="flex flex-wrap gap-1.5">
+          {applicant.skills.map((skill) => (
+            <Badge
+              key={skill}
+              variant="outline"
+              className="bg-card font-normal"
+            >
+              {skill}
+            </Badge>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="grid gap-y-2 @lg/card:grid-cols-4">
+      <div className="flex min-w-0 flex-col @lg/card:pr-4">
+        <span className="text-xs text-muted-foreground">Skills</span>
+        <span className="text-base leading-6 font-semibold tabular-nums">
+          {matched.length} of {requiredSkills.length}
+          <span className="sr-only"> skills {copy.askedFor}</span>
+        </span>
+      </div>
+
+      <ul className="flex min-w-0 flex-wrap content-center items-center gap-1.5 @lg/card:col-span-3 @lg/card:border-l @lg/card:border-border @lg/card:pl-4">
+        {requiredSkills.map((skill) =>
+          has(skill) ? (
+            <li key={skill}>
+              <Badge
+                variant="outline"
+                className="border-foreground/15 bg-card font-medium text-foreground"
+              >
+                <CheckIcon data-icon="inline-start" />
+                {skill}
+                <span className="sr-only">, has it</span>
+              </Badge>
+            </li>
+          ) : (
+            <li key={skill}>
+              <Badge
+                variant="outline"
+                className="border-dashed border-foreground/25 bg-transparent font-normal text-muted-foreground"
+              >
+                <MinusIcon data-icon="inline-start" />
+                {skill}
+                <span className="sr-only">, missing</span>
+              </Badge>
+            </li>
+          )
+        )}
+
+        {others.length > 0 && (
+          <li>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Badge
+                    variant="outline"
+                    className="border-transparent bg-transparent font-normal text-muted-foreground"
+                  />
+                }
+              >
+                +{others.length} other{" "}
+                {others.length === 1 ? "skill" : "skills"}
+                <span className="sr-only">: {others.join(", ")}</span>
+              </TooltipTrigger>
+              <TooltipContent>{others.join(" · ")}</TooltipContent>
+            </Tooltip>
+          </li>
+        )}
+      </ul>
+    </div>
+  )
+}
+
+/**
+ * Cities a posting's location covers. A posting says "Delhi NCR"; the people
+ * say Gurugram or Noida — the same split `LOCATION_GROUPS` in
+ * `lib/database-filters.ts` makes for the refine panel.
+ */
+const CITY_REGIONS: Record<string, string[]> = {
+  "Delhi NCR": ["Delhi NCR", "Gurugram", "Noida"],
+}
+
+/**
+ * The location cell's second line, answering the question the posting asks —
+ * are they there, or would they go there — rather than only where else they
+ * would go. A check or a minus in the card's own greys (see `ScreeningCard`).
+ *
+ * "Not open to Pune" is what the data says, not a guess: `preferredLocations`
+ * is every city they would take a job in. Without a target (a search, My
+ * Lists, a posting in several cities) it says where else they would go, as the
+ * other layouts do.
+ */
+function locationFit(
+  applicant: Applicant,
+  targets: string[]
+): { detail: string; verdict?: "yes" | "no" } {
+  const elsewhere = applicant.preferredLocations.filter(
+    (place) => place !== applicant.location
+  )
+
+  if (targets.length === 0) {
+    return {
+      detail:
+        elsewhere.length === 0
+          ? "Not open to moving"
+          : elsewhere.includes("Anywhere")
+            ? "Open to anywhere"
+            : `Open to ${elsewhere.join(", ")}`,
+    }
+  }
+
+  const covers = (place: string) =>
+    targets.some((target) => (CITY_REGIONS[target] ?? [target]).includes(place))
+  const job = targets.join(" / ")
+
+  if (covers(applicant.location)) {
+    return { detail: `In ${job}`, verdict: "yes" }
+  }
+  if (
+    applicant.preferredLocations.includes("Anywhere") ||
+    applicant.preferredLocations.some(covers)
+  ) {
+    return { detail: `Open to ${job}`, verdict: "yes" }
+  }
+  return { detail: `Not open to ${job}`, verdict: "no" }
+}
+
+/** How many earlier roles show before "Show N more". */
+const EARLIER_SHOWN = 2
+
+/**
+ * The roles BEFORE the current one — the header already names that one — as
+ * hollow dots joined by a line. The line stops at the last role shown, so a
+ * collapsed history does not trail off into a line to nowhere; "Show N more"
+ * says there is more.
+ *
+ * `durations` adds how long each role lasted, which Screening asks for:
+ * stability is read off it, and two years read faster than 2021–2023.
+ */
+function CareerTimeline({
+  roles,
+  showAll,
+  onToggle,
+  durations = false,
+}: {
+  roles: Position[]
+  showAll: boolean
+  onToggle: () => void
+  durations?: boolean
+}) {
+  const shown = showAll ? roles : roles.slice(0, EARLIER_SHOWN)
+
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <ol className="flex w-full flex-col">
+        {shown.map((role, index) => {
+          const last = index === shown.length - 1
+
+          return (
+            <li
+              key={`${role.company}-${role.from}`}
+              className="grid grid-cols-[0.75rem_minmax(0,1fr)] gap-x-3"
+            >
+              <div className="flex flex-col items-center pt-1.5" aria-hidden>
+                <span className="size-2.5 shrink-0 rounded-full border-2 border-muted-foreground/50 bg-card" />
+                {!last && <span className="mt-1 w-px flex-1 bg-border" />}
+              </div>
+              <div className={last ? "min-w-0" : "min-w-0 pb-3"}>
+                <div className="text-sm leading-5 font-medium">
+                  {role.title}
+                </div>
+                <div className="text-sm leading-5 text-muted-foreground">
+                  {role.company} · {role.from}–{role.to ?? "Present"}
+                  {durations && (
+                    <> · {yearsSaid((role.to ?? CURRENT_YEAR) - role.from)}</>
+                  )}
+                </div>
+              </div>
+            </li>
+          )
+        })}
+      </ol>
+
+      {roles.length > EARLIER_SHOWN && (
+        <Button
+          variant="link"
+          size="sm"
+          className="h-auto w-fit pl-6 text-sm font-normal text-muted-foreground"
+          onClick={onToggle}
+        >
+          {showAll ? "Show fewer" : `Show ${roles.length - EARLIER_SHOWN} more`}
+          <ChevronDownIcon
+            data-icon="inline-end"
+            className={showAll ? "rotate-180" : undefined}
+          />
+        </Button>
+      )}
+    </div>
   )
 }
 

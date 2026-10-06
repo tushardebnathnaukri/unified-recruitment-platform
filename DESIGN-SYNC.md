@@ -10,6 +10,67 @@ diff.
 
 ## Pending
 
+### Split view: two more pane layouts, "Side by side" and "Card, then CV"
+
+- **Date:** 2026-10-06
+- **App:** `lib/split-variant.ts` (`tabs` default, `side-by-side`, `card-cv`), read by
+  `SplitView` in `components/candidate-list/split-view.tsx`. Side by side drops the CV / Profile
+  tabs for `SidePane`: two equal columns headed "Profile" (left) and "CV" (right), each scrolling
+  on its own inside a card that fills the pane (stacked, profile first, below a 48rem pane).
+  Card, then CV (`CardThenCv`) is a short summary card — the pane's header, Snapshot's
+  four-number strip and its skills match (`SnapshotStats` / `SnapshotSkills`, now exported) — over
+  a ringed card holding the CV, in one scroll; no career, education or tags, which the CV repeats. A dashed "Pane" switcher (`FloatingVariantSwitcher`, now shared
+  with the card one) sticks to the foot of the list column, and /settings gains a "Split view"
+  row. `CandidateCv`'s page margins are container queries now, so the page is narrower-margined
+  in a half-width column.
+- **Storybook:** Compositions → Response manager → Split view gains a side-by-side story and a
+  card-then-CV story; the Settings row composition gains the "Split view" toggle.
+- **Figma:** the Response manager composition (`117:3`) gains side-by-side and card-then-CV
+  split frames; the Settings row board (`69:2`) gains the row.
+- [ ] Storybook
+- [ ] Figma
+
+### Candidate card: a fifth layout, "Screening"
+
+- **Date:** 2026-10-06
+- **App:** `screening` in `components/card-variant-provider.tsx`, drawn by `ScreeningCard` in
+  `components/candidate-list/applicant-card.tsx` — Snapshot reordered as a two-pass screen:
+  **who** ("Title at Company · 3 yrs in role"), **the must-haves** (`ScreeningGates`, one grey
+  panel: experience, location verdict, notice, expected pay with "now ₹110L · +25%", then the
+  posting's skills in the posting's order as a checklist — white chip with a tick for had, dashed
+  with a minus for missing, "+N other skills" on hover; a search's criteria lines follow the
+  panel), **the record** ("Previously" with a duration per role, "Signals", Education). Decisions,
+  footer and responsive behaviour are Snapshot's.
+- **Storybook:** Compositions → Response manager gains a Screening card (wide and phone); the
+  Settings row composition's "Candidate card" Select gains a fifth value.
+- **Figma:** the Response manager composition (an ApplicantCard variant for Screening) and the
+  Settings composition frame's row.
+- [ ] Storybook
+- [ ] Figma
+
+### Candidate card: a fourth layout, "Snapshot"
+
+- **Date:** 2026-10-06
+- **App:** `snapshot` in `components/card-variant-provider.tsx`, drawn by `SnapshotCard` in
+  `components/candidate-list/applicant-card.tsx`, top to bottom: name (18px) with arrival, role
+  "· since 2023"; experience, notice, pay ("₹110L/yr") and location as one stat strip (2×2 on a
+  narrow card, four across from `@lg/card`); "Skills match" with an N-of-M meter, matched chips
+  and a "Missing" line; "Previously" (the roles before the current one) as a timeline beside
+  Education, which carries the "Top institute" badge, and the other tags as a line of words under
+  it. Section headings are 14px semibold, strip labels 12px muted. No green in the facts: matched
+  skills are `secondary` chips with a tick, the meter fills in the foreground. The location cell
+  says "In / Open to / Not open to <the posting's city>" (`targetCities` on `CandidateList`, from
+  the job). The footer is `QuietCardActions`: ghost Save, Message and interview, outline View
+  profile. Below `@xl/card` the decisions move to the foot of the card, full width and labelled
+  (`DecisionGroup` gains `className` / `labelClassName`, threaded through `RowActions`). The
+  /settings "Candidate card" switcher becomes a Select.
+- **Storybook:** Compositions → Response manager has no Snapshot card; add one (wide and phone).
+  The Settings row composition's "Candidate card" toggle becomes a Select with a fourth value.
+- **Figma:** the Response manager composition (an ApplicantCard variant for Snapshot) and the
+  Settings composition frame's row.
+- [ ] Storybook
+- [ ] Figma
+
 ### Post a job: "Chat v3", Chat v2 with the AI Agent's ideas
 
 - **Date:** 2026-10-01

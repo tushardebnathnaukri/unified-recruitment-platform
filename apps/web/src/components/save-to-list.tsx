@@ -42,9 +42,12 @@ import { CandidateSourceContext } from "@/lib/candidate-source"
 export function SaveToList({
   applicant,
   variant = "button",
+  appearance = "outline",
 }: {
   applicant: Applicant
   variant?: "button" | "icon"
+  /** `ghost` for a footer where only one action is meant to look pressable. */
+  appearance?: "outline" | "ghost"
 }) {
   const { lists, listsOf, setLists, createList } = useSavedLists()
   const savedFrom = React.useContext(CandidateSourceContext)
@@ -72,14 +75,14 @@ export function SaveToList({
           render={
             variant === "icon" ? (
               <Button
-                variant="outline"
+                variant={appearance}
                 size="icon-sm"
                 className="rounded-full"
                 aria-label={label}
                 title={label}
               />
             ) : (
-              <Button variant="outline" size="sm" aria-label={label} />
+              <Button variant={appearance} size="sm" aria-label={label} />
             )
           }
         >

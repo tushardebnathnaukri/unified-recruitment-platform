@@ -36,6 +36,7 @@ import { ListSourceContext, type ListSource } from "@/lib/list-source"
 import { toast } from "@workspace/ui/components/toast"
 import type { Verdict } from "@/lib/criteria"
 import { ApplicantListSkeleton } from "@/components/skeletons"
+import { FloatingCardVariantSwitcher } from "@/components/card-variant-switcher"
 import { usePageLoading } from "@/lib/use-page-loading"
 import {
   BUCKETS,
@@ -43,6 +44,7 @@ import {
   type Picking,
   PickingContext,
   type TableControls,
+  TargetCitiesContext,
   type TableFilters,
   VIEWS,
   type View,
@@ -90,6 +92,9 @@ export type { TableFilters }
  * Everything else — tab, view, sort, filters, selection, open profile — is in
  * the query string, merged with whatever the page already keeps there.
  */
+/** One empty array, so a list with no target city does not re-render its cards. */
+const NO_CITIES: string[] = []
+
 export function CandidateList({
   people: generated,
   requiredSkills,
@@ -106,6 +111,7 @@ export function CandidateList({
   candidateSource,
   tableView = false,
   tableFilters,
+  targetCities = NO_CITIES,
 }: {
   /** Everybody on the list, before this session's decisions are laid over. */
   people: Applicant[]
@@ -178,25 +184,29 @@ export function CandidateList({
    * `location`, and the search box).
    */
   tableFilters?: TableFilters
+  /** Where the people are being hired into — see `TargetCitiesContext`. */
+  targetCities?: string[]
 }) {
   return (
     <CandidateSourceContext value={candidateSource}>
       <ListSourceContext value={source}>
-        <CandidateListBody
-          generated={generated}
-          requiredSkills={requiredSkills}
-          header={header}
-          empty={empty}
-          defaultSort={defaultSort}
-          searchKey={searchKey}
-          layout={layout}
-          sidebar={sidebar}
-          toolbar={toolbar}
-          verdicts={verdicts}
-          annotate={annotate}
-          tableView={tableView}
-          tableFilters={tableFilters}
-        />
+        <TargetCitiesContext value={targetCities}>
+          <CandidateListBody
+            generated={generated}
+            requiredSkills={requiredSkills}
+            header={header}
+            empty={empty}
+            defaultSort={defaultSort}
+            searchKey={searchKey}
+            layout={layout}
+            sidebar={sidebar}
+            toolbar={toolbar}
+            verdicts={verdicts}
+            annotate={annotate}
+            tableView={tableView}
+            tableFilters={tableFilters}
+          />
+        </TargetCitiesContext>
       </ListSourceContext>
     </CandidateSourceContext>
   )
@@ -789,6 +799,14 @@ function CandidateListBody({
                   onDecide={decideWithUndo}
                 />
               )}
+
+              {/* The prototype's layout switcher, last in the cards column so
+                  it sticks to the bottom of the screen at the cards' left edge
+                  — see `FloatingCardVariantSwitcher`. Out of the way of the
+                  selection bar, which owns the bottom while anybody is ticked. */}
+              {view === "cards" && picked.length === 0 && (
+                <FloatingCardVariantSwitcher className="sticky bottom-4 z-20 self-start" />
+              )}
             </div>
           </div>
         ) : (
@@ -915,6 +933,11 @@ function CandidateListBody({
                       />
                     </TabsContent>
                   ))
+                )}
+
+                {/* See the note on the results layout's. */}
+                {view === "cards" && picked.length === 0 && (
+                  <FloatingCardVariantSwitcher className="sticky bottom-4 z-20 mt-4 self-start" />
                 )}
               </div>
             </div>

@@ -178,7 +178,6 @@ export function ApplicantList({
           onSelect={onSelect}
           doc={doc}
           onDocChange={onDocChange}
-          onOpenProfile={onOpenProfile}
           onDecide={onDecide}
         />
       ) : view === "table" && table ? (

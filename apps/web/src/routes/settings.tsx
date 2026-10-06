@@ -28,6 +28,11 @@ import {
   type PostingVariant,
 } from "@/lib/posting-variant"
 import { useSelectionCriteria } from "@/lib/selection-criteria"
+import {
+  SPLIT_VARIANTS,
+  useSplitVariant,
+  type SplitVariant,
+} from "@/lib/split-variant"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { PROTOTYPE_ITEMS, PROTOTYPE_LINKS } from "@/lib/nav"
 
@@ -78,17 +83,42 @@ export function SettingsPage() {
           <div className="flex min-w-0 flex-1 basis-64 flex-col gap-1">
             <h2 className="text-sm font-medium">Candidate card</h2>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              Three layouts for the same facts on the response manager. Stacked
+              Five layouts for the same facts on the response manager. Stacked
               runs the labels down the left and reads like a profile; Columns
               lays the buckets across the card and fits roughly twice as many
               candidates on a screen; Sections drops the label column for
-              full-width bands with a rule between, so nothing has to wrap. A
-              real recruiter would never see this control — it is here so the
-              three can be compared before one wins.
+              full-width bands with a rule between, so nothing has to wrap;
+              Snapshot puts experience, notice, pay and location in one strip to
+              compare down the list, the career as a timeline and the skills as
+              a score; Screening is ordered the way a recruiter screens — who
+              they are, then the must-haves in one panel (expected pay, and the
+              posting's skills as a checklist), then the record. A real
+              recruiter would never see this control — it is here so the five
+              can be compared before one wins.
             </p>
           </div>
 
           <CardVariantSwitcher />
+        </div>
+
+        <Separator />
+
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex min-w-0 flex-1 basis-64 flex-col gap-1">
+            <h2 className="text-sm font-medium">Split view</h2>
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              How the response manager's split view shows the person picked from
+              its list. Tabs is the CV or the profile, one at a time, the full
+              width of the pane; Side by side puts the profile and the CV in two
+              columns that scroll on their own, so the document is read with the
+              facts beside it; Card, then CV is a short summary card — the key
+              numbers and the skills match — with the CV under it in one scroll.
+              It can also be flipped from the dashed switcher at the foot of the
+              split view's list.
+            </p>
+          </div>
+
+          <SplitVariantSwitcher />
         </div>
 
         <Separator />
@@ -318,6 +348,30 @@ function PostingVariantSwitcher() {
       }}
     >
       {POSTING_VARIANTS.map((option) => (
+        <ToggleGroupItem key={option.value} value={option.value}>
+          {option.label}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  )
+}
+
+/** Same shape as `FilterVariantSwitcher`: two options, one toggle. */
+function SplitVariantSwitcher() {
+  const { variant, setVariant } = useSplitVariant()
+
+  return (
+    <ToggleGroup
+      variant="outline"
+      spacing={0}
+      aria-label="Split view"
+      value={[variant]}
+      onValueChange={(value) => {
+        const next = value[0] as SplitVariant | undefined
+        if (next) setVariant(next)
+      }}
+    >
+      {SPLIT_VARIANTS.map((option) => (
         <ToggleGroupItem key={option.value} value={option.value}>
           {option.label}
         </ToggleGroupItem>

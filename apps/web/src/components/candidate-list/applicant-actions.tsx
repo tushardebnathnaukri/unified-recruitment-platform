@@ -47,14 +47,24 @@ export function RowActions({
   applicant,
   onDecide,
   className,
+  decisionClassName,
+  labelClassName,
 }: {
   applicant: Applicant
   onDecide: (id: string, status: ApplicantStatus) => void
   className?: string
+  /** Passed to `DecisionGroup` — the Snapshot card stretches it on a phone. */
+  decisionClassName?: string
+  labelClassName?: string
 }) {
   return (
     <div className={cn("relative flex shrink-0 items-center gap-2", className)}>
-      <DecisionGroup applicant={applicant} onDecide={onDecide} />
+      <DecisionGroup
+        applicant={applicant}
+        onDecide={onDecide}
+        className={decisionClassName}
+        labelClassName={labelClassName}
+      />
 
       <ApplicantActions applicant={applicant} onDecide={onDecide} />
     </div>
@@ -327,14 +337,111 @@ export function CardActions({
   )
 }
 
-/** An outline icon button that says what it is on hover and to a screen reader. */
+/**
+ * The Snapshot card's footer: the same actions as `CardActions`, in three
+ * weights instead of one.
+ *
+ * CardActions draws five outline buttons of equal weight, which beside the
+ * decision group made nine controls on the card that all looked as pressable
+ * as each other. Here only View profile keeps its outline — it is the one that
+ * continues the task, so it is the one the eye should find — and Save, Message
+ * and the interview are ghost buttons: there when wanted, quiet otherwise.
+ * Contact details is a ghost too, at the left where it reveals in place.
+ *
+ * View profile stays although the name opens the same panel: a name that is a
+ * link is not a discoverable way to learn there is a profile (see
+ * `ApplicantCard`). Message and the interview fold into the ⋯ menu below
+ * 768px exactly as in `CardActions`, for the reasons given there.
+ */
+export function QuietCardActions({
+  applicant,
+  onDecide,
+  onOpenProfile,
+}: {
+  applicant: Applicant
+  onDecide: (id: string, status: ApplicantStatus) => void
+  onOpenProfile: (id: string) => void
+}) {
+  const [revealed, setRevealed] = React.useState(false)
+
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-1 border-t border-border pt-3">
+      {revealed ? (
+        <div className="mr-auto flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 px-1 text-sm">
+          <span className="inline-flex items-center gap-1.5">
+            <MailIcon className="size-3.5 text-muted-foreground" />
+            {applicant.email}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <PhoneIcon className="size-3.5 text-muted-foreground" />
+            {applicant.phone}
+          </span>
+        </div>
+      ) : (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mr-auto -ml-2 text-muted-foreground"
+          onClick={() => setRevealed(true)}
+        >
+          <EyeIcon data-icon="inline-start" />
+          View contact details
+        </Button>
+      )}
+
+      <div className="flex shrink-0 items-center gap-1">
+        <SaveToList applicant={applicant} appearance="ghost" />
+
+        <div className="hidden items-center gap-1 md:flex">
+          <IconAction
+            label="Message"
+            appearance="ghost"
+            onClick={() => onDecide(applicant.id, "contacted")}
+          >
+            <MailIcon />
+          </IconAction>
+
+          <ScheduleInterview applicant={applicant}>
+            {(interview) => (
+              <IconAction
+                label={interview.label}
+                appearance="ghost"
+                onClick={interview.open}
+              >
+                {interview.booking ? (
+                  <CalendarCheckIcon />
+                ) : (
+                  <CalendarPlusIcon />
+                )}
+              </IconAction>
+            )}
+          </ScheduleInterview>
+        </div>
+
+        <Button
+          variant="outline"
+          size="sm"
+          className="ml-1"
+          onClick={() => onOpenProfile(applicant.id)}
+        >
+          <UserRoundIcon data-icon="inline-start" />
+          View profile
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/** An icon button that says what it is on hover and to a screen reader. */
 function IconAction({
   label,
   onClick,
+  appearance = "outline",
   children,
 }: {
   label: string
   onClick?: () => void
+  appearance?: "outline" | "ghost"
   children: React.ReactNode
 }) {
   return (
@@ -342,7 +449,7 @@ function IconAction({
       <TooltipTrigger
         render={
           <Button
-            variant="outline"
+            variant={appearance}
             size="icon-sm"
             aria-label={label}
             onClick={onClick}

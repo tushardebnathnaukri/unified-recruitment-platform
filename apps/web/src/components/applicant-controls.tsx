@@ -105,9 +105,19 @@ const DECISIONS: {
 export function DecisionGroup({
   applicant,
   onDecide,
+  className,
+  labelClassName,
 }: {
   applicant: Applicant
   onDecide: (id: string, status: ApplicantStatus) => void
+  className?: string
+  /**
+   * Draws each decision's word beside its icon, with these classes. Absent,
+   * the group is icons only. A caller that shows the words at some widths and
+   * not others hides them with `sr-only` rather than `hidden`, though the
+   * `aria-label` already names each one either way.
+   */
+  labelClassName?: string
 }) {
   const decided = DECISIONS.some(
     (decision) => decision.value === applicant.status
@@ -118,6 +128,7 @@ export function DecisionGroup({
       variant="outline"
       spacing={0}
       aria-label={`Decision for ${applicant.name}`}
+      className={className}
       value={decided ? [applicant.status] : []}
       onValueChange={(value) => {
         const next = value[0] as ApplicantStatus | undefined
@@ -140,6 +151,9 @@ export function DecisionGroup({
             }
           >
             <decision.icon />
+            {labelClassName !== undefined && (
+              <span className={labelClassName}>{decision.label}</span>
+            )}
           </TooltipTrigger>
           <TooltipContent>{decision.label}</TooltipContent>
         </Tooltip>

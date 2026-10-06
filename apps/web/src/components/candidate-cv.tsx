@@ -47,7 +47,11 @@ export function CandidateCv({
       : `, ${applicant.noticeDays} days' notice.`)
 
   return (
-    <div className="flex flex-col gap-3">
+    // A container, so the page's margins follow the room the CV has rather
+    // than the window's: beside the profile in the split view it gets half a
+    // pane on a wide screen, and viewport breakpoints gave it a phone's
+    // margins on a desktop or a desktop's in a column.
+    <div className="@container/cv flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <span className="min-w-0 truncate text-xs text-muted-foreground">
           {filename}
@@ -67,14 +71,14 @@ export function CandidateCv({
 
       {/* The viewer's ground. A document sits ON something — without it the
           page has no edge and stops reading as a page. */}
-      <div className="rounded-xl bg-muted/50 p-3 ring-1 ring-foreground/10 sm:p-6">
+      <div className="rounded-xl bg-muted/50 p-3 ring-1 ring-foreground/10 @lg/cv:p-6">
         {/*
           Explicit white and near-black, not tokens, and not themed. A PDF
           renders the same in dark mode as in light because it is a document
           rather than part of the interface — a page that inverts with the app
           is the one thing this would never do in a real viewer.
         */}
-        <article className="mx-auto flex w-full max-w-2xl flex-col gap-6 rounded-md bg-white p-8 text-[#1a1a1a] shadow-md sm:p-10">
+        <article className="mx-auto flex w-full max-w-2xl flex-col gap-6 rounded-md bg-white p-6 text-[#1a1a1a] shadow-md @lg/cv:p-10">
           <header className="flex flex-col gap-2 border-b border-black/10 pb-5">
             <h3 className="font-heading text-2xl font-semibold">
               {applicant.name}

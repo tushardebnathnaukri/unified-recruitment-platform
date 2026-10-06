@@ -408,7 +408,7 @@ const ENGINEERING_DEGREES = ["B.Tech", "B.E.", "M.Tech", "MCA"]
 const DESIGN_DEGREES = ["B.Des", "M.Des", "B.F.A.", "B.Arch"]
 
 /** "Now" for every date on a card. A constant, so the mock data cannot age. */
-const CURRENT_YEAR = 2026
+export const CURRENT_YEAR = 2026
 
 /**
  * Which market a job draws from.
