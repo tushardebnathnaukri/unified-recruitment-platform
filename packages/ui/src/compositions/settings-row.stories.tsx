@@ -55,6 +55,15 @@ function SettingGroup({ children }: { children: React.ReactNode }) {
 
 const DIGESTS = { daily: "Daily", weekly: "Weekly", never: "Never" }
 
+/** The /settings card layouts, in the app's order. */
+const CARD_LAYOUTS = {
+  stacked: "Stacked",
+  columns: "Columns",
+  sections: "Sections",
+  snapshot: "Snapshot",
+  screening: "Screening",
+}
+
 const meta = {
   title: "Compositions/Settings row",
   parameters: {
@@ -65,9 +74,9 @@ const meta = {
         component: `
 Title and description on the left, control on the right, wrapping under on
 a narrow column. \`apps/web/src/routes/settings.tsx\` is four of these in a
-bordered group — brand, theme, and the two design comparisons (candidate card
-and database filters); this is the same shape with each kind of control it
-will need to hold.
+bordered group — brand, theme, and the design comparisons (candidate card,
+split view, database filters and more); this is the same shape with each kind
+of control it will need to hold.
 
 Not a component yet on purpose — two uses is a pattern, not an API. Promote
 it to \`packages/ui\` when the real settings page arrives.
@@ -115,18 +124,39 @@ export const Prototype: Story = {
         </Button>
       </SettingRow>
       <Separator />
+      {/* A Select, not a toggle: a fourth word is where a row of them starts
+          wrapping on the settings column. */}
       <SettingRow
         title="Candidate card"
-        description="Two layouts for the same facts on the response manager. Stacked runs the labels down the left and reads like a profile; Columns lays the buckets across the card and fits roughly twice as many candidates on a screen. A real recruiter would never see this control — it is here so the two can be compared before one wins."
+        description="Five layouts for the same facts on the response manager. Stacked runs the labels down the left and reads like a profile; Columns lays the buckets across the card and fits roughly twice as many candidates on a screen; Sections drops the label column for full-width bands with a rule between, so nothing has to wrap; Snapshot puts experience, notice, pay and location in one strip to compare down the list, the career as a timeline and the skills as a score; Screening is ordered the way a recruiter screens — who they are, then the must-haves in one panel (expected pay, and the posting's skills as a checklist), then the record. A real recruiter would never see this control — it is here so the five can be compared before one wins."
+      >
+        <Select items={CARD_LAYOUTS} defaultValue="stacked">
+          <SelectTrigger className="w-56" aria-label="Candidate card layout">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {Object.entries(CARD_LAYOUTS).map(([value, label]) => (
+              <SelectItem key={value} value={value}>
+                {label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </SettingRow>
+      <Separator />
+      <SettingRow
+        title="Split view"
+        description="How the response manager's split view shows the person picked from its list. Tabs is the CV or the profile, one at a time, the full width of the pane; Side by side puts the profile and the CV in two columns that scroll on their own, so the document is read with the facts beside it; Card, then CV is a short summary card — the key numbers and the skills match — with the CV under it in one scroll. It can also be flipped from the dashed switcher at the foot of the split view's list."
       >
         <ToggleGroup
           variant="outline"
           spacing={0}
-          defaultValue={["stacked"]}
-          aria-label="Candidate card layout"
+          defaultValue={["tabs"]}
+          aria-label="Split view"
         >
-          <ToggleGroupItem value="stacked">Stacked</ToggleGroupItem>
-          <ToggleGroupItem value="columns">Columns</ToggleGroupItem>
+          <ToggleGroupItem value="tabs">Tabs</ToggleGroupItem>
+          <ToggleGroupItem value="side-by-side">Side by side</ToggleGroupItem>
+          <ToggleGroupItem value="card-cv">Card, then CV</ToggleGroupItem>
         </ToggleGroup>
       </SettingRow>
       <Separator />

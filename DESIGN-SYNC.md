@@ -27,7 +27,7 @@ diff.
   card-then-CV story; the Settings row composition gains the "Split view" toggle.
 - **Figma:** the Response manager composition (`117:3`) gains side-by-side and card-then-CV
   split frames; the Settings row board (`69:2`) gains the row.
-- [ ] Storybook
+- [x] Storybook
 - [ ] Figma
 
 ### Candidate card: a fifth layout, "Screening"
@@ -45,7 +45,7 @@ diff.
   Settings row composition's "Candidate card" Select gains a fifth value.
 - **Figma:** the Response manager composition (an ApplicantCard variant for Screening) and the
   Settings composition frame's row.
-- [ ] Storybook
+- [x] Storybook
 - [ ] Figma
 
 ### Candidate card: a fourth layout, "Snapshot"
@@ -68,7 +68,7 @@ diff.
   The Settings row composition's "Candidate card" toggle becomes a Select with a fourth value.
 - **Figma:** the Response manager composition (an ApplicantCard variant for Snapshot) and the
   Settings composition frame's row.
-- [ ] Storybook
+- [x] Storybook
 - [ ] Figma
 
 ### Post a job: "Chat v3", Chat v2 with the AI Agent's ideas
@@ -744,7 +744,7 @@ diff.
 - **Figma:** `Response manager — full page` (node `117:3`). ApplicantCard has
   no Sections variant yet; the Database frames clone that component, so it
   lands there too once it exists.
-- [ ] Storybook
+- [x] Storybook
 - [ ] Figma
 
 ### Smart Hire: the real taxonomy, and what a title implies
@@ -1063,15 +1063,3 @@ diff.
   on the right, `background` fill, and a header bar with a bottom border.
 - [ ] Storybook
 - [ ] Figma
-
-### Response manager: "Select all" sits in a card
-
-- **Date:** 2026-09-21
-- **App:** `apps/web/src/components/candidate-list/selection.tsx` (`SelectAll`).
-  The row above the cards is now an `Item` with the applicant card's own fill,
-  ring and `px-5` (`py-3`), so its box lines up with the tick on every card
-  below. The table header's compact box is unchanged.
-- **Storybook:** `Compositions → Response manager`, the stories that draw
-  "Select all" above the cards.
-- **Figma:** none — the Response manager frame predates selection.
-- [ ] Storybook

@@ -9,26 +9,36 @@ import {
   ArrowLeftIcon,
   ArrowUpIcon,
   BookmarkIcon,
+  BriefcaseIcon,
   CalendarCheckIcon,
   CalendarPlusIcon,
   CheckIcon,
   ChevronDownIcon,
+  ChevronLeftIcon,
   ChevronRightIcon,
+  ChevronUpIcon,
   ChevronsUpDownIcon,
   CircleHelpIcon,
   ClockIcon,
   Columns3Icon,
   DownloadIcon,
   EllipsisIcon,
+  ExternalLinkIcon,
+  EyeIcon,
   EyeOffIcon,
+  GraduationCapIcon,
   LayoutListIcon,
+  LockIcon,
   MailIcon,
   MapPinIcon,
+  MinusIcon,
   PanelsTopLeftIcon,
   SearchIcon,
   SlidersHorizontalIcon,
   SparklesIcon,
+  SwatchBookIcon,
   Table2Icon,
+  TagIcon,
   UserRoundIcon,
   XIcon,
 } from "lucide-react"
@@ -41,6 +51,7 @@ import {
 } from "@workspace/ui/components/avatar"
 import { Badge } from "@workspace/ui/components/badge"
 import { Button } from "@workspace/ui/components/button"
+import { Card as CardSurface } from "@workspace/ui/components/card"
 import { Checkbox } from "@workspace/ui/components/checkbox"
 import { Chip } from "@workspace/ui/components/chip"
 import {
@@ -77,6 +88,7 @@ import {
   RadioGroup,
   RadioGroupItem,
 } from "@workspace/ui/components/radio-group"
+import { SectionHeader } from "@workspace/ui/components/section-header"
 import { Separator } from "@workspace/ui/components/separator"
 import {
   Table,
@@ -182,6 +194,10 @@ type Applicant = {
   education: string
   skills: string[]
   salary: string
+  /** What they are asking — Screening's pay cell leads with it. */
+  expected: string
+  /** The jump from `salary` to `expected`, as the Screening card prints it. */
+  jump: string
   notice: string
 }
 
@@ -205,6 +221,8 @@ const APPLICANTS: Applicant[] = [
     education: "B.Tech, IIT Madras",
     skills: ["Kubernetes", "Go", "Terraform", "Kafka"],
     salary: "₹64L",
+    expected: "₹80L",
+    jump: "+25%",
     notice: "60 days",
   },
   {
@@ -226,6 +244,8 @@ const APPLICANTS: Applicant[] = [
     education: "M.Tech, IISc Bangalore",
     skills: ["Kubernetes", "Java", "Kafka"],
     salary: "₹78L",
+    expected: "₹95L",
+    jump: "+22%",
     notice: "90 days",
   },
   {
@@ -247,6 +267,8 @@ const APPLICANTS: Applicant[] = [
     education: "B.Tech, COEP",
     skills: ["Kafka", "Java", "Redis"],
     salary: "₹48L",
+    expected: "₹62L",
+    jump: "+29%",
     notice: "30 days",
   },
   {
@@ -274,6 +296,8 @@ const APPLICANTS: Applicant[] = [
     education: "B.E., NIT Trichy",
     skills: ["Go", "Kubernetes", "gRPC"],
     salary: "₹92L",
+    expected: "₹110L",
+    jump: "+20%",
     notice: "Immediate",
   },
   {
@@ -295,6 +319,8 @@ const APPLICANTS: Applicant[] = [
     education: "B.Tech, IIIT Hyderabad",
     skills: ["Go", "Kubernetes", "Envoy"],
     salary: "₹98L",
+    expected: "₹120L",
+    jump: "+22%",
     notice: "90 days",
   },
 ]
@@ -901,12 +927,22 @@ const DECISIONS = [
  * Clicking the active one clears it, which puts the candidate back in To
  * review.
  */
-function Decisions({ applicant }: { applicant: Applicant }) {
+function Decisions({
+  applicant,
+  className,
+  labelClassName,
+}: {
+  applicant: Applicant
+  className?: string
+  /** Draws each decision's word beside its icon, with these classes. */
+  labelClassName?: string
+}) {
   return (
     <ToggleGroup
       variant="outline"
       spacing={0}
       aria-label={`Decision for ${applicant.name}`}
+      className={className}
       defaultValue={
         DECISIONS.some((decision) => decision.value === applicant.status)
           ? [applicant.status]
@@ -925,6 +961,9 @@ function Decisions({ applicant }: { applicant: Applicant }) {
           }
         >
           <decision.icon />
+          {labelClassName !== undefined && (
+            <span className={labelClassName}>{decision.label}</span>
+          )}
         </ToggleGroupItem>
       ))}
     </ToggleGroup>
@@ -1085,14 +1124,38 @@ function CardActions() {
   )
 }
 
+/**
+ * The /settings "Candidate card" layouts drawn here. Columns is the app's too,
+ * and is not drawn in this composition.
+ */
+type CardLayout = "stacked" | "sections" | "snapshot" | "screening"
+
+const CARD_LAYOUTS: Record<CardLayout, string> = {
+  stacked: "Stacked",
+  sections: "Sections",
+  snapshot: "Snapshot",
+  screening: "Screening",
+}
+
 function ApplicantCard({
   applicant,
   picked = false,
+  layout = "stacked",
 }: {
   applicant: Applicant
   /** Ticked for the selection bar. Every card carries the box. */
   picked?: boolean
+  layout?: CardLayout
 }) {
+  // Snapshot and Screening move the header and the decisions too, so they are
+  // whole cards rather than another middle — as in the app.
+  if (layout === "snapshot") {
+    return <SnapshotCard applicant={applicant} picked={picked} />
+  }
+  if (layout === "screening") {
+    return <ScreeningCard applicant={applicant} picked={picked} />
+  }
+
   return (
     <Item className="@container/card flex-col items-stretch gap-3 bg-card px-5 py-4 ring-1 ring-foreground/10">
       <div className="flex items-start justify-between gap-3">
@@ -1143,9 +1206,754 @@ function ApplicantCard({
         </div>
       </div>
 
-      <BucketRows applicant={applicant} />
+      {layout === "sections" ? (
+        <BucketSections applicant={applicant} />
+      ) : (
+        <BucketRows applicant={applicant} />
+      )}
       <CardActions />
     </Item>
+  )
+}
+
+/**
+ * Sections: the buckets as full-width bands under their own headings, with a
+ * rule between, and no label column — so values get the card's width. Tags are
+ * the first band and carry no visible heading; experience and education share a
+ * band, side by side from `@2xl/card`; location and availability share the
+ * last, split by a 1px rule because both already use `·` inside themselves.
+ */
+function BucketSections({ applicant }: { applicant: Applicant }) {
+  return (
+    <dl className="flex flex-col divide-y divide-border border-t border-border text-sm [&>div]:py-3 [&>div:last-child]:pb-0">
+      <div>
+        <dt className="sr-only">Tags</dt>
+        <dd className="min-w-0">
+          <TagsBucket tags={applicant.tags} />
+        </dd>
+      </div>
+
+      {/* `grid-flow-col` over two explicit rows, so each heading and value pair
+          stays a direct child of the `dl` and still makes a column. */}
+      <div className="grid gap-x-8 gap-y-1 @2xl/card:grid-flow-col @2xl/card:grid-cols-[1.6fr_1fr] @2xl/card:grid-rows-[auto_1fr]">
+        <dt className="text-xs font-medium text-muted-foreground">
+          Experience
+        </dt>
+        <dd className="flex min-w-0 flex-col items-start gap-0.5 leading-6">
+          <span>{applicant.experience}</span>
+          {applicant.positions.map((position) => (
+            <span key={position.role} className="text-muted-foreground">
+              {position.role} · {position.span}
+            </span>
+          ))}
+        </dd>
+        <dt className="mt-2 text-xs font-medium text-muted-foreground @2xl/card:mt-0">
+          Education
+        </dt>
+        <dd className="min-w-0 leading-6">{applicant.education}</dd>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <dt className="text-xs font-medium text-muted-foreground">
+          Skills match
+        </dt>
+        <dd className="flex min-w-0 flex-wrap gap-1.5">
+          {applicant.skills.map((skill) => (
+            <Badge
+              key={skill}
+              variant={
+                REQUIRED_SKILLS.includes(skill) ? "secondary" : "outline"
+              }
+            >
+              {skill}
+            </Badge>
+          ))}
+        </dd>
+      </div>
+
+      <div className="flex flex-col gap-1">
+        <dt className="text-xs font-medium text-muted-foreground">
+          Location &amp; availability
+        </dt>
+        <dd className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-0.5 leading-6">
+          <LocationBucket applicant={applicant} />
+          <span aria-hidden className="h-3 w-px shrink-0 bg-border" />
+          <span>
+            {applicant.salary} · {applicant.notice} notice
+          </span>
+        </dd>
+      </div>
+    </dl>
+  )
+}
+
+/** The posting's city — what a card's location cell answers against. */
+const JOB_CITY = "Bengaluru"
+
+/** "Now" for every date on a card, as `CURRENT_YEAR` is in the app. */
+const CURRENT_YEAR = 2026
+
+/** The `tags` entry Snapshot and Screening draw on the school instead. */
+const TOP_INSTITUTE = "Top institute"
+
+/** "Staff Engineer, Razorpay" → the title and the employer. */
+function roleParts(role: string) {
+  const at = role.lastIndexOf(", ")
+  return { title: role.slice(0, at), company: role.slice(at + 2) }
+}
+
+/** "2017 — 2021" or "2021 — present" → the years either side. */
+function spanYears(span: string) {
+  const [from = "", to = ""] = span.split(" — ")
+  return { from: Number(from), to: to === "present" ? null : Number(to) }
+}
+
+/** A tenure as a duration, so nobody subtracts one year from another. */
+function yearsSaid(years: number) {
+  if (years < 1) return "under 1 yr"
+  return years === 1 ? "1 yr" : `${years} yrs`
+}
+
+/**
+ * Are they in the posting's city, or would they go there — a tick or a minus in
+ * the card's own greys, never green or red.
+ */
+function locationFit(applicant: Applicant): {
+  detail: string
+  verdict: "yes" | "no"
+} {
+  if (applicant.location === JOB_CITY) {
+    return { detail: `In ${JOB_CITY}`, verdict: "yes" }
+  }
+  if (
+    applicant.preferredLocations.some(
+      (place) => place === JOB_CITY || place === "Anywhere"
+    )
+  ) {
+    return { detail: `Open to ${JOB_CITY}`, verdict: "yes" }
+  }
+  return { detail: `Not open to ${JOB_CITY}`, verdict: "no" }
+}
+
+type StatCell = {
+  label: string
+  value: string
+  unit?: string
+  detail?: string
+  verdict?: "yes" | "no"
+}
+
+/** Snapshot's strip: the four numbers everybody compares down a list. */
+function snapshotCells(applicant: Applicant): StatCell[] {
+  const fit = locationFit(applicant)
+  return [
+    {
+      label: "Experience",
+      value: `${parseInt(applicant.experience, 10)} yrs`,
+      detail: `${applicant.positions.length} roles`,
+    },
+    {
+      label: "Notice",
+      value: applicant.notice,
+      detail: applicant.notice === "Immediate" ? "Can join now" : undefined,
+    },
+    { label: "Current pay", value: applicant.salary, unit: "/yr" },
+    {
+      label: "Location",
+      value: applicant.location,
+      detail: fit.detail,
+      verdict: fit.verdict,
+    },
+  ]
+}
+
+/** Screening's gates: expected pay leads, current is the context under it. */
+function screeningCells(applicant: Applicant): StatCell[] {
+  const fit = locationFit(applicant)
+  return [
+    {
+      label: "Experience",
+      value: `${parseInt(applicant.experience, 10)} yrs`,
+      detail: `${applicant.positions.length} roles`,
+    },
+    {
+      label: "Location",
+      value: applicant.location,
+      detail: fit.detail,
+      verdict: fit.verdict,
+    },
+    {
+      label: "Notice",
+      value: applicant.notice,
+      detail: applicant.notice === "Immediate" ? "Can join now" : undefined,
+    },
+    {
+      label: "Expected pay",
+      value: applicant.expected,
+      unit: "/yr",
+      detail: `now ${applicant.salary} · ${applicant.jump}`,
+    },
+  ]
+}
+
+/**
+ * Two by two on a phone, four across from `@lg/card` with a rule between. A
+ * cell with no context line leaves it out, so the figures share a baseline.
+ */
+function StatCells({
+  cells,
+  className,
+}: {
+  cells: StatCell[]
+  className?: string
+}) {
+  return (
+    <dl
+      className={cn(
+        "grid grid-cols-2 gap-x-4 gap-y-3 @lg/card:grid-cols-4 @lg/card:gap-x-0 @lg/card:[&>div]:pr-4 @lg/card:[&>div+div]:border-l @lg/card:[&>div+div]:border-border @lg/card:[&>div+div]:pl-4",
+        className
+      )}
+    >
+      {cells.map((cell) => (
+        <div key={cell.label} className="flex min-w-0 flex-col">
+          <dt className="text-xs text-muted-foreground">{cell.label}</dt>
+          <dd className="truncate text-base leading-6 font-semibold tabular-nums">
+            {cell.value}
+            {cell.unit && (
+              <span className="text-xs font-normal text-muted-foreground">
+                {cell.unit}
+              </span>
+            )}
+          </dd>
+          {cell.detail && (
+            <dd
+              className={cn(
+                "flex min-w-0 items-start gap-1 text-xs leading-4",
+                cell.verdict === "yes"
+                  ? "font-medium text-foreground"
+                  : "text-muted-foreground"
+              )}
+            >
+              {cell.verdict === "yes" && (
+                <CheckIcon aria-hidden className="mt-0.5 size-3 shrink-0" />
+              )}
+              {cell.verdict === "no" && (
+                <MinusIcon aria-hidden className="mt-0.5 size-3 shrink-0" />
+              )}
+              <span className="line-clamp-2">{cell.detail}</span>
+            </dd>
+          )}
+        </div>
+      ))}
+    </dl>
+  )
+}
+
+/**
+ * Snapshot's fit to the posting: "1 of 3" with a meter beside the heading,
+ * the matched skills as filled chips with a tick, their others as outlines,
+ * and the asked-for ones they lack as a line of words. No green: on iimjobs
+ * the brand is emerald, and the match stopped meaning anything.
+ */
+function SkillsMatch({ applicant }: { applicant: Applicant }) {
+  const matched = applicant.skills.filter((skill) =>
+    REQUIRED_SKILLS.includes(skill)
+  )
+  const others = applicant.skills.filter((skill) => !matched.includes(skill))
+  const missing = REQUIRED_SKILLS.filter((skill) => !matched.includes(skill))
+
+  return (
+    <section className="flex min-w-0 flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <h3 className="text-sm leading-5 font-semibold">Skills match</h3>
+        <div className="flex items-center gap-2">
+          <div
+            role="meter"
+            aria-label="Skills matched"
+            aria-valuemin={0}
+            aria-valuemax={REQUIRED_SKILLS.length}
+            aria-valuenow={matched.length}
+            className="flex gap-0.5"
+          >
+            {REQUIRED_SKILLS.map((skill, index) => (
+              <span
+                key={skill}
+                className={
+                  index < matched.length
+                    ? "h-1.5 w-5 rounded-full bg-foreground"
+                    : "h-1.5 w-5 rounded-full bg-muted"
+                }
+              />
+            ))}
+          </div>
+          <span className="text-sm leading-5 text-muted-foreground tabular-nums">
+            <span className="font-semibold text-foreground">
+              {matched.length}
+            </span>{" "}
+            of {REQUIRED_SKILLS.length}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-1.5">
+        {matched.map((skill) => (
+          <Badge key={skill} variant="secondary">
+            <CheckIcon data-icon="inline-start" />
+            {skill}
+          </Badge>
+        ))}
+        {others.map((skill) => (
+          <Badge
+            key={skill}
+            variant="outline"
+            className="font-normal text-muted-foreground"
+          >
+            {skill}
+          </Badge>
+        ))}
+      </div>
+
+      {missing.length > 0 && (
+        <p className="text-xs leading-5 text-muted-foreground">
+          Missing <span className="text-foreground">{missing.join(" · ")}</span>
+        </p>
+      )}
+    </section>
+  )
+}
+
+/**
+ * Screening's skills: the posting's, in the posting's order, each ticked or
+ * not — the same names at the same place on every card. Had is a white chip
+ * with a tick; missing is dashed with a minus; their others are a count.
+ */
+function SkillsChecklist({ applicant }: { applicant: Applicant }) {
+  const has = (skill: string) => applicant.skills.includes(skill)
+  const others = applicant.skills.filter(
+    (skill) => !REQUIRED_SKILLS.includes(skill)
+  )
+
+  return (
+    <div className="grid gap-y-2 @lg/card:grid-cols-4">
+      <div className="flex min-w-0 flex-col @lg/card:pr-4">
+        <span className="text-xs text-muted-foreground">Skills</span>
+        <span className="text-base leading-6 font-semibold tabular-nums">
+          {REQUIRED_SKILLS.filter(has).length} of {REQUIRED_SKILLS.length}
+        </span>
+      </div>
+
+      <ul className="flex min-w-0 flex-wrap content-center items-center gap-1.5 @lg/card:col-span-3 @lg/card:border-l @lg/card:border-border @lg/card:pl-4">
+        {REQUIRED_SKILLS.map((skill) =>
+          has(skill) ? (
+            <li key={skill}>
+              <Badge
+                variant="outline"
+                className="border-foreground/15 bg-card font-medium text-foreground"
+              >
+                <CheckIcon data-icon="inline-start" />
+                {skill}
+                <span className="sr-only">, has it</span>
+              </Badge>
+            </li>
+          ) : (
+            <li key={skill}>
+              <Badge
+                variant="outline"
+                className="border-dashed border-foreground/25 bg-transparent font-normal text-muted-foreground"
+              >
+                <MinusIcon data-icon="inline-start" />
+                {skill}
+                <span className="sr-only">, missing</span>
+              </Badge>
+            </li>
+          )
+        )}
+        {others.length > 0 && (
+          <li>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Badge
+                    variant="outline"
+                    className="border-transparent bg-transparent font-normal text-muted-foreground"
+                  />
+                }
+              >
+                +{others.length} other{" "}
+                {others.length === 1 ? "skill" : "skills"}
+              </TooltipTrigger>
+              <TooltipContent>{others.join(" · ")}</TooltipContent>
+            </Tooltip>
+          </li>
+        )}
+      </ul>
+    </div>
+  )
+}
+
+/**
+ * The roles before the current one — the header names that one — as hollow
+ * dots joined by a line. `durations` adds how long each lasted, which
+ * Screening reads stability off.
+ */
+function CareerTimeline({
+  roles,
+  durations = false,
+}: {
+  roles: Applicant["positions"]
+  durations?: boolean
+}) {
+  return (
+    <ol className="flex w-full flex-col">
+      {roles.map((position, index) => {
+        const last = index === roles.length - 1
+        const { title, company } = roleParts(position.role)
+        const { from, to } = spanYears(position.span)
+
+        return (
+          <li
+            key={position.role}
+            className="grid grid-cols-[0.75rem_minmax(0,1fr)] gap-x-3"
+          >
+            <div className="flex flex-col items-center pt-1.5" aria-hidden>
+              <span className="size-2.5 shrink-0 rounded-full border-2 border-muted-foreground/50 bg-card" />
+              {!last && <span className="mt-1 w-px flex-1 bg-border" />}
+            </div>
+            <div className={last ? "min-w-0" : "min-w-0 pb-3"}>
+              <div className="text-sm leading-5 font-medium">{title}</div>
+              <div className="text-sm leading-5 text-muted-foreground">
+                {company} · {from}–{to ?? "Present"}
+                {durations && <> · {yearsSaid((to ?? CURRENT_YEAR) - from)}</>}
+              </div>
+            </div>
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+/** The school, with "Top institute" on it rather than among the tags. */
+function EducationBlock({ applicant }: { applicant: Applicant }) {
+  const [degree, school] = applicant.education.split(", ")
+
+  return (
+    <section className="flex min-w-0 flex-col gap-2">
+      <h3 className="text-sm leading-5 font-semibold">Education</h3>
+      <div className="flex flex-col items-start text-sm leading-5">
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="font-medium">{school}</span>
+          {applicant.tags.includes(TOP_INSTITUTE) && (
+            <Badge variant="secondary" className="font-normal">
+              {TOP_INSTITUTE}
+            </Badge>
+          )}
+        </span>
+        <span className="text-muted-foreground">{degree}</span>
+      </div>
+    </section>
+  )
+}
+
+/**
+ * Snapshot's and Screening's header: the name at 18px with when they arrived
+ * beside it, and the role with `aside` — "since 2021", or "5 yrs in role".
+ * "New" is the dot on the photo.
+ */
+function ReadingHeader({
+  applicant,
+  picked,
+  aside,
+}: {
+  applicant: Applicant
+  picked: boolean
+  aside: string
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-3.5 @xl/card:[grid-area:1/1]!">
+      <Checkbox
+        defaultChecked={picked}
+        aria-label={`Select ${applicant.name}`}
+      />
+      <ApplicantAvatar applicant={applicant} className="size-12" />
+
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2.5">
+          <button
+            type="button"
+            className="min-w-0 truncate rounded-sm text-left font-heading text-lg leading-6 font-semibold outline-none hover:underline focus-visible:ring-[3px] focus-visible:ring-ring/50"
+          >
+            {applicant.name}
+          </button>
+          <StatusBadge status={applicant.status} />
+          <span className="text-xs text-muted-foreground">
+            {isNew(applicant) && <span className="sr-only">New, </span>}
+            Applied {applicant.appliedAgo}
+          </span>
+        </div>
+        <p className="line-clamp-2 text-sm leading-5">
+          <span className="font-medium">{applicant.title}</span>{" "}
+          <span className="text-muted-foreground">
+            at {applicant.company} · {aside}
+          </span>
+        </p>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Full width with words at the foot of a narrow card; icons in the top-right
+ * corner of a wide one (`grid-area: 1/2`). One group moved by the grid, not two
+ * copies, so the tab order is read, then decide.
+ */
+function MovingDecisions({ applicant }: { applicant: Applicant }) {
+  return (
+    <div className="relative flex shrink-0 items-center gap-2 border-t border-border pt-4 @xl/card:-my-1.5 @xl/card:-mr-2 @xl/card:self-start @xl/card:border-t-0 @xl/card:pt-0 @xl/card:[grid-area:1/2]!">
+      <Decisions
+        applicant={applicant}
+        className="flex-1 *:flex-1 *:shrink @xl/card:flex-none @xl/card:*:flex-none @xl/card:*:shrink-0"
+        labelClassName="@xl/card:sr-only"
+      />
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className="rounded-full"
+        aria-label={`More for ${applicant.name}`}
+      >
+        <EllipsisIcon />
+      </Button>
+    </div>
+  )
+}
+
+/**
+ * The same actions as `CardActions`, in three weights: only View profile keeps
+ * its outline, because it continues the task; Save, Message and the interview
+ * are ghosts, and Contact details reveals in place at the left.
+ */
+function QuietCardActions() {
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-1 border-t border-border pt-3">
+      <Button
+        variant="ghost"
+        size="sm"
+        className="mr-auto -ml-2 text-muted-foreground"
+      >
+        <EyeIcon data-icon="inline-start" />
+        View contact details
+      </Button>
+
+      <div className="flex shrink-0 items-center gap-1">
+        <Button variant="ghost" size="sm">
+          <BookmarkIcon data-icon="inline-start" />
+          Save
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="rounded-full"
+          aria-label="Message"
+        >
+          <MailIcon />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          className="rounded-full"
+          aria-label="Set up interview"
+        >
+          <CalendarPlusIcon />
+        </Button>
+        <Button variant="outline" size="sm" className="ml-1">
+          <UserRoundIcon data-icon="inline-start" />
+          View profile
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The grid both reading cards use: one column until `@xl/card`, then a second,
+ * `auto`, which only the decisions take — everything else spans both.
+ */
+const READING_GRID =
+  "grid w-full grid-cols-[minmax(0,1fr)] gap-4 @xl/card:grid-cols-[minmax(0,1fr)_auto] [&>*]:col-span-full"
+
+/**
+ * **Snapshot** — the card a recruiter reads in two seconds and decides from:
+ * who, the four numbers in one strip, the skills as a score, then how they got
+ * here. Nothing said twice: the current role is the header's, so the timeline
+ * starts at the one before it.
+ */
+function SnapshotCard({
+  applicant,
+  picked = false,
+}: {
+  applicant: Applicant
+  picked?: boolean
+}) {
+  const [current, ...earlier] = applicant.positions
+  const since = current ? spanYears(current.span).from : CURRENT_YEAR
+  const tags = applicant.tags.filter((tag) => tag !== TOP_INSTITUTE)
+
+  return (
+    <Item className="@container/card flex-col items-stretch bg-card px-4 py-4 ring-1 ring-foreground/10 @xl/card:px-5">
+      <div className={READING_GRID}>
+        <ReadingHeader
+          applicant={applicant}
+          picked={picked}
+          aside={`since ${since}`}
+        />
+
+        <StatCells
+          cells={snapshotCells(applicant)}
+          className="rounded-xl bg-muted/60 px-4 py-3"
+        />
+
+        <SkillsMatch applicant={applicant} />
+
+        <div className="grid gap-x-8 gap-y-4 @2xl/card:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+          {earlier.length > 0 && (
+            <section className="flex min-w-0 flex-col gap-2">
+              <h3 className="text-sm leading-5 font-semibold">Previously</h3>
+              <CareerTimeline roles={earlier} />
+            </section>
+          )}
+
+          <div className="flex min-w-0 flex-col gap-4">
+            <EducationBlock applicant={applicant} />
+            {/* A line of words with a tag glyph, not chips: as chips they read
+                as more skills. */}
+            {tags.length > 0 && (
+              <p className="flex items-start gap-2 text-sm leading-5 text-muted-foreground">
+                <TagIcon aria-hidden className="mt-0.5 size-4 shrink-0" />
+                <span>
+                  <span className="sr-only">Tags: </span>
+                  {tags.join(" · ")}
+                </span>
+              </p>
+            )}
+          </div>
+        </div>
+
+        <MovingDecisions applicant={applicant} />
+        <QuietCardActions />
+      </div>
+    </Item>
+  )
+}
+
+/**
+ * **Screening** — ordered the way a shortlist is made, in two passes: who,
+ * then the must-haves in one grey panel (expected pay with the jump from
+ * current, the location verdict, the posting's skills as a checklist), then
+ * the record — the earlier roles with how long each lasted, the signals read
+ * off them, and the school.
+ */
+function ScreeningCard({
+  applicant,
+  picked = false,
+}: {
+  applicant: Applicant
+  picked?: boolean
+}) {
+  const [current, ...earlier] = applicant.positions
+  const inRole = current
+    ? CURRENT_YEAR - spanYears(current.span).from
+    : undefined
+  const signals = applicant.tags.filter((tag) => tag !== TOP_INSTITUTE)
+
+  return (
+    <Item className="@container/card flex-col items-stretch bg-card px-4 py-4 ring-1 ring-foreground/10 @xl/card:px-5">
+      <div className={READING_GRID}>
+        <ReadingHeader
+          applicant={applicant}
+          picked={picked}
+          aside={inRole === undefined ? "" : `${yearsSaid(inRole)} in role`}
+        />
+
+        <section className="flex flex-col gap-3 rounded-xl bg-muted/60 px-4 py-3">
+          <h3 className="sr-only">Against what this posting asked for</h3>
+          <StatCells cells={screeningCells(applicant)} />
+          <div className="border-t border-border pt-3">
+            <SkillsChecklist applicant={applicant} />
+          </div>
+        </section>
+
+        <div className="grid gap-x-8 gap-y-4 @2xl/card:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+          {earlier.length > 0 && (
+            <section className="flex min-w-0 flex-col gap-2">
+              <h3 className="text-sm leading-5 font-semibold">Previously</h3>
+              <CareerTimeline roles={earlier} durations />
+            </section>
+          )}
+
+          <div className="flex min-w-0 flex-col gap-4">
+            {signals.length > 0 && (
+              <section className="flex min-w-0 flex-col gap-2">
+                <h3 className="text-sm leading-5 font-semibold">Signals</h3>
+                <p className="text-sm leading-5">{signals.join(" · ")}</p>
+              </section>
+            )}
+            <EducationBlock applicant={applicant} />
+          </div>
+        </div>
+
+        <MovingDecisions applicant={applicant} />
+        <QuietCardActions />
+      </div>
+    </Item>
+  )
+}
+
+/**
+ * A /settings variant floating over the screen it changes — dashed, so nobody
+ * in a review reads it as product. The arrows step through the layouts and the
+ * middle opens them all; drawn closed here.
+ */
+function FloatingSwitcher({
+  name,
+  value,
+  className,
+}: {
+  name: string
+  value: string
+  className?: string
+}) {
+  return (
+    <div
+      role="group"
+      aria-label={`${name} layout`}
+      className={cn(
+        "flex w-fit items-center gap-0.5 rounded-full border border-dashed border-muted-foreground/40 bg-background/95 p-1 shadow-lg backdrop-blur-sm",
+        className
+      )}
+    >
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className="rounded-full"
+        aria-label="Previous layout"
+      >
+        <ChevronLeftIcon />
+      </Button>
+      <Button variant="ghost" size="sm" className="rounded-full">
+        <SwatchBookIcon data-icon="inline-start" />
+        <span className="text-muted-foreground">{name}</span>
+        <span className="font-semibold">{value}</span>
+        <ChevronUpIcon data-icon="inline-end" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        className="rounded-full"
+        aria-label="Next layout"
+      >
+        <ChevronRightIcon />
+      </Button>
+    </div>
   )
 }
 
@@ -1222,25 +2030,32 @@ const RUNS = [
  */
 function SelectAll({ count, picked = 0 }: { count: number; picked?: number }) {
   const every = picked === count
+  // THE CARDS' OWN SHAPE — `Item` with the card's fill, ring and `px-5` — so
+  // the box lines up with the tick on every card below it and the row reads as
+  // the head of the stack rather than a stray label above it.
   return (
-    <label className="flex w-fit items-center gap-2 px-5 text-sm text-muted-foreground">
-      <Checkbox
-        checked={every}
-        indeterminate={picked > 0 && !every}
-        aria-label={every ? "Clear selection" : `Select all ${count}`}
-      />
-      {every ? "Clear selection" : `Select all ${count}`}
-    </label>
+    <Item className="bg-card px-5 py-3 ring-1 ring-foreground/10">
+      <Label className="flex w-fit items-center gap-2 text-sm font-normal text-muted-foreground">
+        <Checkbox
+          checked={every}
+          indeterminate={picked > 0 && !every}
+          aria-label={every ? "Clear selection" : `Select all ${count}`}
+        />
+        {every ? "Clear selection" : `Select all ${count}`}
+      </Label>
+    </Item>
   )
 }
 
 function CardList({
   bucket,
   picked = [],
+  layout,
 }: {
   bucket: Status | "all"
   /** Ids ticked, for the selection stories. */
   picked?: string[]
+  layout?: CardLayout
 }) {
   if (bucket === "undecided") {
     const queue = APPLICANTS.filter((a) => a.status === "undecided")
@@ -1263,6 +2078,7 @@ function CardList({
                   key={applicant.id}
                   applicant={applicant}
                   picked={picked.includes(applicant.id)}
+                  layout={layout}
                 />
               ))}
             </div>
@@ -1280,7 +2096,11 @@ function CardList({
   return (
     <div role="list" className="flex flex-col gap-3">
       {people.map((applicant) => (
-        <ApplicantCard key={applicant.id} applicant={applicant} />
+        <ApplicantCard
+          key={applicant.id}
+          applicant={applicant}
+          layout={layout}
+        />
       ))}
     </div>
   )
@@ -1362,9 +2182,10 @@ const SPLIT_CHROME = 44
  * stake out a hundred rows of document, and the page scrolls past a screen that
  * looks full.
  */
-function SplitView() {
+function SplitView({ pane = "tabs" }: { pane?: Pane }) {
   const queue = APPLICANTS.filter((a) => a.status === "undecided")
   const selected = queue[0]!
+  const sideBySide = pane === "side-by-side"
 
   return (
     <div
@@ -1397,41 +2218,376 @@ function SplitView() {
             ))}
           </React.Fragment>
         ))}
+
+        {/* The pane switcher sticks to the foot of the LIST, not over the
+            pane: this is the reading view, and a pill over the CV covers the
+            thing being read. */}
+        <FloatingSwitcher
+          name="Pane"
+          value={PANES[pane]}
+          className="sticky bottom-4 z-20 mx-3 mt-4 mb-4 shrink-0 self-start"
+        />
       </div>
 
       {/* `p-px` is load-bearing. The card below is ringed, and a ring is a
           box-shadow drawn OUTSIDE the border box — so with the card filling
           this pane edge to edge, its outline lands in the overflow and
           `overflow-y-auto` (which clips both axes, not just the one named) cuts
-          all four sides off. One pixel gives the ring somewhere to sit. */}
-      <div className="relative min-w-0 flex-1 overflow-y-auto p-px @3xl/main:pt-4">
-        <div className="flex flex-col gap-5 rounded-2xl bg-card p-5 ring-1 ring-foreground/10">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex min-w-0 items-start gap-3">
-              <ApplicantAvatar applicant={selected} className="size-12" />
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <span className="font-heading text-base font-medium">
-                  {selected.name}
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  {selected.title} at {selected.company}
-                </span>
-              </div>
-            </div>
+          all four sides off. One pixel gives the ring somewhere to sit.
 
-            <div className="flex items-center gap-2">
-              <Decisions applicant={selected} />
-              <Button variant="outline" size="sm">
-                <UserRoundIcon data-icon="inline-start" />
-                Open profile
-              </Button>
-            </div>
+          Side by side, the card FILLS the pane instead of running past it, so
+          its columns can scroll on their own: the pane is a container (whether
+          two columns fit is about the pane, not the window) and a flex
+          column. */}
+      <div
+        className={cn(
+          "relative min-w-0 flex-1 overflow-y-auto p-px @3xl/main:pt-4",
+          sideBySide && "@container/pane flex flex-col @3xl/main:pb-4"
+        )}
+      >
+        {pane === "card-cv" ? (
+          <div className="flex flex-col gap-4">
+            <section
+              aria-label={`${selected.name}, summary`}
+              className="@container/card flex flex-col gap-4 rounded-2xl bg-card p-5 ring-1 ring-foreground/10"
+            >
+              <PaneHeader applicant={selected} />
+              <StatCells
+                cells={snapshotCells(selected)}
+                className="rounded-xl bg-muted/60 px-4 py-3"
+              />
+              <SkillsMatch applicant={selected} />
+            </section>
+
+            <section
+              aria-label="CV"
+              className="flex flex-col gap-3 rounded-2xl bg-card p-5 ring-1 ring-foreground/10"
+            >
+              <h3 className="text-sm font-medium">CV</h3>
+              <CvDocument applicant={selected} />
+            </section>
           </div>
+        ) : (
+          <div
+            className={cn(
+              "flex flex-col gap-5 rounded-2xl bg-card p-5 ring-1 ring-foreground/10",
+              sideBySide && "@3xl/pane:min-h-0 @3xl/pane:flex-1"
+            )}
+          >
+            <PaneHeader applicant={selected} />
 
-          <BucketRows applicant={selected} />
-        </div>
+            {sideBySide ? (
+              // `grid-rows-1` is `minmax(0, 1fr)`: the row is the card's
+              // height, not the taller column's. Below a 48rem pane the
+              // columns stack, profile first, in the pane's one scroll.
+              <div className="flex flex-col gap-6 @3xl/pane:grid @3xl/pane:min-h-0 @3xl/pane:flex-1 @3xl/pane:grid-cols-2 @3xl/pane:grid-rows-1 @3xl/pane:gap-5">
+                {[
+                  {
+                    title: "Profile",
+                    body: <ProfileFacts applicant={selected} />,
+                  },
+                  { title: "CV", body: <CvDocument applicant={selected} /> },
+                ].map((column) => (
+                  <section
+                    key={column.title}
+                    aria-label={column.title}
+                    className="flex min-h-0 min-w-0 flex-col gap-3"
+                  >
+                    <h3 className="text-sm font-medium">{column.title}</h3>
+                    <div className="relative min-h-0 flex-1 @3xl/pane:overflow-y-auto @3xl/pane:p-px">
+                      {column.body}
+                    </div>
+                  </section>
+                ))}
+              </div>
+            ) : (
+              <Tabs className="gap-4" defaultValue="cv">
+                {/* CV first, in the same order as the profile panel's tabs. */}
+                <TabsList>
+                  <TabsTrigger value="cv">CV</TabsTrigger>
+                  <TabsTrigger value="profile">Profile</TabsTrigger>
+                </TabsList>
+                <TabsContent value="profile">
+                  <ProfileFacts applicant={selected} />
+                </TabsContent>
+                <TabsContent value="cv">
+                  <CvDocument applicant={selected} />
+                </TabsContent>
+              </Tabs>
+            )}
+          </div>
+        )}
       </div>
     </div>
+  )
+}
+
+/**
+ * The split view's pane layouts, on /settings ("Split view") and the dashed
+ * switcher at the foot of the list. Tabs is the default.
+ */
+type Pane = "tabs" | "side-by-side" | "card-cv"
+
+const PANES: Record<Pane, string> = {
+  tabs: "Tabs",
+  "side-by-side": "Side by side",
+  "card-cv": "Card, then CV",
+}
+
+/**
+ * Who, and what you can do about them: the decisions and Save. No "Open
+ * profile" — every layout already has the profile in the pane.
+ */
+function PaneHeader({ applicant }: { applicant: Applicant }) {
+  return (
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div className="flex min-w-0 items-start gap-3">
+        <ApplicantAvatar applicant={applicant} className="size-12" />
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="font-heading text-base font-medium">
+            {applicant.name}
+          </span>
+          <span className="text-sm text-muted-foreground">
+            {applicant.title} at {applicant.company}
+          </span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Decisions applicant={applicant} />
+        <Button variant="outline" size="sm">
+          <BookmarkIcon data-icon="inline-start" />
+          Save
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The profile, as the pane stacks it: the facts a decision turns on in one
+ * card, then the career, the school and the skills.
+ */
+function ProfileFacts({ applicant }: { applicant: Applicant }) {
+  const [degree, school] = applicant.education.split(", ")
+  const matched = applicant.skills.filter((skill) =>
+    REQUIRED_SKILLS.includes(skill)
+  )
+
+  return (
+    <div className="flex flex-col gap-5">
+      <CardSurface size="sm" className="gap-4 px-(--card-spacing)">
+        {[
+          ["Experience", applicant.experience],
+          ["Current pay", applicant.salary],
+          ["Notice", applicant.notice],
+          ["Location", applicant.location],
+        ].map(([label, value]) => (
+          <div
+            key={label}
+            className="flex items-baseline justify-between gap-3"
+          >
+            <span className="text-xs font-medium text-muted-foreground">
+              {label}
+            </span>
+            <span className="text-right text-sm font-medium">{value}</span>
+          </div>
+        ))}
+        <Separator />
+        <Button variant="outline" size="sm">
+          View contact details
+        </Button>
+        <Button variant="outline" size="sm">
+          <CalendarPlusIcon data-icon="inline-start" />
+          Set up interview
+        </Button>
+      </CardSurface>
+
+      <section className="flex flex-col gap-3">
+        <SectionHeader title="Experience" />
+        <CardSurface className="gap-0 py-0">
+          {applicant.positions.map((position, index) => {
+            const { title, company } = roleParts(position.role)
+            return (
+              <div
+                key={position.role}
+                className="flex gap-3 px-4 py-3.5 not-first:border-t not-first:border-border"
+              >
+                <BriefcaseIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <span className="text-sm font-medium">{title}</span>
+                  <span className="text-sm text-muted-foreground">
+                    {company}
+                  </span>
+                  <Meta>
+                    <MetaItem>{position.span}</MetaItem>
+                    {index === 0 && <MetaItem>Current</MetaItem>}
+                  </Meta>
+                </div>
+              </div>
+            )
+          })}
+        </CardSurface>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <SectionHeader title="Education" />
+        <CardSurface className="gap-0 py-0">
+          <div className="flex gap-3 px-4 py-3.5">
+            <GraduationCapIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+            <div className="flex min-w-0 flex-col gap-0.5">
+              <span className="text-sm font-medium">{school}</span>
+              <span className="text-sm text-muted-foreground">{degree}</span>
+            </div>
+          </div>
+        </CardSurface>
+      </section>
+
+      <section className="flex flex-col gap-3">
+        <SectionHeader
+          title="Skills"
+          description={`${matched.length} of the ${REQUIRED_SKILLS.length} asked for`}
+        />
+        <CardSurface size="sm" className="px-(--card-spacing)">
+          <div className="flex flex-wrap gap-1.5">
+            {applicant.skills.map((skill) => (
+              <Badge
+                key={skill}
+                variant={matched.includes(skill) ? "success" : "outline"}
+                className="font-normal"
+              >
+                {skill}
+              </Badge>
+            ))}
+          </div>
+        </CardSurface>
+      </section>
+    </div>
+  )
+}
+
+/**
+ * The CV: the document, not the profile. Drawn rather than embedded — there
+ * are no files in the prototype — and in explicit white and near-black, not
+ * tokens, because a PDF does not invert with the app. Contact details are
+ * masked behind the same gate as everywhere else, and the skills the posting
+ * asked for are marked with a highlighter.
+ *
+ * The page's margins follow the CV's own width (`@container/cv`), so it reads
+ * in a half-width column as well as the whole pane.
+ */
+function CvDocument({ applicant }: { applicant: Applicant }) {
+  const filename = `${applicant.name.toLowerCase().replace(/\s+/g, "-")}-cv.pdf`
+  const [degree, school] = applicant.education.split(", ")
+
+  return (
+    <div className="@container/cv flex flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="min-w-0 truncate text-xs text-muted-foreground">
+          {filename}
+        </span>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm">
+            <DownloadIcon data-icon="inline-start" />
+            Download
+          </Button>
+          <Button variant="outline" size="sm">
+            <ExternalLinkIcon data-icon="inline-start" />
+            Open
+          </Button>
+        </div>
+      </div>
+
+      <div className="rounded-xl bg-muted/50 p-3 ring-1 ring-foreground/10 @lg/cv:p-6">
+        <article className="mx-auto flex w-full max-w-2xl flex-col gap-6 rounded-md bg-white p-6 text-[#1a1a1a] shadow-md @lg/cv:p-10">
+          <header className="flex flex-col gap-2 border-b border-black/10 pb-5">
+            <h3 className="font-heading text-2xl font-semibold">
+              {applicant.name}
+            </h3>
+            <p className="text-sm text-[#4a4a4a]">
+              {applicant.title} · {applicant.company}
+            </p>
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[#6a6a6a]">
+              <span>{applicant.location}</span>
+              <span aria-hidden="true">·</span>
+              <span className="flex items-center gap-1.5">
+                <LockIcon className="size-3" aria-hidden="true" />
+                <span className="rounded-sm bg-black/10 px-2 py-0.5 text-[#6a6a6a] select-none">
+                  Contact details hidden
+                </span>
+              </span>
+            </p>
+          </header>
+
+          <CvSection title="Summary">
+            <p className="text-sm leading-relaxed text-[#3a3a3a]">
+              {applicant.experience} across {applicant.positions.length} roles,
+              currently {applicant.title} at {applicant.company}. Based in{" "}
+              {applicant.location}, {applicant.notice.toLowerCase()} notice.
+            </p>
+          </CvSection>
+
+          <CvSection title="Experience">
+            <ol className="flex flex-col gap-4">
+              {applicant.positions.map((position) => {
+                const { title, company } = roleParts(position.role)
+                const { from, to } = spanYears(position.span)
+                return (
+                  <li key={position.role} className="flex flex-col gap-0.5">
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-4">
+                      <span className="text-sm font-semibold">{title}</span>
+                      <span className="text-xs text-[#6a6a6a] tabular-nums">
+                        {from}–{to ?? "Present"}
+                      </span>
+                    </div>
+                    <span className="text-sm text-[#4a4a4a]">{company}</span>
+                  </li>
+                )
+              })}
+            </ol>
+          </CvSection>
+
+          <CvSection title="Education">
+            <span className="text-sm font-semibold">{degree}</span>
+            <span className="text-sm text-[#4a4a4a]">{school}</span>
+          </CvSection>
+
+          <CvSection title="Skills">
+            <p className="text-sm leading-relaxed text-[#3a3a3a]">
+              {applicant.skills.map((skill, index) => (
+                <React.Fragment key={skill}>
+                  {index > 0 && " · "}
+                  {REQUIRED_SKILLS.includes(skill) ? (
+                    <mark className="rounded-[2px] bg-[#fde68a] px-0.5 text-inherit">
+                      {skill}
+                    </mark>
+                  ) : (
+                    skill
+                  )}
+                </React.Fragment>
+              ))}
+            </p>
+          </CvSection>
+        </article>
+      </div>
+    </div>
+  )
+}
+
+function CvSection({
+  title,
+  children,
+}: {
+  title: string
+  children: React.ReactNode
+}) {
+  return (
+    <section className="flex flex-col gap-2">
+      <h4 className="text-xs font-semibold tracking-widest text-[#6a6a6a] uppercase">
+        {title}
+      </h4>
+      {children}
+    </section>
   )
 }
 
@@ -2043,9 +3199,15 @@ function ProfilePanel() {
 function ResponseManager({
   picked = [],
   view = "cards",
+  card = "stacked",
+  pane = "tabs",
 }: {
   picked?: string[]
   view?: "cards" | "table" | "split"
+  /** The /settings card layout, for the cards view. */
+  card?: CardLayout
+  /** The /settings split view layout, for the split view. */
+  pane?: Pane
 }) {
   return (
     // The content column is mist; the bar above it and the tab toolbar under
@@ -2120,12 +3282,28 @@ function ResponseManager({
                   {view === "table" ? (
                     <ApplicantTable />
                   ) : view === "split" ? (
-                    <SplitView />
+                    <SplitView pane={pane} />
                   ) : (
-                    <CardList bucket={bucket.value} picked={picked} />
+                    <CardList
+                      bucket={bucket.value}
+                      picked={picked}
+                      layout={card}
+                    />
                   )}
                 </TabsContent>
               ))}
+
+              {/* The prototype's card switcher, last in the cards column so it
+                  sticks to the foot of the screen at the cards' left edge. Out
+                  of the way of the selection bar, which owns the bottom while
+                  anybody is ticked. */}
+              {view === "cards" && picked.length === 0 && (
+                <FloatingSwitcher
+                  name="Card"
+                  value={CARD_LAYOUTS[card]}
+                  className="sticky bottom-4 z-20 mt-4 self-start"
+                />
+              )}
             </div>
           </div>
         </Tabs>
@@ -2202,6 +3380,17 @@ emphasis because the two only mean anything together.
 **A triage screen, not a profile reader.** A card carries only what you judge
 on at a glance, and the decision — yes, maybe, no — is on the card.
 
+**Five card layouts, picked on /settings** — and from the dashed Card switcher
+floating at the foot of the cards, a prototype control drawn so nobody reads it
+as product. Stacked runs the labels down the left; Columns lays the buckets
+across (not drawn here); Sections drops the label column for full-width bands;
+**Snapshot** puts experience, notice, pay and location in one strip to compare
+down the list, the skills as an N-of-M score and the career as a timeline;
+**Screening** is ordered the way a shortlist is made — who, then the must-haves
+in one grey panel (expected pay, the location verdict, the posting's skills as
+a checklist), then the record. Snapshot and Screening move their decisions to
+the foot of a narrow card, full width and labelled.
+
 **Three views, three densities, none of them the winner.** Cards are for
 scanning. The table is for comparing: one line a person with every number in a
 column. Split is for reading — a thin list beside a whole profile.
@@ -2225,6 +3414,14 @@ hide — and a **Columns** button beside the view toggle turns three off-by-defa
 columns on. In the split view the list is the rail's column: flush, bordered,
 its run headings pinned, and both columns filling the viewport to the bottom
 edge.
+
+**The split view's pane has three layouts**, on /settings and the dashed Pane
+switcher at the foot of its list. **Tabs** is the CV or the profile, one at a
+time. **Side by side** is the profile and the CV in two columns that scroll on
+their own, stacked below a 48rem pane. **Card, then CV** is a short summary
+card — the header, Snapshot's strip and its skills match — over the CV, in one
+scroll; the career and the school are left to the CV. None of them has Open
+profile: the profile is already in the pane.
 
 **A decision confirms as a toast**, bottom right, carrying the candidate's face
 — see Components → Toast.
@@ -2305,6 +3502,28 @@ export const CardsWithRail: Story = {
 export const SplitViewStory: Story = {
   name: "Split view",
   render: () => <ResponseManager view="split" />,
+}
+
+/**
+ * **Side by side** — the profile and the CV at once, each column scrolling on
+ * its own, so the facts stay put while the document is read. The card fills
+ * the pane rather than running past it; below a 48rem pane the columns stack,
+ * profile first.
+ */
+export const SplitSideBySide: Story = {
+  name: "Split view — side by side",
+  render: () => <ResponseManager view="split" pane="side-by-side" />,
+}
+
+/**
+ * **Card, then CV** — a short summary card over the CV, in one scroll: the
+ * header, the four numbers everybody compares and the skills against what the
+ * posting asked for. The career and the school are left out, because the page
+ * directly under it is the career and the school.
+ */
+export const SplitCardThenCv: Story = {
+  name: "Split view — card, then CV",
+  render: () => <ResponseManager view="split" pane="card-cv" />,
 }
 
 /**
@@ -2425,6 +3644,73 @@ export const Card: Story = {
   name: "Applicant card",
   decorators: [padded],
   render: () => <ApplicantCard applicant={APPLICANTS[0]} />,
+}
+
+/**
+ * One layout at the width of the cards column, and at a phone's. Every part of
+ * a card measures the card (`@…/card`), not the window, so the phone frame is
+ * just a narrower box. Rohit has two of the three skills, so the missing one
+ * shows.
+ */
+function WideAndPhone({ layout }: { layout: CardLayout }) {
+  return (
+    <div className="flex flex-col gap-8">
+      <section className="flex flex-col gap-2">
+        <h3 className="text-xs font-medium text-muted-foreground">Wide</h3>
+        <ApplicantCard applicant={APPLICANTS[1]!} layout={layout} />
+      </section>
+      <section className="flex flex-col gap-2">
+        <h3 className="text-xs font-medium text-muted-foreground">
+          Phone, 343px
+        </h3>
+        <div className="w-[343px] max-w-full">
+          <ApplicantCard applicant={APPLICANTS[1]!} layout={layout} />
+        </div>
+      </section>
+    </div>
+  )
+}
+
+/**
+ * **Sections** — the buckets as full-width bands with a rule between, and no
+ * label column, so nothing has to wrap. Tags lead without a heading;
+ * experience and education share a band; location and availability share the
+ * last.
+ */
+export const CardSections: Story = {
+  name: "Applicant card — Sections",
+  decorators: [padded],
+  render: () => <ApplicantCard applicant={APPLICANTS[1]!} layout="sections" />,
+}
+
+/**
+ * **Snapshot** — who, the four numbers in one strip (the location cell says
+ * whether they are in, or open to, the posting's city), the skills as a score,
+ * then "Previously" beside the school. On a phone the decisions go to the foot,
+ * full width and labelled; on a wide card they sit beside the name.
+ */
+export const CardSnapshot: Story = {
+  name: "Applicant card — Snapshot",
+  decorators: [padded],
+  render: () => <WideAndPhone layout="snapshot" />,
+}
+
+/**
+ * **Screening** — who, then the gates in one grey panel (expected pay with the
+ * jump from current, the location verdict, the posting's skills ticked or not
+ * in the posting's order), then the record: earlier roles with how long each
+ * lasted, the signals read off them, the school.
+ */
+export const CardScreening: Story = {
+  name: "Applicant card — Screening",
+  decorators: [padded],
+  render: () => <WideAndPhone layout="screening" />,
+}
+
+/** The cards view with Snapshot picked, and the dashed switcher at its foot. */
+export const CardsSnapshot: Story = {
+  name: "Cards view — Snapshot",
+  render: () => <ResponseManager card="snapshot" />,
 }
 
 export const TableView: Story = {
