@@ -12,7 +12,7 @@
   "lastDeployedAt": "2026-09-30T08:42:22.329Z",
   "dockerfile": "Dockerfile",
   "port": 3000,
-  "repo": "http://10.120.2.26:1000/admin/unified-recruitment-platform",
+  "repo": "http://10.120.2.26:1000/iim-jobs/unified-recruitment-platform",
   "branch": "master",
   "autoDeploy": true
 }

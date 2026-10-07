@@ -1235,8 +1235,10 @@ Agent conversations (`/dashboard/c/<id>`) are kept in `/app/data/sessions.json` 
 recruiter's own browser still has theirs either way.
 
 **It deploys on push to `master`** through Launchpad's Gitea pipeline, from
-`http://10.120.2.26:1000/admin/unified-recruitment-platform` (there is no `main`; `master` is the
-branch everything lands on). A push is built from the repo by the **root `Dockerfile`**, a two-stage
+`http://10.120.2.26:1000/iim-jobs/unified-recruitment-platform` — `origin` (there is no `main`;
+`master` is the branch everything lands on). The repo moved there from `admin/` on 7 Oct 2026; the
+old address 301-redirects, and the pipeline was re-pointed with `PUT …/pipeline` (same project,
+same port, the saved Gitea token kept). A push is built from the repo by the **root `Dockerfile`**, a two-stage
 build (`npm ci`, `npm run build -w web`, then the same `server/` + `public/` image as below), with
 `.dockerignore` keeping every `.env*`, `node_modules`, zips and `avatar-kit/` out of the context.
 Only a pushed commit deploys; a failed build keeps the previous site. Check what is live with
