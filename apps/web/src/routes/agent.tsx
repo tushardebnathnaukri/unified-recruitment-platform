@@ -1,8 +1,10 @@
 import * as React from "react"
 import { Link, useNavigate, useParams, useSearchParams } from "react-router"
 import {
+  CheckIcon,
   ChevronRightIcon,
   CircleCheckIcon,
+  MinusIcon,
   ListChecksIcon,
   SparklesIcon,
   MessageCircleIcon,
@@ -37,6 +39,7 @@ import {
   MessageScrollerViewport,
 } from "@workspace/ui/components/message-scroller"
 import { Spinner } from "@workspace/ui/components/spinner"
+import { Tabs, TabsList, TabsTrigger } from "@workspace/ui/components/tabs"
 import { toast } from "@workspace/ui/components/toast"
 import { cn } from "@workspace/ui/lib/utils"
 
@@ -97,6 +100,9 @@ import { describesRole, openerChecks } from "@/lib/job-start"
 import { railFor, searchRailFor } from "@/lib/posting-rail"
 import { searchChangeItem, SEARCH_LABELS } from "@/lib/search-intake"
 import { play } from "@/lib/sound"
+import { confetti } from "@/lib/confetti"
+import { milestonesFor, workFor, type Milestone } from "@/lib/step-milestones"
+import { AgentWorkCard } from "@/components/agent-work"
 import type { IntakeState } from "@/lib/job-intake"
 import { advanceWithAi } from "@/lib/job-intake-ai"
 import {
@@ -249,6 +255,10 @@ export function AgentPage() {
   // Asked in THIS visit — a reply to it pops; a transcript rebuilt from a
   // link or a reload arrives silently, because nobody is waiting for it.
   const askedHere = React.useRef(false)
+  // Chat v2.7: the turn asked in this visit whose work card runs live, and
+  // the turn whose card has finished — the reply waits for that.
+  const [liveTurn, setLiveTurn] = React.useState<string | null>(null)
+  const [workDone, setWorkDone] = React.useState<string | null>(null)
   // Takes the newest turn back — a hiring manager's note undone while it is
   // still the last thing said. The conversation is its turns, so this is all
   // an undo needs to be.
@@ -260,6 +270,8 @@ export function AgentPage() {
   }
   const ask = (prompt: string) => {
     askedHere.current = true
+    // A turn's id is its index and its words (see `turns` below).
+    setLiveTurn(`${asked.length}-${prompt}`)
     const turns = [...asked, prompt]
     if (id && session.id === id) {
       setSession({ ...session, turns })
@@ -309,6 +321,11 @@ export function AgentPage() {
   // Which layout a posting is drawn in — and, for Chat v3, how it is read.
   const { variant: postingVariant } = usePostingVariant()
   const v3 = postingVariant === "rail3"
+  // Chat v2.7: v2.5, with each finished step celebrated.
+  const v27 = postingVariant === "rail27"
+  // Chat v2.5: Chat with rail v2, plus a JD step before the criteria. Chat
+  // v2.7 reads exactly as it does.
+  const v25 = postingVariant === "rail25" || v27
 
   // Answered as a whole rather than turn by turn: a reply inside the posting
   // conversation depends on the turns before it (see `answersFor`).
@@ -337,6 +354,7 @@ export function AgentPage() {
     } = answersFor(prompts, brand, files, readings, {
       criteria,
       suggest: v3,
+      jd: v25,
       routes,
     })
     return {
@@ -361,7 +379,7 @@ export function AgentPage() {
         answer: answers[index],
       })),
     }
-  }, [transcript, brand, files, readings, criteria, v3, routes])
+  }, [transcript, brand, files, readings, criteria, v3, v25, routes])
 
   // Read the first unread posting answer. One at a time and in order, because
   // each is read against the draft the one before it left — `answersFor`
@@ -411,17 +429,104 @@ export function AgentPage() {
    */
   const last = turns[turns.length - 1]
 
+  // Chat v2.7: a posting answer the agent worked on — read, and the posting
+  // changed — or the one being read now. Those get a work card.
+  const worked = (index: number) => {
+    const turn = turns[index]
+    if (!v27 || !turn) return false
+    if (turn.answer === null)
+      return index === turns.length - 1 && Boolean(pending)
+    return (
+      Boolean(turn.answer.step) &&
+      states[index] !== null &&
+      states[index] !== states[index - 1]
+    )
+  }
+  // The newest turn's reply, question card and cheer wait while its card is
+  // still ticking through (`AgentWorkCard`'s staged pace).
+  const held =
+    last !== undefined &&
+    last.id === liveTurn &&
+    workDone !== last.id &&
+    worked(turns.length - 1)
+
+  // Chat v2.7: which steps finished on which turn — derived from the turns,
+  // so the milestone lines come back on a reload. The cheer below does not.
+  const milestones = React.useMemo(
+    () => (v27 ? milestonesFor(states) : null),
+    [v27, states]
+  )
+  const [cheer, setCheer] = React.useState<{
+    label: string
+    at: number
+  } | null>(null)
+
   // The reply's pop: once per turn, when its answer is on screen, and only
-  // while the tab is being looked at.
-  const landed = last?.answer && !thinking ? last.id : null
+  // while the tab is being looked at. Under Chat v2.7 a turn that finished a
+  // step chimes instead, and cheers: the plan bar's tick pops (`cheer`) and
+  // confetti bursts from it — a bigger burst, and the fuller chime, for the
+  // last step.
+  const landed = last?.answer && !thinking && !held ? last.id : null
   const announced = React.useRef<string | null>(null)
   React.useEffect(() => {
     if (!landed || landed === announced.current) return
     announced.current = landed
-    if (askedHere.current && document.visibilityState === "visible") play("pop")
-  }, [landed])
+    if (!askedHere.current || document.visibilityState !== "visible") return
+    const finished = milestones?.get(turns.length - 1)
+    if (!finished?.length) {
+      play("pop")
+      return
+    }
+    const step = finished[finished.length - 1]
+    const end = finished.some((milestone) => milestone.last)
+    play(end ? "done" : "step")
+    // After the paint that shows the step done, so the tick is there to
+    // burst from.
+    requestAnimationFrame(() => {
+      setCheer({ label: step.label, at: Date.now() })
+      // The burst comes from the milestone in the chat — where the recruiter
+      // is looking — and from the plan bar's tick only if that is off screen.
+      const pills = document.querySelectorAll<HTMLElement>(
+        `[data-milestone="${CSS.escape(step.label)}"]`
+      )
+      const milestone = pills[pills.length - 1]
+      const check = milestone?.querySelector("[data-milestone-check]")
+      const inView = (box: DOMRect | undefined) =>
+        box && box.bottom > 0 && box.top < window.innerHeight
+      const fromChat = check?.getBoundingClientRect()
+      const fromBar = document
+        .querySelector(
+          `[data-plan-step="${CSS.escape(step.label)}"] [data-plan-badge]`
+        )
+        ?.getBoundingClientRect()
+      const box = inView(fromChat) ? fromChat : fromBar
+      if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+        milestone?.querySelector("[data-milestone-pill]")?.animate(
+          [
+            { transform: "scale(0.6)", opacity: 0 },
+            { transform: "scale(1.08)", opacity: 1, offset: 0.6 },
+            { transform: "scale(1)", opacity: 1 },
+          ],
+          { duration: 480, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" }
+        )
+      confetti(
+        box
+          ? { x: box.left + box.width / 2, y: box.top + box.height / 2 }
+          : { x: window.innerWidth / 2, y: window.innerHeight / 3 }
+      )
+      if (end)
+        setTimeout(
+          () =>
+            confetti(
+              { x: window.innerWidth / 2, y: window.innerHeight * 0.55 },
+              "big"
+            ),
+          300
+        )
+    })
+  }, [landed, milestones, turns.length])
   const docked =
-    last?.answer && !thinking
+    last?.answer && !thinking && !held
       ? last.answer.blocks.find(
           (block): block is Extract<Block, { kind: "questionnaire" }> =>
             block.kind === "questionnaire"
@@ -466,8 +571,27 @@ export function AgentPage() {
   // box. A change card from the rail's pencil is a side action and still
   // docks.
   // Chat v3 is v2's layout with more on it, so both flags hold for it too.
-  const planBar = (postingVariant === "rail2" || v3) && rail !== null
-  const inlineCards = postingVariant === "rail2" || v3
+  const planBar = (postingVariant === "rail2" || v25 || v3) && rail !== null
+  // Chat v2.7 calls out which step a question card belongs to: the plan
+  // bar's current step, by its number there.
+  const activeAt = rail?.steps.findIndex((step) => step.state === "active")
+  const activeStep =
+    rail && activeAt !== undefined && activeAt >= 0
+      ? {
+          number: activeAt + 1,
+          total: rail.steps.length,
+          label: rail.steps[activeAt].label,
+        }
+      : undefined
+  const inlineCards = postingVariant === "rail2" || v25 || v3
+  // Chat v2.5's own questions are named by the JD step, not by a fixed list.
+  const probeLabels = React.useMemo(
+    () =>
+      Object.fromEntries(
+        (posting?.jd?.probes ?? []).map((probe) => [probe.id, probe.label])
+      ),
+    [posting]
+  )
   const [chatHidden, setChatHidden] = React.useState(false)
   // Chat v3: the finish card asks the rail to show who the posting finds.
   const [openView, setOpenView] = React.useState<string | null>(null)
@@ -535,8 +659,8 @@ export function AgentPage() {
     setFiles((current) => ({ ...current, [file.name]: file.text }))
 
   if (!started)
-    return landing === "chat" ? (
-      <ChatLanding onAsk={ask} onAttach={attach} />
+    return landing === "chat" || landing === "tabs" ? (
+      <ChatLanding onAsk={ask} onAttach={attach} tabs={landing === "tabs"} />
     ) : (
       <Landing onAsk={ask} onAttach={attach} />
     )
@@ -635,7 +759,12 @@ export function AgentPage() {
         >
           {/* The plan, inside the chat: the conversation's progress. */}
           {planBar && rail ? (
-            <PlanBar steps={rail.steps} reading={Boolean(pending)} />
+            <PlanBar
+              steps={rail.steps}
+              reading={Boolean(pending)}
+              cheer={v27 ? cheer : null}
+              meter={v27}
+            />
           ) : null}
           {formBeside ? (
             <div className="hidden items-center gap-3 border-b px-4 py-3 @3xl/main:flex">
@@ -671,6 +800,30 @@ export function AgentPage() {
                       turn.answer === null ||
                       (thinking && index === turns.length - 1)
                     const answer = turn.answer
+                    // Chat v2.7's work card. Live on the newest turn asked in
+                    // this visit until it finishes; folded once it has, or on
+                    // an earlier turn. A turn still being read that is NOT
+                    // live (a link opened cold) keeps the plain marker — a
+                    // folded "done" would be a claim before the fact.
+                    const workHere = worked(index)
+                    const liveCard =
+                      workHere && turn.id === liveTurn && workDone !== turn.id
+                    const work =
+                      workHere && (answer || liveCard)
+                        ? workFor({
+                            answer,
+                            before: states[index - 1] ?? null,
+                            after: answer ? states[index] : null,
+                            // The rail's count is the posting AFTER the
+                            // newest answer — only once that answer is in.
+                            people:
+                              index === turns.length - 1 &&
+                              answer &&
+                              rail?.people
+                                ? rail.people
+                                : null,
+                          })
+                        : null
                     // The live card, at the end of the newest turn — after a
                     // reply, or under a marker, which asks nothing new.
                     const inlineCard =
@@ -686,6 +839,7 @@ export function AgentPage() {
                               postNowLabel={docked.postNowLabel}
                               onAsk={ask}
                               onClose={() => setClosed(turn.id)}
+                              step={v27 ? activeStep : undefined}
                             />
                           ) : (
                             <Button
@@ -758,13 +912,42 @@ export function AgentPage() {
                             <MessageContent>
                               <Bubble align="end">
                                 <BubbleContent>
-                                  <Prompt prompt={turn.prompt} />
+                                  <Prompt
+                                    prompt={turn.prompt}
+                                    labels={probeLabels}
+                                  />
                                 </BubbleContent>
                               </Bubble>
                             </MessageContent>
                           </Message>
 
-                          {waiting || !answer ? (
+                          {/* Chat v2.7: the agent's work on this answer —
+                              live (the reply waits for it) on the newest turn
+                              asked in this visit, folded everywhere else. */}
+                          {work ? (
+                            <AgentWorkCard
+                              work={work}
+                              live={liveCard}
+                              ready={Boolean(answer) && !thinking}
+                              onDone={() => setWorkDone(turn.id)}
+                            />
+                          ) : null}
+
+                          {/* Chat v2.7: the step this answer finished, between
+                              the answer and the reply that moves on. */}
+                          {!waiting && answer && !liveCard
+                            ? milestones
+                                ?.get(index)
+                                ?.map((milestone) => (
+                                  <StepMilestone
+                                    key={milestone.label}
+                                    milestone={milestone}
+                                  />
+                                ))
+                            : null}
+
+                          {liveCard ? null : (waiting || !answer) &&
+                            work ? null : waiting || !answer ? (
                             <Marker>
                               <MarkerIcon>
                                 <Spinner />
@@ -779,7 +962,7 @@ export function AgentPage() {
                             </Marker>
                           ) : (
                             <>
-                              {answer.step ? (
+                              {answer.step && !work ? (
                                 <WorkStepRow step={answer.step} />
                               ) : null}
                               <Message>
@@ -1065,6 +1248,76 @@ function SessionState({ status }: { status: "loading" | "missing" }) {
  * 2.8s ›" — and opening onto exactly what that answer recorded. A native
  * `details`, because a disclosure is what it is and it needs no state.
  */
+/**
+ * Chat v2.7's milestone: a step finished — said in the chat, where the eye is,
+ * as well as on the plan bar above it.
+ *
+ * A DIVIDER WITH A PILL, NOT A GREY LINE. The first version was a marker in
+ * the transcript's muted text and was easy to read past; this is a rule across
+ * the conversation with "Step 1 done · Job details" in a brand-tinted pill at
+ * its middle — the conversation visibly turning a page — then what the step
+ * recorded and which step is next, centred under it. Not a message, because
+ * nobody said it.
+ *
+ * `data-milestone` is what the live cheer finds: the pill pops in and the
+ * step's confetti bursts from its tick (`routes/agent.tsx`, the landing
+ * effect). On a reload it is simply there.
+ */
+function StepMilestone({ milestone }: { milestone: Milestone }) {
+  return (
+    <div
+      data-milestone={milestone.label}
+      className="my-2 flex flex-col items-center gap-1.5 text-center"
+    >
+      <div className="flex w-full items-center gap-3">
+        <span aria-hidden className="h-px flex-1 bg-border" />
+        <span
+          data-milestone-pill
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-full py-1 pr-3 pl-1 text-xs font-medium",
+            milestone.skipped
+              ? "bg-muted text-muted-foreground"
+              : "bg-primary/10 text-primary"
+          )}
+        >
+          <span
+            data-milestone-check
+            className={cn(
+              "grid size-5 place-items-center rounded-full",
+              milestone.skipped
+                ? "bg-muted-foreground text-background"
+                : "bg-primary text-primary-foreground"
+            )}
+          >
+            {milestone.skipped ? (
+              <MinusIcon className="size-3" strokeWidth={3} />
+            ) : (
+              <CheckIcon className="size-3" strokeWidth={3} />
+            )}
+          </span>
+          Step {milestone.number}/{milestone.total}{" "}
+          {milestone.skipped ? "skipped" : "done"} · {milestone.label}
+        </span>
+        <span aria-hidden className="h-px flex-1 bg-border" />
+      </div>
+      {milestone.recap ? (
+        <p className="text-xs text-muted-foreground">{milestone.recap}</p>
+      ) : null}
+      {milestone.next ? (
+        <p className="text-xs text-muted-foreground">
+          {milestone.last ? "All set. " : ""}Next:{" "}
+          <span className="font-medium text-foreground">
+            {milestone.nextNumber
+              ? `Step ${milestone.nextNumber}/${milestone.total} · `
+              : ""}
+            {milestone.next}
+          </span>
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
 function WorkStepRow({ step }: { step: WorkStep }) {
   const who = step.by === "gemini" ? "Read by Gemini" : "Read by rules"
   const time =
@@ -1157,9 +1410,12 @@ const NOTHING: ComposeAssist = { checks: [], rows: [] }
 function ChatLanding({
   onAsk,
   onAttach,
+  tabs = false,
 }: {
   onAsk: (prompt: string) => void
   onAttach: (file: { name: string; text: string | null }) => void
+  /** The pills as line tabs inside the box (`tabs` in `agent-landing-variant`). */
+  tabs?: boolean
 }) {
   const { brand } = useBrand()
   const vocabulary = React.useMemo(
@@ -1238,52 +1494,66 @@ function ChatLanding({
           Ask about your postings, your applicants, your diary or the market.
         </p>
 
-        <div
-          className={cn(
-            "relative mt-10 flex max-w-4xl flex-wrap justify-center gap-3",
-            focused && "z-50"
-          )}
-        >
-          {HERO_ACTIONS.map((action) => {
-            const count = action.count?.(brand)
-            const on = lit.includes(action.skill)
-            const moded = action.skill in MODES
-            const selected = mode === action.skill
-            return (
-              <button
-                key={action.label}
-                type="button"
-                onClick={() =>
-                  moded
-                    ? setMode(selected ? null : action.skill)
-                    : onAsk(action.prompt)
-                }
-                aria-pressed={moded ? selected : undefined}
-                data-lit={on ? "" : undefined}
-                data-selected={selected ? "" : undefined}
-                className="group flex items-center gap-2 rounded-full border bg-background px-4 py-2 text-sm font-medium shadow-xs transition-[color,background-color,border-color,box-shadow] outline-none hover:bg-muted focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 data-lit:border-primary/50 data-lit:bg-primary/5 data-lit:ring-[3px] data-lit:ring-primary/15 data-selected:border-primary data-selected:bg-primary data-selected:text-primary-foreground data-selected:hover:bg-primary/90"
-              >
-                <action.icon className="size-4 text-muted-foreground transition-colors group-data-lit:text-primary group-data-selected:text-primary-foreground" />
-                {action.label}
-                {on ? (
-                  <span className="sr-only">
-                    {lit.length > 1
-                      ? " — one of what your message could mean"
-                      : " — what Enter will do"}
-                  </span>
-                ) : null}
-                {count ? (
-                  <span className="-mr-1.5 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary tabular-nums">
-                    {count}
-                  </span>
-                ) : null}
-              </button>
-            )
-          })}
-        </div>
+        {tabs ? null : (
+          <div
+            className={cn(
+              "relative mt-10 flex max-w-4xl flex-wrap justify-center gap-3",
+              focused && "z-50"
+            )}
+          >
+            {HERO_ACTIONS.map((action) => {
+              const count = action.count?.(brand)
+              const on = lit.includes(action.skill)
+              const moded = action.skill in MODES
+              const selected = mode === action.skill
+              return (
+                <button
+                  key={action.label}
+                  type="button"
+                  onClick={() =>
+                    moded
+                      ? setMode(selected ? null : action.skill)
+                      : onAsk(action.prompt)
+                  }
+                  aria-pressed={moded ? selected : undefined}
+                  data-lit={on ? "" : undefined}
+                  data-selected={selected ? "" : undefined}
+                  className="group flex items-center gap-2 rounded-full border bg-background px-4 py-2 text-sm font-medium shadow-xs transition-[color,background-color,border-color,box-shadow] outline-none hover:bg-muted focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 data-lit:border-primary/50 data-lit:bg-primary/5 data-lit:ring-[3px] data-lit:ring-primary/15 data-selected:border-primary data-selected:bg-primary data-selected:text-primary-foreground data-selected:hover:bg-primary/90"
+                >
+                  <action.icon className="size-4 text-muted-foreground transition-colors group-data-lit:text-primary group-data-selected:text-primary-foreground" />
+                  {action.label}
+                  {on ? (
+                    <span className="sr-only">
+                      {lit.length > 1
+                        ? " — one of what your message could mean"
+                        : " — what Enter will do"}
+                    </span>
+                  ) : null}
+                  {count ? (
+                    <span className="-mr-1.5 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary tabular-nums">
+                      {count}
+                    </span>
+                  ) : null}
+                </button>
+              )
+            })}
+          </div>
+        )}
 
         <AgentComposer
           size="hero"
+          header={
+            tabs ? (
+              <LandingTabs
+                mode={mode}
+                lit={lit}
+                onMode={setMode}
+                onAsk={onAsk}
+              />
+            ) : undefined
+          }
+          modeChip={!tabs}
+          inlineTools={tabs}
           vocabulary={vocabulary}
           examples={pressed ? undefined : examples}
           placeholder={pressed ? MODES[pressed.skill].placeholder : undefined}
@@ -1301,7 +1571,11 @@ function ChatLanding({
           }
           assist={pressed ? assist : undefined}
           onFocusChange={setFocused}
-          className={cn("mt-6 w-full max-w-4xl", focused && "z-50")}
+          className={cn(
+            "w-full max-w-4xl",
+            tabs ? "mt-10" : "mt-6",
+            focused && "z-50"
+          )}
           onSubmit={submit}
           onAttach={onAttach}
         />
@@ -1317,6 +1591,87 @@ function ChatLanding({
     </div>
   )
 }
+
+/**
+ * THE PILLS AS TABS, inside the box along its top edge — shadcn's `line`
+ * tabs, with pipes between them. "Ask" comes first and is the box with no
+ * pill pressed (whatever is typed is routed), so exactly one tab is always
+ * selected; picking another is pressing that pill, and Esc or Backspace in
+ * an empty box goes back to Ask, as it lets go of a pill. A tab the typed
+ * text is heading for lights in the brand, with a faint underline, the way a
+ * pill lights. The selected tab is the mode, so the box draws no mode chip.
+ */
+function LandingTabs({
+  mode,
+  lit,
+  onMode,
+  onAsk,
+}: {
+  mode: string | null
+  lit: string[]
+  onMode: (skill: string | null) => void
+  onAsk: (prompt: string) => void
+}) {
+  const { brand } = useBrand()
+  const tabs = [
+    { value: ASK_TAB, label: "Ask", icon: SparklesIcon, count: null },
+    ...HERO_ACTIONS.map((action) => ({
+      value: action.skill,
+      label: action.label,
+      icon: action.icon,
+      count: action.count?.(brand) ?? null,
+    })),
+  ]
+  return (
+    <Tabs
+      value={mode ?? ASK_TAB}
+      onValueChange={(value) => {
+        const skill = String(value)
+        if (skill === ASK_TAB) return onMode(null)
+        if (skill in MODES) return onMode(skill)
+        const action = HERO_ACTIONS.find((entry) => entry.skill === skill)
+        if (action) onAsk(action.prompt)
+      }}
+    >
+      <TabsList
+        variant="line"
+        aria-label="What to do"
+        className="h-11 w-full [scrollbar-width:none] justify-start gap-0 overflow-x-auto overflow-y-hidden"
+      >
+        {tabs.map((tab, i) => (
+          <React.Fragment key={tab.value}>
+            {i > 0 ? (
+              <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-border" />
+            ) : null}
+            <TabsTrigger
+              value={tab.value}
+              data-lit={lit.includes(tab.value) ? "" : undefined}
+              className="flex-none px-2.5 data-lit:text-primary not-data-active:data-lit:after:bg-primary not-data-active:data-lit:after:opacity-50"
+            >
+              <tab.icon />
+              {tab.label}
+              {lit.includes(tab.value) ? (
+                <span className="sr-only">
+                  {lit.length > 1
+                    ? " — one of what your message could mean"
+                    : " — what Enter will do"}
+                </span>
+              ) : null}
+              {tab.count ? (
+                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary tabular-nums">
+                  {tab.count}
+                </span>
+              ) : null}
+            </TabsTrigger>
+          </React.Fragment>
+        ))}
+      </TabsList>
+    </Tabs>
+  )
+}
+
+/** The tabs' first value: no pill pressed. Not a skill id, so never routed. */
+const ASK_TAB = "ask"
 
 /**
  * The first screen: what it is, what it can do, and the box.
@@ -1490,7 +1845,14 @@ function Said({ answer }: { answer: Answer }) {
  * that would be printing the plumbing — so it is drawn as the answers it
  * holds, one line per question, in the order they were asked.
  */
-function Prompt({ prompt }: { prompt: string }) {
+function Prompt({
+  prompt,
+  labels,
+}: {
+  prompt: string
+  /** Chat v2.5's questions written for the role, by id — their own labels. */
+  labels?: Record<string, string>
+}) {
   // A sentence written under a pill: said under the pill's name.
   const asked = decodeAsk(prompt)
   if (asked)
@@ -1520,6 +1882,7 @@ function Prompt({ prompt }: { prompt: string }) {
           <dt className="py-0.5 text-xs leading-5 opacity-75">
             {LABELS[id as keyof typeof LABELS] ??
               SEARCH_LABELS[id as keyof typeof SEARCH_LABELS] ??
+              labels?.[id] ??
               id}
           </dt>
           <dd

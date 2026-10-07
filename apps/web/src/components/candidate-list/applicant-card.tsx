@@ -33,9 +33,8 @@ import { CriteriaEvidence } from "@/components/criteria-evidence"
 import { PickBox } from "@/components/candidate-list/selection"
 import { TargetCitiesContext } from "@/components/candidate-list/shared"
 import {
-  CardActions,
-  QuietCardActions,
-  RowActions,
+  CardDecisions,
+  CardTools,
 } from "@/components/candidate-list/applicant-actions"
 
 /**
@@ -82,7 +81,7 @@ const BUCKETS_FOR: Record<
  * `BucketColumns` and `BucketSections`.
  *
  * The card is still not a link — its actions are the point, and the profile
- * behind it does not exist yet. See `RowActions`.
+ * behind it does not exist yet. See `CardTools` and `CardDecisions`.
  */
 export function ApplicantCard({
   applicant,
@@ -167,7 +166,9 @@ function BucketCard({
 
   return (
     <Item className="@container/card flex-col items-stretch gap-3 bg-card px-5 py-4 ring-1 ring-foreground/10">
-      <div className="flex items-start justify-between gap-3">
+      {/* Wraps, so on a narrow card the tools drop under the name rather than
+          squeezing it. */}
+      <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 items-start gap-3">
           {/* Beside the photo, vertically on its middle: the tick is about the
               person, and the photo is the person at a glance. */}
@@ -215,10 +216,9 @@ function BucketCard({
           </div>
         </div>
 
-        <RowActions
+        <CardTools
           applicant={applicant}
-          onDecide={onDecide}
-          className="-my-1.5 -mr-2"
+          className="-mr-2 ml-auto self-center"
         />
       </div>
 
@@ -238,7 +238,7 @@ function BucketCard({
 
       {annotation}
 
-      <CardActions
+      <CardDecisions
         applicant={applicant}
         onDecide={onDecide}
         onOpenProfile={onOpenProfile}
@@ -274,15 +274,14 @@ function BucketCard({
  * "Previously"; "Top institute" sits on the school it is about rather than
  * among the tags 60px from it.
  *
- * ON A PHONE THE DECISIONS GO TO THE FOOT, WITH WORDS. Beside the name they cost
- * the name its width (on 343px the group and the ⋯ leave ~150px for a name and
- * a title), and three bare icons are a guess on a screen with no hover to
- * explain them. At the foot they are full-width, labelled, and under the thumb
- * — and they come after the facts, which is the order a decision is made in.
- * On a card wider than `@xl` they go back up to the top-right corner the other
- * layouts use, icons only. It is ONE `RowActions` moved by the grid, not two
- * copies shown and hidden, so its interview dialog and menu exist once — and
- * since it is after the facts in the DOM, the tab order is read, then decide.
+ * THE DECISIONS ARE AT THE FOOT, THE ACTIONS AT THE TOP (6 Oct 2026; they
+ * were the other way round). Shortlist and Reject come after the facts, which
+ * is the order a decision is made in, and the tab order too; on a phone-width
+ * card they stretch across it, under the thumb, with View profile beside
+ * them. Save, View contact (a modal) and the ⋯ menu — Message and the
+ * interview are in it — (`CardTools`) sit beside the name on a card wider than
+ * `@xl`, and in a row under it below that: one element moved by the grid, not
+ * two copies shown and hidden, so its dialog and menu exist once.
  *
  * Everything measures the CARD (`@…/card`), not the window, for the reason
  * `BucketColumns` gives: the card is half the screen beside the filter rail.
@@ -310,7 +309,7 @@ function SnapshotCard({
     <Item className="@container/card flex-col items-stretch bg-card px-4 py-4 ring-1 ring-foreground/10 @xl/card:px-5">
       {/* The grid is a child because a container query cannot style the
           container itself. One column until `@xl`; then a second, `auto`,
-          which only the decisions use — `grid-area: 1/2` lifts them beside the
+          which only the tools use — `grid-area: 1/2` lifts them beside the
           name while everything else spans both. It is `grid-area` with `!`
           because the span-everything rule is on the parent's `[&>*]`, and a
           `col-span-1!` would have reset the column start with it. */}
@@ -354,6 +353,14 @@ function SnapshotCard({
             </p>
           </div>
         </div>
+
+        {/* Beside the name on a wide card, centred on the photo and the name
+            beside it; a row under it on a narrow one. */}
+        <CardTools
+          applicant={applicant}
+          quiet
+          className="@xl/card:-mr-2 @xl/card:self-center @xl/card:[grid-area:1/2]!"
+        />
 
         <SnapshotStats applicant={applicant} />
 
@@ -422,21 +429,14 @@ function SnapshotCard({
 
         {annotation}
 
-        {/* Full width with words at the foot of a narrow card, icons in the
-            top-right corner of a wide one. The words stay in the DOM as
-            `sr-only` up there; the `aria-label` names each one regardless. */}
-        <RowActions
-          applicant={applicant}
-          onDecide={onDecide}
-          className="border-t border-border pt-4 @xl/card:-my-1.5 @xl/card:-mr-2 @xl/card:self-start @xl/card:border-t-0 @xl/card:pt-0 @xl/card:[grid-area:1/2]!"
-          decisionClassName="flex-1 *:flex-1 *:shrink @xl/card:flex-none @xl/card:*:flex-none @xl/card:*:shrink-0"
-          labelClassName="@xl/card:sr-only"
-        />
-
-        <QuietCardActions
+        {/* Shortlist and Reject, after the facts. Stretched across a narrow
+            card on a line of their own; at the right of the row on a wide one,
+            View profile at its left. */}
+        <CardDecisions
           applicant={applicant}
           onDecide={onDecide}
           onOpenProfile={onOpenProfile}
+          decisionClassName="w-full *:flex-1 @xl/card:w-fit @xl/card:*:flex-none"
         />
       </div>
     </Item>
@@ -705,7 +705,7 @@ function ScreeningCard({
     <Item className="@container/card flex-col items-stretch bg-card px-4 py-4 ring-1 ring-foreground/10 @xl/card:px-5">
       {/* The grid is a child because a container query cannot style the
           container itself. One column until `@xl`; then a second, `auto`,
-          which only the decisions use — `grid-area: 1/2` lifts them beside the
+          which only the tools use — `grid-area: 1/2` lifts them beside the
           name while everything else spans both. It is `grid-area` with `!`
           because the span-everything rule is on the parent's `[&>*]`, and a
           `col-span-1!` would have reset the column start with it. */}
@@ -749,6 +749,14 @@ function ScreeningCard({
             </p>
           </div>
         </div>
+
+        {/* Beside the name on a wide card, centred on the photo and the name
+            beside it; a row under it on a narrow one. */}
+        <CardTools
+          applicant={applicant}
+          quiet
+          className="@xl/card:-mr-2 @xl/card:self-center @xl/card:[grid-area:1/2]!"
+        />
 
         <ScreeningGates applicant={applicant} requiredSkills={requiredSkills} />
 
@@ -809,21 +817,14 @@ function ScreeningCard({
 
         {annotation}
 
-        {/* Full width with words at the foot of a narrow card, icons in the
-            top-right corner of a wide one. The words stay in the DOM as
-            `sr-only` up there; the `aria-label` names each one regardless. */}
-        <RowActions
-          applicant={applicant}
-          onDecide={onDecide}
-          className="border-t border-border pt-4 @xl/card:-my-1.5 @xl/card:-mr-2 @xl/card:self-start @xl/card:border-t-0 @xl/card:pt-0 @xl/card:[grid-area:1/2]!"
-          decisionClassName="flex-1 *:flex-1 *:shrink @xl/card:flex-none @xl/card:*:flex-none @xl/card:*:shrink-0"
-          labelClassName="@xl/card:sr-only"
-        />
-
-        <QuietCardActions
+        {/* Shortlist and Reject, after the facts. Stretched across a narrow
+            card on a line of their own; at the right of the row on a wide one,
+            View profile at its left. */}
+        <CardDecisions
           applicant={applicant}
           onDecide={onDecide}
           onOpenProfile={onOpenProfile}
+          decisionClassName="w-full *:flex-1 @xl/card:w-fit @xl/card:*:flex-none"
         />
       </div>
     </Item>

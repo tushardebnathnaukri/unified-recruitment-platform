@@ -48,6 +48,7 @@ import {
   type ApplicantStatus,
 } from "@/lib/applicants"
 import { jobsFor, type Job } from "@/lib/jobs"
+import { useMessageTo } from "@/components/messages-provider"
 import { usePageLoading } from "@/lib/use-page-loading"
 
 /**
@@ -179,6 +180,8 @@ function Header({
   applicant: Applicant
   onDecide: (id: string, status: ApplicantStatus) => void
 }) {
+  const messageTo = useMessageTo()
+
   return (
     <div className="flex flex-col gap-4">
       <Button
@@ -223,7 +226,7 @@ function Header({
             <DownloadIcon data-icon="inline-start" />
             Download CV
           </Button>
-          <Button size="sm" onClick={() => onDecide(applicant.id, "contacted")}>
+          <Button size="sm" onClick={() => messageTo(applicant)}>
             <MailIcon data-icon="inline-start" />
             Message
           </Button>

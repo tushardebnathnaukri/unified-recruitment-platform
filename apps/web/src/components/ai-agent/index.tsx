@@ -76,17 +76,24 @@ export function AiAgentFlow({
     <AgentContext.Provider value={value}>
       <div className="flex min-h-0 flex-1 flex-col">
         <AgentTopBar />
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          {state.stage === "start" ? (
-            <AgentBrief />
-          ) : state.stage === "review" ? (
+        {/* The review stage is a workspace with columns that scroll on their
+            own — the steps, and the agent beside them — so it is not put
+            inside the page's single scroll like the others. */}
+        {state.stage === "review" ? (
+          <div className="flex min-h-0 flex-1">
             <AgentReview />
-          ) : state.stage === "preview" ? (
-            <AgentPreview />
-          ) : (
-            <AgentDone />
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {state.stage === "start" ? (
+              <AgentBrief />
+            ) : state.stage === "preview" ? (
+              <AgentPreview />
+            ) : (
+              <AgentDone />
+            )}
+          </div>
+        )}
       </div>
     </AgentContext.Provider>
   )

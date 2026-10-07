@@ -366,9 +366,7 @@ function CandidateListBody({
     const tally: Record<ResponseBucket, number> = {
       all: applicants.length,
       undecided: 0,
-      maybe: 0,
       shortlisted: 0,
-      contacted: 0,
       rejected: 0,
     }
     for (const applicant of applicants) tally[applicant.status] += 1
@@ -484,15 +482,6 @@ function CandidateListBody({
   }
 
   const selectedId = searchParams.get("candidate")
-  // Which of the pane's two documents is open. In the query string with
-  // everything else this screen holds, so "look at his CV" is a link — and
-  // deliberately NOT reset when the selection changes: picking a document
-  // once and arrowing down the list is how you compare people.
-  //
-  // CV is the default, as it is in the profile panel: it is what a recruiter
-  // reads first, and the profile is the second look. So the param records
-  // Profile, and `?doc=cv` from an older link still lands on the CV.
-  const doc = searchParams.get("doc") === "profile" ? "profile" : "cv"
   // Who the profile panel is showing. In the query string like the rest of
   // this screen, so a panel someone is looking at is a link they can send.
   const profileId = searchParams.get("profile")
@@ -791,10 +780,6 @@ function CandidateListBody({
                   requiredSkills={requiredSkills}
                   selectedId={selectedId}
                   onSelect={(id) => setParams({ candidate: id })}
-                  doc={doc}
-                  onDocChange={(next) =>
-                    setParams({ doc: next === "cv" ? null : next })
-                  }
                   onOpenProfile={openProfile}
                   onDecide={decideWithUndo}
                 />
@@ -883,7 +868,7 @@ function CandidateListBody({
                 stay for the table and split view, which cannot spare 16rem, and
                 for cards below @4xl, where the rail is hidden. */}
               <div className={cn(view === "cards" && "@4xl/main:hidden")}>
-                <FilterBar {...filterProps} />
+                <FilterBar {...filterProps} people={all} />
               </div>
             </div>
 
@@ -924,10 +909,6 @@ function CandidateListBody({
                         requiredSkills={requiredSkills}
                         selectedId={selectedId}
                         onSelect={(id) => setParams({ candidate: id })}
-                        doc={doc}
-                        onDocChange={(next) =>
-                          setParams({ doc: next === "cv" ? null : next })
-                        }
                         onOpenProfile={openProfile}
                         onDecide={decideWithUndo}
                       />

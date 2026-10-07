@@ -10,26 +10,124 @@ diff.
 
 ## Pending
 
-### Split view: two more pane layouts, "Side by side" and "Card, then CV"
+### Post a job: "Chat v2.7", every finished step celebrated
 
-- **Date:** 2026-10-06
-- **App:** `lib/split-variant.ts` (`tabs` default, `side-by-side`, `card-cv`), read by
-  `SplitView` in `components/candidate-list/split-view.tsx`. Side by side drops the CV / Profile
-  tabs for `SidePane`: two equal columns headed "Profile" (left) and "CV" (right), each scrolling
-  on its own inside a card that fills the pane (stacked, profile first, below a 48rem pane).
-  Card, then CV (`CardThenCv`) is a short summary card — the pane's header, Snapshot's
-  four-number strip and its skills match (`SnapshotStats` / `SnapshotSkills`, now exported) — over
-  a ringed card holding the CV, in one scroll; no career, education or tags, which the CV repeats. A dashed "Pane" switcher (`FloatingVariantSwitcher`, now shared
-  with the card one) sticks to the foot of the list column, and /settings gains a "Split view"
-  row. `CandidateCv`'s page margins are container queries now, so the page is narrower-margined
-  in a half-width column.
-- **Storybook:** Compositions → Response manager → Split view gains a side-by-side story and a
-  card-then-CV story; the Settings row composition gains the "Split view" toggle.
-- **Figma:** the Response manager composition (`117:3`) gains side-by-side and card-then-CV
-  split frames; the Settings row board (`69:2`) gains the row.
-- [x] Storybook
+- **Date:** 2026-10-07
+- **App:** `rail27` in `lib/posting-variant.ts` — Chat v2.5 plus: a milestone in the transcript
+  at each step's end (`StepMilestone` in `routes/agent.tsx`: a rule across the chat with a
+  `primary/10` pill at its middle — a brand tick in a circle, "Step 1/4 done · Job details" —
+  then the recap and "Next: Step 2/4 · Candidate details" centred under it, 12px muted; a muted
+  pill with a minus for a skipped step); every question card carries "Step N/4 · <step>" in the
+  brand over the question (`step` on `AgentQuestionnaire`); the plan bar loses its bottom border
+  and underline for a 4px progress bar along its bottom edge, a section per step (muted track,
+  brand fill: full when done, part-filled by the step's answers, empty to come; a skipped step a
+  muted fill), its width easing as answers land (`meter` on `PlanBar`); on finishing a step the
+  tick pops, the segment flashes the brand tint and the next tile pulses (`cheer`); the chat's pill pops in; a synthesised chime; confetti from the pill's tick at every
+  step, and a bigger burst at the end (`lib/confetti.ts`). Each answer gets a **work card** inline
+  in the chat (`AgentWorkCard`): a `bg-foreground` "Step 2/4 · Candidate details" pill and four
+  tasks — 28px circles, muted when waiting, a spinner then a tick on `primary/10`, a 14px label over
+  a 12px muted detail — paced 1s then 0.65s each before the reply shows; done, it folds to a
+  one-line summary with a chevron. /settings' "Post a job" gains it.
+- **Storybook:** none of the posting layouts are drawn yet; when the agent conversation is, the
+  milestone divider (done and skipped) and the work card (running, and folded) are stories of
+  their own, and the questionnaire story gains the step eyebrow. The Settings row
+  composition's "Post a job" Select gains "Chat v2.7".
+- **Figma:** a milestone divider frame (done and skipped), the work card (mid-run and folded),
+  the questionnaire card with its step eyebrow; the
+  Settings row board (`69:2`).
+- [ ] Storybook
 - [ ] Figma
 
+### Candidate card: actions at the top, decisions at the foot
+
+- **Date:** 2026-10-06
+- **App:** every card layout (`components/candidate-list/applicant-card.tsx`), through two new
+  parts in `components/candidate-list/applicant-actions.tsx` that replace `CardActions` and
+  `QuietCardActions`. **`CardTools`** — Save, **View contact** and the ⋯ menu — sits where the
+  decisions were: top-right beside the name (Snapshot
+  and Screening: beside it from `@xl/card`, a row under it below that; Stacked, Columns and
+  Sections: the header wraps so it drops under a long name). Snapshot and Screening draw it
+  `quiet` (Save and View contact as ghosts, in the foreground); the others all outline. **Message and the interview are in the ⋯ menu at
+  every width** (they were icon buttons in the row; the table row's menu gains them too). View
+  contact (renamed from "View contact details", also on the profile) now opens a **modal**
+  (`ContactDetails`: "Contact details", name · role, an Email and a Phone row as `mailto:` /
+  `tel:` links, Close) instead of revealing in place. **`CardDecisions`** is the new footer:
+  **View profile** (outline) on the left, ✕ Reject then ✓ Shortlist on the right, stretched full
+  width on a phone-width Snapshot or Screening card. The table row keeps `RowActions` (decisions
+  + ⋯) as before.
+- **Storybook:** Compositions → Response manager — every card story (`ApplicantCard`,
+  `SnapshotCard`, `ScreeningCard`, Sections): decisions and View profile to the footer, the
+  tools (Save, View contact, ⋯ with Message and the interview) to the header; `CardActions` / `QuietCardActions` /
+  `MovingDecisions` in the story become the two new shapes; add the contact details modal drawn
+  open.
+- **Figma:** the Response manager composition (`117:3`) — the ApplicantCard component's header
+  and footer swap, and a contact details modal frame; the Database frames (`144:2`) clone the
+  same card.
+- [ ] Storybook
+- [ ] Figma
+### Response manager: the filter bar loses Apply
+
+- **Date:** 2026-10-06
+- **App:** `components/candidate-list/filter-bar.tsx`. The pill row applies as you pick, like
+  the rail; the Apply button is gone. Each location picker's popover applies when it closes.
+  **Clear** shows only while a filter is on, as a ghost button at the right of the row (no
+  disabled state). On a phone the drawer is a draft applied by one full-width **"Show N
+  results"** button in its footer (description: "Nothing changes until you show the results.").
+- **Storybook:** Compositions → Response manager: `FilterBar` and the "Filter pills" story drop
+  Apply and the disabled Clear; draw Clear as a ghost button beside "N of M match" where a pill
+  is set (the composition's Bengaluru / 12+ yrs pills are); the drawer, where drawn, ends in "Show
+  N results".
+- **Figma:** the Response manager composition (`117:3`) — the filter row's Apply and Clear.
+- [ ] Storybook
+- [ ] Figma
+
+### Decisions: Maybe and Contacted are gone
+
+- **Date:** 2026-10-06
+- **App:** `ApplicantStatus` (`lib/applicants.ts`) is `undecided | shortlisted | rejected`.
+  The decision group (`DecisionGroup` in `components/applicant-controls.tsx`) is two separate
+  labelled buttons, **✕ Reject** then **✓ Shortlist** (small outline toggles with a gap, the icon
+  tinted green / red and the word in the foreground, filled when in force; no tooltips, and no
+  icon-only form at any width — Snapshot and Screening keep them at the foot of a phone-width
+  card), on every card, table row, split pane, profile panel and the candidate page; the
+  selection bar's decisions are the same two, its tooltip now "Reject"; the status a rejection
+  lands in is still called Not a fit; the response manager's tabs are To
+  review, Shortlisted, Not a fit, All; no Maybe or Contacted badge; Athena's candidate rows offer
+  only Shortlist; Juicebox's "Exclude profiles" loses both. **Message** (card footer and ⋯ menu,
+  profile panel, candidate page) opens the person's thread with a first message drafted
+  (`useMessageTo` in `components/messages-provider.tsx`) and moves nobody; **booking an
+  interview shortlists** (on close, as before). The mock's Contacted people are folded into
+  Shortlisted (`followUp` / `contacted` gone from `lib/jobs.ts`), so the Jobs list row loses
+  "N to follow up". The Dashboard funnel's Contacted stage stays: it is outreach, not a status.
+- **Storybook:** Compositions → Response manager (its own `Status`, `BUCKETS`, `DECISIONS`, the
+  Maybe and Contacted tabs, the amber button, the `maybe` mock applicant, "103 people moved to
+  Maybe" in the undo toast story, the selection bar), Compositions → Athena (candidate rows'
+  Maybe button), Compositions → Database (decision buttons and the exclusions), Compositions →
+  Jobs list (the "to follow up" count), and the Candidate profile composition's decisions.
+- **Figma:** the Response manager composition (`117:3`) — the two tabs and the amber button on
+  every decision group; the Database frames (`144:2`) clone the same card; the Candidate page
+  (`118:3`); the Jobs list (`116:3`) row's follow-up count.
+- [ ] Storybook
+- [ ] Figma
+### Split view: the pane is a summary card over the CV
+
+- **Date:** 2026-10-06
+- **App:** `CardThenCv` in `components/candidate-list/split-view.tsx` is the split view's only
+  pane: a short summary card — the pane's header (name, role, decisions, Save; no Open
+  profile), Snapshot's four-number strip and its skills match (`SnapshotStats` /
+  `SnapshotSkills`) — over a ringed card holding the CV, in one scroll. The CV / Profile tabs,
+  the side-by-side layout, `lib/split-variant.ts`, the dashed "Pane" switcher, the /settings
+  "Split view" row and the `?doc=` param are all gone. `CandidateCv`'s page margins are
+  container queries, so the page is narrower-margined in a narrow column.
+- **Storybook:** Compositions → Response manager: "Split view" draws the summary card over the
+  CV (what "Split view — card, then CV" draws now); delete "Split view — side by side" and
+  "Split view — card, then CV", the `Pane` type, `SidePane`-style columns, `ProfileFacts` and the
+  Pane switcher in the list; update the docs paragraph on pane layouts. Compositions → Settings
+  row: delete the "Split view" row.
+- **Figma:** the Response manager composition (`117:3`) gains a split frame with the summary card
+  over the CV; the Settings row board (`69:2`) has no Split view row to add.
+- [ ] Storybook
+- [ ] Figma
 ### Candidate card: a fifth layout, "Screening"
 
 - **Date:** 2026-10-06
@@ -69,6 +167,44 @@ diff.
 - **Figma:** the Response manager composition (an ApplicantCard variant for Snapshot) and the
   Settings composition frame's row.
 - [x] Storybook
+- [ ] Figma
+
+### Post a job: "Chat v2.5", a JD step before the selection criteria
+
+- **Date:** 2026-10-05
+- **App:** an eighth "Post a job" value, `rail25` in `lib/posting-variant.ts` — Chat with rail v2
+  plus a JD step (`stage: "jd"` in `lib/job-refine.ts`): "Do you have a JD for this role?", then
+  either the pasted JD read for requirements and diversity options, or questions written for the
+  role and a drafted JD. The finish card's brief gains "Looking for" and "Diversity hiring" rows.
+- **Storybook:** the Settings row composition's "Post a job" Select gains a value. No composition
+  for the posting conversation's JD card; add one only if wanted.
+- **Figma:** the Settings composition frame, the same row.
+- [ ] Storybook
+- [ ] Figma
+
+### Dashboard landing: "Chat with tabs"
+
+- **Date:** 2026-10-05
+- **App:** a third "Dashboard landing" value, `tabs` in `lib/agent-landing-variant.ts`. The chat
+  landing's four pills move inside the box as `TabsList variant="line"` along its top edge, with
+  pipes between the tabs and an "Ask" tab first (`LandingTabs` in `routes/agent.tsx`; the
+  composer gains a `header` slot and `modeChip`).
+- **Storybook:** the Settings row composition's "Dashboard landing" toggle gains a third value.
+  There is no composition for the chat landing itself; add one only if wanted.
+- **Figma:** the Settings composition frame, the same row.
+- [ ] Storybook
+- [ ] Figma
+
+### Settings: "Post a job" is a dropdown
+
+- **Date:** 2026-10-04
+- **App:** `routes/settings.tsx` — the "Post a job" layout switcher is a `Select` (labels only,
+  `w-56`) instead of a seven-item outline `ToggleGroup`, which ran off the settings column. The
+  other switchers stay toggle rows.
+- **Storybook:** the Settings row composition's "Post a job" row — swap the toggle row for a
+  Select showing "Chat with rail".
+- **Figma:** the Settings composition frame, the same row, as a Select instance.
+- [ ] Storybook
 - [ ] Figma
 
 ### Post a job: "Chat v3", Chat v2 with the AI Agent's ideas

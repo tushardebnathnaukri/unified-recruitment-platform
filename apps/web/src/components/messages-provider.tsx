@@ -2,8 +2,14 @@ import * as React from "react"
 import { atom, useAtom } from "jotai"
 import { useNavigate } from "react-router"
 
-import { useDecisions } from "@/components/decisions-provider"
-import { CONVERSATIONS, type Conversation, type Message } from "@/lib/messages"
+import type { Applicant } from "@/lib/applicants"
+import { CandidateSourceContext } from "@/lib/candidate-source"
+import {
+  CONVERSATIONS,
+  firstMessageTo,
+  type Conversation,
+  type Message,
+} from "@/lib/messages"
 
 /**
  * The message dock's state — threads, unread counts, drafts and whether it is
@@ -23,14 +29,15 @@ import { CONVERSATIONS, type Conversation, type Message } from "@/lib/messages"
  *
  * A THREAD CAN BE STARTED WITH AN APPLICANT who has none yet — the shortlisted
  * on a posting are generated people, not the six fixture threads. Such a thread
- * carries the applicant's id, so the first message sent moves them to Contacted:
- * the same thing the candidate page's Message button does.
+ * carries the applicant's id. Sending moves nobody: reaching out is something
+ * you do to a person, not a decision about them (the Contacted bucket that a
+ * first send used to move them to was removed on 6 Oct 2026).
  *
  * Resets on reload, like the other overlays here.
  *
  * ATOMS, NOT A PROVIDER (it was `MessagesProvider` in `AppShell`). The hook
- * brings its own `navigate` and `decide`, which the provider used to take
- * from where it was mounted.
+ * brings its own `navigate`, which the provider used to take from where it was
+ * mounted.
  */
 export type Recipient = {
   /** The applicant's id, which becomes the thread's id. */
@@ -55,7 +62,6 @@ const draftsAtom = atom<Record<string, string>>({})
 const lastAtAtom = atom<Record<string, string>>({})
 
 export function useMessages() {
-  const { decide } = useDecisions()
   const navigate = useNavigate()
   const [started, setStarted] = useAtom(startedAtom)
   const [threads, setThreads] = useAtom(threadsAtom)
@@ -104,13 +110,6 @@ export function useMessages() {
         setDrafts((previous) => ({ ...previous, [id]: "" }))
         setLastAt((previous) => ({ ...previous, [id]: now() }))
 
-        // Messaging an applicant is contacting them. Only for threads started
-        // from a posting: the fixture threads are not tied to a generated
-        // applicant, so there is nobody to move.
-        const conversation = started.find((c) => c.id === id)
-        if (conversation?.applicantId)
-          decide(conversation.applicantId, "contacted")
-
         // Nobody answers. A candidate replying on a timer would be pretending
         // the prototype has people in it.
       },
@@ -153,7 +152,6 @@ export function useMessages() {
     unread,
     drafts,
     lastAt,
-    decide,
     navigate,
     setStarted,
     setThreads,
@@ -161,6 +159,38 @@ export function useMessages() {
     setDrafts,
     setLastAt,
   ])
+}
+
+/**
+ * Message one person — what the Message button on a card, the profile panel and
+ * the candidate page does. Their thread if they have one; otherwise a new one
+ * with `firstMessageTo` waiting in the composer, worded for how they came in
+ * (`CandidateSourceContext`), the way the selection bar's Message starts many.
+ *
+ * It moves nobody. It used to move the person to Contacted and do nothing
+ * else; with that bucket gone (6 Oct 2026) the button does what it says.
+ */
+export function useMessageTo() {
+  const { conversations, openThread, fillDrafts } = useMessages()
+  const sourceFor = React.useContext(CandidateSourceContext)
+
+  return (applicant: Applicant) => {
+    if (conversations.some((conversation) => conversation.id === applicant.id))
+      return openThread(applicant.id)
+
+    const source = sourceFor?.(applicant)
+    fillDrafts([
+      {
+        to: {
+          id: applicant.id,
+          name: applicant.name,
+          role: source?.label ?? applicant.title,
+          photo: applicant.photo,
+        },
+        body: firstMessageTo(applicant.name, source),
+      },
+    ])
+  }
 }
 
 function now() {

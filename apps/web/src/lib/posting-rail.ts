@@ -114,6 +114,11 @@ export type RailStep = {
   detail?: string
   /** `skipped` is an optional stage waved past — drawn muted, not ticked. */
   state: "done" | "active" | "waiting" | "skipped"
+  /**
+   * How far through the step is, 0 to 1 — its own questions answered, for the
+   * plan bar's progress meter (Chat v2.7). Absent where a step has no count.
+   */
+  progress?: number
 }
 
 /**
@@ -180,7 +185,16 @@ function screeningCount(count: number) {
   return `${count} screening question${count === 1 ? "" : "s"}`
 }
 
-export function railFor(state: IntakeState, brand: Brand): RailModel {
+/**
+ * The steps alone, for a posting — what `railFor` draws as the plan.
+ *
+ * SPLIT OUT SO A WHOLE CONVERSATION CAN BE STEPPED THROUGH. Chat v2.7 marks
+ * the turn on which each step finished (`milestonesFor` in
+ * `lib/step-milestones.ts`), which means the steps after every turn; `railFor`
+ * also counts the pool a posting would find, which is far too much to do once
+ * per turn. Brand-free, because nothing about a step's state depends on it.
+ */
+export function railSteps(state: IntakeState): RailStep[] {
   const { draft } = state
   const stage = state.opener ? "opener" : state.stage
   // A base job copies its own title, and the card names it "Title — City",
@@ -215,6 +229,7 @@ export function railFor(state: IntakeState, brand: Brand): RailModel {
     {
       icon: BriefcaseIcon,
       label: "Job details",
+      progress: stage === "opener" ? 0 : jobFilled / JOB_FIELDS.length,
       detail:
         stage === "opener"
           ? [titled, from].filter(Boolean).join(" · ") ||
@@ -228,6 +243,7 @@ export function railFor(state: IntakeState, brand: Brand): RailModel {
     {
       icon: ListChecksIcon,
       label: "Candidate details",
+      progress: stage === "opener" ? 0 : reqFilled / REQUIREMENT_FIELDS.length,
       detail:
         stage === "opener"
           ? undefined
@@ -250,25 +266,35 @@ export function railFor(state: IntakeState, brand: Brand): RailModel {
       ? {
           icon: SlidersHorizontalIcon,
           label: "Selection criteria",
+          progress:
+            stage === "refine" && state.plan.length
+              ? answered / state.plan.length
+              : stage === "screen" || stage === "done"
+                ? 1
+                : 0,
           private: true,
           // Two asks in one step: the refinement topics, then — optional —
           // the screening questions. The count is the topics'; the
           // questions are said once they are set.
           detail:
-            stage === "refine" || stage === "screen" || stage === "done"
-              ? [
-                  state.plan.length
-                    ? `${answered} of ${state.plan.length}`
-                    : "Nothing to ask",
-                  stage === "done" && draft.screening.length
-                    ? screeningCount(draft.screening.length)
-                    : null,
-                ]
-                  .filter(Boolean)
-                  .join(" · ")
-              : undefined,
+            stage === "jd"
+              ? state.jd?.status === "paste"
+                ? "Waiting for the JD"
+                : "JD"
+              : stage === "refine" || stage === "screen" || stage === "done"
+                ? [
+                    state.plan.length
+                      ? `${answered} of ${state.plan.length}`
+                      : "Nothing to ask",
+                    stage === "done" && draft.screening.length
+                      ? screeningCount(draft.screening.length)
+                      : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")
+                : undefined,
           state:
-            stage === "refine" || stage === "screen"
+            stage === "jd" || stage === "refine" || stage === "screen"
               ? "active"
               : stage === "done"
                 ? "done"
@@ -303,6 +329,17 @@ export function railFor(state: IntakeState, brand: Brand): RailModel {
     },
   ]
 
+  return steps
+}
+
+export function railFor(state: IntakeState, brand: Brand): RailModel {
+  const { draft } = state
+  const stage = state.opener ? "opener" : state.stage
+  const jobDone = JOB_FIELDS.every(
+    (id) => filled(draft, id) || state.skipped.includes(id)
+  )
+  const steps = railSteps(state)
+
   const status = {
     opener:
       state.origin === null
@@ -315,7 +352,12 @@ export function railFor(state: IntakeState, brand: Brand): RailModel {
     posting: jobDone
       ? "Filling in the candidate details"
       : "Filling in the job details",
-    refine: "Setting selection criteria",
+    jd:
+      state.jd?.status === "paste" ? "Waiting for the JD" : "Asking about a JD",
+    refine:
+      state.jd?.status === "draft"
+        ? "Drafting the JD with you"
+        : "Setting selection criteria",
     screen: criteriaOn(state)
       ? "Setting selection criteria"
       : "Setting screening questions",

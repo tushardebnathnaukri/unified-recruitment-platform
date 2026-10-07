@@ -3,6 +3,13 @@ import { ArrowUpRightIcon } from "lucide-react"
 
 import { buttonVariants } from "@workspace/ui/components/button"
 import { Kbd } from "@workspace/ui/components/kbd"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select"
 import { Separator } from "@workspace/ui/components/separator"
 import { Switch } from "@workspace/ui/components/switch"
 import { BrandSwitcher } from "@/components/brand-switcher"
@@ -28,11 +35,6 @@ import {
   type PostingVariant,
 } from "@/lib/posting-variant"
 import { useSelectionCriteria } from "@/lib/selection-criteria"
-import {
-  SPLIT_VARIANTS,
-  useSplitVariant,
-  type SplitVariant,
-} from "@/lib/split-variant"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { PROTOTYPE_ITEMS, PROTOTYPE_LINKS } from "@/lib/nav"
 
@@ -105,26 +107,6 @@ export function SettingsPage() {
 
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="flex min-w-0 flex-1 basis-64 flex-col gap-1">
-            <h2 className="text-sm font-medium">Split view</h2>
-            <p className="text-sm leading-relaxed text-muted-foreground">
-              How the response manager's split view shows the person picked from
-              its list. Tabs is the CV or the profile, one at a time, the full
-              width of the pane; Side by side puts the profile and the CV in two
-              columns that scroll on their own, so the document is read with the
-              facts beside it; Card, then CV is a short summary card — the key
-              numbers and the skills match — with the CV under it in one scroll.
-              It can also be flipped from the dashed switcher at the foot of the
-              split view's list.
-            </p>
-          </div>
-
-          <SplitVariantSwitcher />
-        </div>
-
-        <Separator />
-
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div className="flex min-w-0 flex-1 basis-64 flex-col gap-1">
             <h2 className="text-sm font-medium">Database filters</h2>
             <p className="text-sm leading-relaxed text-muted-foreground">
               Two ways to narrow a database search. Refine panel is the live
@@ -170,15 +152,17 @@ export function SettingsPage() {
               answer is read and editable by hand, with the chat as a panel on
               the right; Chat, then form is the rail while the chat is asking
               and the form once it has — "Review and post" brings the form in
-              beside the chat instead of sending you to it. Chat v3 is v2 with
-              an agent that fills what the pool can tell it, says where every
-              value came from, lets you lock one, and checks the pool and sample
-              people as you go. Chat alt asks one question at a time beside a
-              tracker of them all. In each of those, every change is a turn in
-              the conversation. AI Agent (V2.3) is a peer's prototype ported
-              whole: one brief, then five steps the agent fills in, on its own
-              sample data and saved in this browser rather than in the
-              conversation.
+              beside the chat instead of sending you to it. Chat v2.7 is v2.5
+              with each finished step celebrated: the tick pops, the underline
+              moves on, a chime and confetti, and a line in the chat saying what
+              the step recorded and what is next. Chat v3 is v2 with an agent
+              that fills what the pool can tell it, says where every value came
+              from, lets you lock one, and checks the pool and sample people as
+              you go. Chat alt asks one question at a time beside a tracker of
+              them all. In each of those, every change is a turn in the
+              conversation. AI Agent (V2.3) is a peer's prototype ported whole:
+              one brief, then five steps the agent fills in, on its own sample
+              data and saved in this browser rather than in the conversation.
             </p>
           </div>
 
@@ -333,50 +317,32 @@ function AgentLandingVariantSwitcher() {
   )
 }
 
+/**
+ * A dropdown, not the toggle row the other switchers are: seven layouts in a
+ * row ran off the side of the settings column, and they keep being added.
+ */
 function PostingVariantSwitcher() {
   const { variant, setVariant } = usePostingVariant()
 
   return (
-    <ToggleGroup
-      variant="outline"
-      spacing={0}
-      aria-label="Post a job"
-      value={[variant]}
-      onValueChange={(value) => {
-        const next = value[0] as PostingVariant | undefined
-        if (next) setVariant(next)
+    <Select
+      items={POSTING_VARIANTS}
+      value={variant}
+      onValueChange={(next) => {
+        if (next) setVariant(next as PostingVariant)
       }}
     >
-      {POSTING_VARIANTS.map((option) => (
-        <ToggleGroupItem key={option.value} value={option.value}>
-          {option.label}
-        </ToggleGroupItem>
-      ))}
-    </ToggleGroup>
-  )
-}
-
-/** Same shape as `FilterVariantSwitcher`: two options, one toggle. */
-function SplitVariantSwitcher() {
-  const { variant, setVariant } = useSplitVariant()
-
-  return (
-    <ToggleGroup
-      variant="outline"
-      spacing={0}
-      aria-label="Split view"
-      value={[variant]}
-      onValueChange={(value) => {
-        const next = value[0] as SplitVariant | undefined
-        if (next) setVariant(next)
-      }}
-    >
-      {SPLIT_VARIANTS.map((option) => (
-        <ToggleGroupItem key={option.value} value={option.value}>
-          {option.label}
-        </ToggleGroupItem>
-      ))}
-    </ToggleGroup>
+      <SelectTrigger className="w-56" aria-label="Post a job">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {POSTING_VARIANTS.map((option) => (
+          <SelectItem key={option.value} value={option.value}>
+            {option.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   )
 }
 

@@ -7,6 +7,7 @@ import {
 import { dirname, extname, join, resolve, sep } from "node:path"
 
 import { geminiBody, parseRequest, resultFrom } from "./intake.ts"
+import { jdReadBody, parseJdRead, parseProbe, probeBody } from "./jd.ts"
 import { parseRoute, routeBody } from "./route.ts"
 import {
   MAX_TRANSCRIBE_BODY,
@@ -34,6 +35,9 @@ import {
  *   POST /api/intake       — one answer read into a job posting (`intake.ts`).
  *   POST /api/route        — which Dashboard skill a sentence asks for, when
  *                            its keywords cannot tell (`route.ts`).
+ *   POST /api/jd           — a JD's must-haves, good-to-haves and diversity
+ *                            options (Chat v2.5, `jd.ts`).
+ *   POST /api/probe        — the questions to draft a JD with (Chat v2.5).
  *   POST /api/transcribe   — a short recording, as text (`transcribe.ts`).
  *   GET|PUT /api/sessions/:id — an Agent conversation's turns, by id, so a
  *                            `/agent/c/<id>` link opens for anyone (no key needed).
@@ -288,6 +292,62 @@ const server = createServer(async (req, res) => {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       console.error(`[route] ${message}`)
+      return send(res, 502, { error: message })
+    }
+  }
+
+  // Chat v2.5's JD step (`jd.ts`): reading a JD, and the questions to draft
+  // one with. Part of a posting, so on the intake's budget.
+  if (req.method === "POST" && (path === "/api/jd" || path === "/api/probe")) {
+    if (!KEY) {
+      return send(res, 503, {
+        error:
+          "GEMINI_API_KEY is not set. Put it in apps/ai/.env.local and restart.",
+      })
+    }
+    if (overLimit(callerOf(req)))
+      return send(res, 429, { error: "Too many requests" })
+    const label = path.slice("/api/".length)
+
+    try {
+      const raw: unknown = JSON.parse(await readBody(req))
+      let body: unknown
+      if (path === "/api/jd") {
+        const request = parseJdRead(raw)
+        if (typeof request === "string")
+          return send(res, 400, { error: request })
+        body = jdReadBody(request)
+      } else {
+        const request = parseProbe(raw)
+        if (typeof request === "string")
+          return send(res, 400, { error: request })
+        body = probeBody(request)
+      }
+
+      const upstream = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`,
+        {
+          method: "POST",
+          headers: {
+            "x-goog-api-key": KEY,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body),
+        }
+      )
+      const payload: unknown = await upstream.json()
+      if (!upstream.ok) {
+        const message =
+          (payload as { error?: { message?: string } }).error?.message ??
+          `Gemini returned ${upstream.status}`
+        console.error(`[${label}] ${upstream.status} ${message}`)
+        return send(res, 502, { error: message })
+      }
+
+      return send(res, 200, { model: MODEL, result: resultFrom(payload) })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      console.error(`[${label}] ${message}`)
       return send(res, 502, { error: message })
     }
   }

@@ -100,6 +100,9 @@ export function AgentComposer({
   onFocusChange,
   size = "default",
   examples,
+  header,
+  modeChip = true,
+  inlineTools = false,
   className,
 }: {
   placeholder?: string
@@ -169,6 +172,22 @@ export function AgentComposer({
    * the current one. Replaces `placeholder` when given.
    */
   examples?: string[]
+  /**
+   * A row drawn inside the box, along its top edge above the text — the
+   * landing's actions as tabs (`tabs` in `lib/agent-landing-variant.ts`).
+   * It sits on a hairline that runs the box's full width.
+   */
+  header?: React.ReactNode
+  /**
+   * Whether the pressed mode draws its chip beside the controls. Off where
+   * the header already says which mode it is (a selected tab).
+   */
+  modeChip?: boolean
+  /**
+   * On the hero box: attach and quick actions as their own buttons beside
+   * the mic, instead of behind the "+" on the left.
+   */
+  inlineTools?: boolean
   className?: string
 }) {
   const hero = size === "hero"
@@ -606,6 +625,42 @@ export function AgentComposer({
   const outcome =
     hint?.kind === "clear" && !pills?.includes(hint.id) ? hint.action : null
 
+  // With the tools beside the mic, the left of the controls row is free, so
+  // the tick row moves down into it rather than taking a row of its own.
+  const checksInRow = hero && inlineTools
+  const checksList = (className: string) =>
+    help && help.checks.length > 0 ? (
+      <ul
+        aria-label="What your description covers"
+        className={cn(
+          "flex flex-wrap items-center gap-x-3 gap-y-1 text-xs",
+          className
+        )}
+      >
+        {help.checks.map((check) => (
+          <li
+            key={check.field}
+            className={cn(
+              "flex items-center gap-1 transition-colors",
+              check.done
+                ? "font-medium text-foreground"
+                : "text-muted-foreground"
+            )}
+          >
+            {check.done ? (
+              <CheckIcon className="size-3.5 text-primary" />
+            ) : (
+              <CircleDashedIcon className="size-3.5 text-muted-foreground/60" />
+            )}
+            {check.label}
+            <span className="sr-only">
+              {check.done ? " — covered" : " — not yet"}
+            </span>
+          </li>
+        ))}
+      </ul>
+    ) : null
+
   return (
     <div
       className={cn("relative", className)}
@@ -675,6 +730,16 @@ export function AgentComposer({
             Drop to attach — PDF, Word (.docx) or text
           </div>
         ) : null}
+        {header ? (
+          <div
+            className={cn(
+              "-mx-2 -mt-2 mb-1 border-b px-2",
+              hero && "-mx-3 -mt-3 px-3"
+            )}
+          >
+            {header}
+          </div>
+        ) : null}
         <Textarea
           ref={box}
           rows={1}
@@ -737,34 +802,7 @@ export function AgentComposer({
         {/* What the description covers so far, inside the box, so it is
             there from the moment the pill is pressed and nothing outside the
             box moves as it fills. Ticked by the posting's own readers. */}
-        {help && help.checks.length > 0 ? (
-          <ul
-            aria-label="What your description covers"
-            className="flex flex-wrap items-center gap-x-3 gap-y-1 px-2.5 pb-1 text-xs"
-          >
-            {help.checks.map((check) => (
-              <li
-                key={check.field}
-                className={cn(
-                  "flex items-center gap-1 transition-colors",
-                  check.done
-                    ? "font-medium text-foreground"
-                    : "text-muted-foreground"
-                )}
-              >
-                {check.done ? (
-                  <CheckIcon className="size-3.5 text-primary" />
-                ) : (
-                  <CircleDashedIcon className="size-3.5 text-muted-foreground/60" />
-                )}
-                {check.label}
-                <span className="sr-only">
-                  {check.done ? " — covered" : " — not yet"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        ) : null}
+        {checksInRow ? null : checksList("px-2.5 pb-1")}
 
         <div className="flex items-center gap-1 px-1 pt-1">
           <input
@@ -781,7 +819,7 @@ export function AgentComposer({
             }}
           />
 
-          {hero ? (
+          {hero && inlineTools ? null : hero ? (
             // Focus goes back to the box, not the "+", once the menu has
             // finished closing: quick actions are driven by arrow keys in it.
             // Focusing it from the item does nothing — while the menu is open
@@ -860,7 +898,9 @@ export function AgentComposer({
             </>
           )}
 
-          {mode ? (
+          {checksInRow ? checksList("min-w-0 px-1.5") : null}
+
+          {mode && modeChip ? (
             <span className="ml-1 inline-flex items-center gap-0.5 rounded-full bg-primary/10 py-1 pr-1 pl-2.5 text-xs font-medium text-primary">
               {mode.label}
               <button
@@ -891,6 +931,48 @@ export function AgentComposer({
 
           {hero ? (
             <>
+              {inlineTools ? (
+                <>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => fileInput.current?.click()}
+                          className="rounded-full text-muted-foreground"
+                        />
+                      }
+                    >
+                      <PaperclipIcon />
+                      <span className="sr-only">Attach a file</span>
+                    </TooltipTrigger>
+                    <TooltipContent>Attach a JD or a CV</TooltipContent>
+                  </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-pressed={open}
+                          onClick={openCommands}
+                          className={cn(
+                            "rounded-full text-muted-foreground",
+                            open && "bg-muted text-primary"
+                          )}
+                        />
+                      }
+                    >
+                      <SparklesIcon />
+                      <span className="sr-only">Quick actions</span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      Quick actions <Kbd>/</Kbd>
+                    </TooltipContent>
+                  </Tooltip>
+                </>
+              ) : null}
               {micTimer}
               {micButton}
               {/* The box is the invitation, so the arrow waits until there is

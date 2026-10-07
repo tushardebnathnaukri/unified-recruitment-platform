@@ -135,9 +135,7 @@ export type AthenaPageContext = {
 
 export const DECISION_LABELS: Record<ApplicantStatus, string> = {
   undecided: "To review",
-  maybe: "Maybe",
   shortlisted: "Shortlisted",
-  contacted: "Contacted",
   rejected: "Not a fit",
 }
 
@@ -258,7 +256,7 @@ export function summariseResponses({ job, people }: Posting): Reply {
   const [city, inCity] = [...cities].sort((a, b) => b[1] - a[1])[0]
 
   const soon = people.filter((person) => person.noticeDays <= 30).length
-  const decided = ["maybe", "shortlisted", "contacted", "rejected"] as const
+  const decided = ["shortlisted", "rejected"] as const
 
   return {
     about: job.title,

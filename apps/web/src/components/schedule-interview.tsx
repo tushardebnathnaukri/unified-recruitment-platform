@@ -51,8 +51,9 @@ import { liveJobsFor } from "@/lib/jobs"
  * has no posting yet, so the dialog asks which of the live ones. The source
  * comes from `CandidateSourceContext`, the same one the save menu reads.
  *
- * BOOKING IS REACHING OUT, so it moves the person to Contacted — but only when
- * the dialog closes. On a queue that decision takes the card away, and the
+ * BOOKING IS A YES, so it shortlists the person — but only when the dialog
+ * closes. (It moved them to Contacted until that bucket was removed, 6 Oct
+ * 2026.) On a queue that decision takes the card away, and the
  * dialog lives in the card; deciding on submit would unmount the confirmation
  * before anybody read it.
  *
@@ -79,14 +80,14 @@ export function ScheduleInterview({
   const [session, setSession] = React.useState(0)
 
   /**
-   * The Contacted decision a booking owes, held until the dialog goes away —
+   * The Shortlist decision a booking owes, held until the dialog goes away —
    * closed, Done, or "View in Interviews" navigating off the page (hence the
    * unmount effect as well as the close handler).
    */
   const owed = React.useRef(false)
   const settle = React.useCallback(() => {
-    if (owed.current && applicant.status !== "contacted")
-      decide(applicant.id, "contacted")
+    if (owed.current && applicant.status !== "shortlisted")
+      decide(applicant.id, "shortlisted")
     owed.current = false
   }, [applicant.id, applicant.status, decide])
   const settleRef = React.useRef(settle)
@@ -193,7 +194,7 @@ export function RescheduleDialog({
  * rescheduling somebody is a decision about them, not about the batch.
  *
  * Invites go out as Awaiting Candidate Response, like the single dialog, and
- * the people booked move to Contacted when the dialog goes away — not before,
+ * the people booked are shortlisted when the dialog goes away — not before,
  * for the same reason: on a queue the decision takes them off the list the
  * selection bar is holding.
  */
@@ -215,11 +216,11 @@ export function BulkScheduleDialog({
     if (open) setSession(session + 1)
   }
 
-  /** Who was booked and still owes the Contacted decision. */
+  /** Who was booked and still owes the Shortlist decision. */
   const owed = React.useRef<Applicant[]>([])
   const settle = React.useCallback(() => {
     for (const person of owed.current)
-      if (person.status !== "contacted") decide(person.id, "contacted")
+      if (person.status !== "shortlisted") decide(person.id, "shortlisted")
     const booked = owed.current.length > 0
     owed.current = []
     return booked

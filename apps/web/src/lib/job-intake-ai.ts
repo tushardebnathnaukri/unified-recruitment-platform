@@ -1,7 +1,9 @@
 import type { Brand } from "@workspace/ui/lib/brands"
 
 import { companiesFor } from "@/lib/applicants"
-import { aiHealth, askIntake } from "@/lib/ai-client"
+import { aiHealth, askIntake, askJdRead, askProbe } from "@/lib/ai-client"
+import { requirementsIn } from "@/lib/jd-read"
+import { DIVERSITY } from "@/lib/job-form"
 import {
   askFor,
   canonicalCity,
@@ -18,12 +20,23 @@ import {
   type IntakeState,
   type Phrasing,
   type PostingDraft,
+  type Probe,
   type Span,
   type WorkMode,
 } from "@/lib/job-intake"
 import {
   advance,
+  advanceJd,
+  coveredTopics,
+  eligible,
   enterRefine,
+  JD_DRAFT,
+  JD_HAVE,
+  JD_MIN,
+  readProbes,
+  REFINE_ORDER,
+  startDraft,
+  withJdRead,
   industriesFor,
   institutesFor,
   mergeNoted,
@@ -105,8 +118,23 @@ export async function advanceWithAi(
   )
     return rules(undefined)
 
+  // Chat v2.5's JD step: the choice is a button, a JD is read by the model,
+  // and drafting one asks the model for the questions.
+  if (state.stage === "jd") return jdWithAi(state, input, brand)
+  // Only Chat v2.5's own questions left open: the page reads those itself.
+  if (state.stage === "refine" && !pendingTopics(state).length)
+    return rules(undefined)
+
   const health = await aiHealth()
   if (!health.available) return rules("unconfigured")
+
+  // Chat v2.5's probes are the page's to read, so only the topics' answers
+  // go to the model; what the probes recorded is put back after.
+  const probed =
+    state.stage === "refine" && "answers" in input
+      ? readProbes({ ...state, noted: undefined }, input.answers)
+      : null
+  const sent: IntakeInput = probed ? { answers: probed.rest } : input
 
   const refining = state.stage === "refine"
   const open: string[] = refining
@@ -130,9 +158,9 @@ export async function advanceWithAi(
             ? refineAsk(id as RefineId, state.draft)
             : askFor(id as FieldId),
         })),
-        ...("answers" in input
-          ? { answers: input.answers, document: false }
-          : { answer: input.text, document: input.document ?? false }),
+        ...("answers" in sent
+          ? { answers: sent.answers, document: false }
+          : { answer: sent.text, document: sent.document ?? false }),
         vocab: {
           industries: industriesFor(brand),
           institutes: institutesFor(brand),
@@ -141,9 +169,21 @@ export async function advanceWithAi(
       TIMEOUT_MS
     )
     const next = refining
-      ? fromRefine(state, result, brand, input)
+      ? fromRefine(state, result, brand, sent)
       : fromPosting(state, result, input, brand)
-    return next ?? rules("failed")
+    if (!next) return rules("failed")
+    if (!probed) return next
+    // Put back what the probes recorded, which the model's brief knows
+    // nothing of — and say what was refused there too.
+    return {
+      ...next,
+      brief: { ...next.brief, requirements: probed.state.brief.requirements },
+      jd: probed.state.jd,
+      noted: mergeNoted(next.noted ?? [], probed.state.noted ?? []),
+      heard: probed.refused.length
+        ? refusalFor([...probed.refused])
+        : next.heard,
+    }
   } catch (error) {
     console.warn("[agent] Gemini did not answer; using the rules.", error)
     return rules("failed")
@@ -602,6 +642,212 @@ function fromRefine(
       state.plan.filter((topic) => !settled.includes(topic))
     ),
   }
+}
+
+// --- The JD step (Chat v2.5) -------------------------------------------------
+
+/** How many questions drafting a JD may ask, topics and probes together. */
+const PROBE_CAP = 4
+
+/**
+ * The JD step by Gemini. The choice and a skip are buttons, read by the
+ * rules. A JD is read by the refinement reader with every topic open, so the
+ * brief fills from it the way an answer would — but only into what is still
+ * empty: an answer the recruiter gave wins over the JD. Drafting one asks
+ * `/api/probe` for the questions. Any failure is the rules' version of the
+ * same step.
+ */
+async function jdWithAi(
+  state: IntakeState,
+  input: IntakeInput,
+  brand: Brand
+): Promise<IntakeState> {
+  const rules = (fallback: IntakeState["fallback"]) => ({
+    ...advanceJd(state, input, brand),
+    fallback,
+  })
+  const value =
+    "answers" in input ? (input.answers.jd ?? null) : input.text.trim()
+  const document = "text" in input && input.document === true
+  const drafting = value === JD_DRAFT
+  const pasted =
+    value !== null &&
+    value !== JD_HAVE &&
+    value !== POST_NOW &&
+    !drafting &&
+    !(!document && isSkip(value)) &&
+    (document || state.jd?.status === "paste" || value.length >= JD_MIN)
+  if (!drafting && !pasted) return rules(undefined)
+
+  const health = await aiHealth()
+  if (!health.available) return rules("unconfigured")
+
+  const open = REFINE_ORDER.filter(
+    (topic) =>
+      eligible(topic, state.draft) && !coveredTopics(state).includes(topic)
+  )
+  try {
+    if (drafting) {
+      const { result } = await withTimeout(
+        askProbe({
+          brand,
+          draft: state.draft,
+          brief: state.brief,
+          topics: open.map((id) => ({
+            id,
+            prompt: refineAsk(id, state.draft),
+          })),
+        }),
+        TIMEOUT_MS
+      )
+      const read = readProbeReply(result, open)
+      if (!read) return rules("failed")
+      return {
+        ...startDraft(
+          { ...state, engine: "gemini", fallback: undefined, heard: null },
+          read.probes,
+          read.topics
+        ),
+        engine: "gemini",
+        fallback: undefined,
+        heard: null,
+        noted: undefined,
+        phrasings: undefined,
+      }
+    }
+
+    // Both readers at once: the intake's fixed slots, and the JD's own
+    // requirement lines and diversity options. The second failing costs the
+    // lines only — the rules' reading of them stands in.
+    const lines = withTimeout(
+      askJdRead({ text: value!, title: state.draft.title }),
+      TIMEOUT_MS
+    ).then(
+      ({ result }) => readJdLines(result),
+      (error: unknown) => {
+        console.warn("[agent] Gemini did not read the JD's lines.", error)
+        return null
+      }
+    )
+    const { result } = await withTimeout(
+      askIntake({
+        brand,
+        stage: "refine",
+        draft: state.draft,
+        brief: state.brief,
+        skipped: state.skipped,
+        asking: open,
+        questions: open.map((id) => ({
+          id,
+          prompt: refineAsk(id, state.draft),
+        })),
+        answer: value!,
+        document: true,
+        vocab: {
+          industries: industriesFor(brand),
+          institutes: institutesFor(brand),
+        },
+      }),
+      TIMEOUT_MS
+    )
+    if (!result || typeof result !== "object") return rules("failed")
+    const reply = result as Record<string, unknown>
+    const read = readDraft(reply.draft, state.draft) ?? state.draft
+    // Into empty fields only — the JD never overrides an answer.
+    const draft: PostingDraft = { ...state.draft }
+    const kept: Partial<PostingDraft> = {}
+    for (const id of FIELD_IDS) {
+      if (filled(draft, id) || !filled(read, id)) continue
+      Object.assign(draft, { [id]: read[id] })
+      Object.assign(kept, { [id]: read[id] })
+    }
+    const raw = (reply.brief ?? {}) as Record<string, unknown>
+    const team = text(raw.teamScale)
+    if (team && !draft.teamScale)
+      draft.teamScale = team[0].toUpperCase() + team.slice(1)
+    const fromJd = readBrief(reply.brief, state.brief, draft, brand).brief
+    const brief: HiringBrief = { ...state.brief }
+    for (const key of Object.keys(fromJd) as (keyof HiringBrief)[]) {
+      const was = state.brief[key]
+      const empty = Array.isArray(was) ? was.length === 0 : was == null
+      if (empty) Object.assign(brief, { [key]: fromJd[key] })
+    }
+    const graded = { ...state, engine: "gemini" as const, fallback: undefined }
+    const found = (await lines) ?? { ...requirementsIn(value!), diversity: [] }
+    return {
+      ...withJdRead(graded, draft, brief, value!, notedFrom(kept), found),
+      engine: "gemini",
+      fallback: undefined,
+      phrasings: undefined,
+    }
+  } catch (error) {
+    console.warn(
+      "[agent] Gemini did not answer the JD step; using the rules.",
+      error
+    )
+    return rules("failed")
+  }
+}
+
+/** `/api/jd`'s reply, as lists — the page checks every line after. */
+function readJdLines(result: unknown): {
+  must: string[]
+  nice: string[]
+  diversity: string[]
+  declined: string[]
+} | null {
+  if (!result || typeof result !== "object") return null
+  const reply = result as Record<string, unknown>
+  const short = (lines: string[], cap: number) =>
+    unique(lines.filter((line) => line.length <= 160)).slice(0, cap)
+  return {
+    must: short(strings(reply.must), 6),
+    nice: short(strings(reply.nice), 4),
+    // Only the form's own options; anything else would be a tick on nothing.
+    diversity: strings(reply.diversity).filter((option) =>
+      DIVERSITY.includes(option)
+    ),
+    declined: strings(reply.declined),
+  }
+}
+
+/**
+ * `/api/probe`'s reply, checked: topics only from the open list, probes with
+ * a label and a question, protected traits dropped, at most four in all.
+ */
+function readProbeReply(
+  result: unknown,
+  open: RefineId[]
+): { topics: RefineId[]; probes: Probe[] } | null {
+  if (!result || typeof result !== "object") return null
+  const reply = result as Record<string, unknown>
+  const topics = unique(
+    strings(reply.topics).filter((id): id is RefineId =>
+      open.includes(id as RefineId)
+    )
+  ).slice(0, PROBE_CAP)
+  const custom = Array.isArray(reply.custom) ? reply.custom : []
+  const probes: Probe[] = []
+  for (const entry of custom) {
+    if (probes.length + topics.length >= PROBE_CAP) break
+    if (!entry || typeof entry !== "object") continue
+    const raw = entry as Record<string, unknown>
+    const label = text(raw.label)
+    const ask = text(raw.ask)
+    if (!label || !ask || protectedIn(`${label} ${ask}`)) continue
+    probes.push({
+      id: `probe-${probes.length + 1}`,
+      label: label.slice(0, 40),
+      ask,
+      hint: text(raw.hint) ?? "",
+      options: unique(strings(raw.options))
+        .filter((option) => option.length <= 60 && !protectedIn(option))
+        .slice(0, 5),
+      multiple: raw.multiple === true,
+    })
+  }
+  if (!topics.length && !probes.length) return null
+  return { topics: REFINE_ORDER.filter((id) => topics.includes(id)), probes }
 }
 
 // --- Coercion ----------------------------------------------------------------

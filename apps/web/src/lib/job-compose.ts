@@ -3,7 +3,7 @@ import type { Brand } from "@workspace/ui/lib/brands"
 import { INDUSTRY_TAGS } from "@/lib/applicants"
 import { poolFor } from "@/lib/calibration"
 import { recentSearchesFor } from "@/lib/database"
-import { canonicalCity, readDescription } from "@/lib/job-intake"
+import { canonicalCity, readDescription, WORK_MODES } from "@/lib/job-intake"
 import { jobsFor } from "@/lib/jobs"
 import {
   matchesFor,
@@ -43,7 +43,7 @@ import { skillsForTitle } from "@/lib/title-intel"
  */
 
 export type ComposeField =
-  "role" | "location" | "experience" | "pay" | "industry" | "skills"
+  "role" | "location" | "mode" | "experience" | "pay" | "industry" | "skills"
 
 export type ComposeOption = {
   label: string
@@ -71,7 +71,8 @@ export type ComposeRow = {
  * What the sentence is for. A search reads the same parts as a posting less
  * the CTC: pay is asked as a question after the sentence (`QUESTIONS` in
  * `lib/intake.ts`), never read out of it, so ticking it would be a promise
- * the search does not keep.
+ * the search does not keep. Work mode is left out for the same reason — a
+ * search has no office, hybrid or remote to filter on.
  */
 export type ComposeFor = "posting" | "search"
 
@@ -83,6 +84,7 @@ export type ComposeAssist = {
 const LABELS: Record<ComposeField, string> = {
   role: "Role",
   location: "Location",
+  mode: "Work mode",
   experience: "Experience",
   pay: "CTC",
   industry: "Industry",
@@ -92,6 +94,7 @@ const LABELS: Record<ComposeField, string> = {
 /** The order parts are offered in — the order a role is usually described. */
 const ORDER: ComposeField[] = [
   "location",
+  "mode",
   "experience",
   "pay",
   "industry",
@@ -100,6 +103,34 @@ const ORDER: ComposeField[] = [
 
 /** Rows shown at once. More and it is a form, which is the thing this is not. */
 const ROWS = 2
+
+/** How many sectors the industry row offers. */
+const INDUSTRIES_SHOWN = 8
+
+/**
+ * THE INDUSTRY ROW'S WIDER LIST, after the pool's own sectors. The pool only
+ * knows the eight sectors the generator deals (`INDUSTRY_TAGS`), so a role
+ * whose pool sits in four of them offered four — and a recruiter hiring for a
+ * hospital or an insurer had nothing to pick. These are the next most common
+ * industries on the live iimjobs posting form (`INDUSTRIES` in
+ * `lib/taxonomy.ts`, in its own order), with the short name a sentence would
+ * use. They carry no share, because nobody in the pool works there: the share
+ * is what tells the two halves of the row apart.
+ */
+const MORE_INDUSTRIES = [
+  "Consulting",
+  "Healthcare",
+  "Insurance",
+  "Manufacturing",
+  "Pharma",
+  "Consumer durables",
+  "Logistics",
+  "Real estate",
+  "Media",
+  "Education",
+  "Telecom",
+  "Travel",
+]
 
 /** A must-have list is usually three; the skills row stays until then. */
 const SKILLS_WANTED = 3
@@ -274,7 +305,7 @@ export function composeAssist(
   purpose: ComposeFor = "posting"
 ): ComposeAssist {
   const fields = (Object.keys(LABELS) as ComposeField[]).filter(
-    (field) => purpose === "posting" || field !== "pay"
+    (field) => purpose === "posting" || (field !== "pay" && field !== "mode")
   )
   const parsed = roleOf(text, brand)
   const role = parsed?.role ?? null
@@ -290,14 +321,16 @@ export function composeAssist(
   )
   // Read after the role, so "Head of Brand Marketing" is not a sector and
   // "Head of Marketing" is not a skill.
-  const industryNamed = industries.some(({ value }) =>
-    [value, INDUSTRY_TAGS[value]].some((word) => words(word).test(rest))
-  )
+  const industryNamed =
+    industries.some(({ value }) =>
+      [value, INDUSTRY_TAGS[value]].some((word) => words(word).test(rest))
+    ) || MORE_INDUSTRIES.some((label) => words(label).test(rest))
   const skills = skillsIn(rest)
 
   const done: Record<ComposeField, boolean> = {
     role: Boolean(role),
     location: Boolean(read.locations?.length),
+    mode: Boolean(read.mode),
     experience: Boolean(read.experience),
     pay: Boolean(read.pay),
     industry: industryNamed,
@@ -418,6 +451,21 @@ export function composeAssist(
       })
     }
 
+    // Office, hybrid or remote — the posting's work-mode question, answered in
+    // the sentence instead. Written as a person would say it after the city
+    // ("in Mumbai, hybrid"), and in words `readMode` reads back.
+    if (field === "mode") {
+      add({
+        kind: field,
+        title: "Add work mode",
+        note: "Office, hybrid or remote",
+        options: WORK_MODES.map(({ label }) => ({
+          label,
+          text: append(text, label.toLowerCase(), field),
+        })),
+      })
+    }
+
     if (field === "experience") {
       add({
         kind: field,
@@ -474,11 +522,22 @@ export function composeAssist(
         kind: field,
         title: "Add industry",
         note: "Where they work now",
-        options: industries.slice(0, 4).map(({ value, share }) => ({
-          label: INDUSTRY_TAGS[value],
-          detail: `${share}%`,
-          text: append(text, INDUSTRY_TAGS[value], field),
-        })),
+        // Where the pool works first, with its share; then the wider list.
+        options: [
+          ...industries.map(({ value, share }) => ({
+            label: INDUSTRY_TAGS[value],
+            detail: `${share}%` as string | undefined,
+          })),
+          ...MORE_INDUSTRIES.map((label) => ({
+            label,
+            detail: undefined,
+          })),
+        ]
+          .slice(0, INDUSTRIES_SHOWN)
+          .map((option) => ({
+            ...option,
+            text: append(text, option.label, field),
+          })),
       })
     }
 

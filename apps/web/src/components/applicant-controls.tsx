@@ -7,7 +7,7 @@
  * the group renders it and the badge reflects it.
  */
 import type { LucideIcon } from "lucide-react"
-import { CheckIcon, CircleHelpIcon, XIcon } from "lucide-react"
+import { CheckIcon, XIcon } from "lucide-react"
 
 import {
   Avatar,
@@ -20,51 +20,43 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@workspace/ui/components/toggle-group"
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "@workspace/ui/components/tooltip"
 import { cn } from "@workspace/ui/lib/utils"
 import type { Applicant, ApplicantStatus } from "@/lib/applicants"
 
 /**
- * The three decisions, as one segmented control, and the overflow menu beside
- * it.
+ * The two decisions, as two labelled buttons: Reject, then Shortlist — the yes
+ * last, at the right-hand end of the card's foot.
  *
- * THEY ARE A GROUP BECAUSE THEY ARE ONE QUESTION. Three floating ghost circles
- * said "here are three unrelated buttons"; joined into a segmented control they
- * say "pick one of these", which is what a triage decision is. It is the same
- * `ToggleGroup` the cards/table switcher uses — `variant="outline"` with
- * `spacing={0}` — so the two controls on this screen that mean "choose one"
- * look the same.
+ * WORDS, NOT ICONS (6 Oct 2026). They were a segmented control of bare icons
+ * — a tick, a question mark and a cross, joined — with the names in tooltips.
+ * Once Maybe went there were two, and two decisions read faster as two named
+ * buttons than as glyphs to hover; the icon stays beside each word as the
+ * colour cue. They sit apart (`spacing`) rather than joined, because "yes" and
+ * "no" are not segments of one value.
  *
- * THE MAYBE IN THE MIDDLE IS THE POINT. Yes and no are the easy half; the
- * reason a recruiter stalls on a list of 148 is the pile they cannot decide
- * about, and with only two buttons that pile has nowhere to go but back on the
- * list to be read again. The order is deliberate too: yes, maybe, no reads as a
- * scale rather than three options in an arbitrary row.
+ * YES OR NO, NOTHING BETWEEN. There was a Maybe in the middle, for the pile a
+ * recruiter cannot decide about; it was removed on 6 Oct 2026, so somebody not
+ * yet a yes or a no simply stays in To review. "Reject" is the action; where
+ * the person lands is still called Not a fit.
  *
  * DESELECTING IS UNDOING. Base UI lets you click the active item to clear the
  * group, which lands the candidate back on `undecided` — back in To review.
  * That is the right escape from a misclick on a screen built for fast
- * decisions, and it is why this is a toggle group rather than a radio group.
+ * decisions, and it is why this is still a toggle group rather than two plain
+ * buttons: the one in force shows pressed, and pressing it again takes it back.
  *
- * EACH ICON CARRIES ITS OWN COLOUR AT REST, not only when it is the decision
- * in force. Three grey glyphs made the recruiter read the tooltip to tell yes
- * from maybe from no; green, amber and red say it before the shape does, and
- * the scale left-to-right is legible as a scale. Only the icon is tinted —
- * the button stays transparent until hover — so a page of cards does not turn
- * into a page of traffic lights.
+ * ONLY THE ICON IS TINTED AT REST, the word stays in the foreground, and the
+ * button fills only when that decision is in force — so a page of cards does
+ * not turn into a page of traffic lights.
  *
  * THEY ARE THE SEMANTIC TOKENS, NOT THE BRAND'S. `--success` is the green the
  * matched-skill chips already use; tying the tick to `--primary` instead would
- * make it emerald on iimjobs and ORANGE on hirist, where it would be the same
- * colour as Maybe sitting next to it. A decision is not a place the two
- * products differ, so it does not read from the brand layer.
+ * make it emerald on iimjobs and ORANGE on hirist, where it would read as a
+ * warning. A decision is not a place the two products differ, so it does not
+ * read from the brand layer.
  */
 const DECISIONS: {
-  value: Extract<ApplicantStatus, "shortlisted" | "maybe" | "rejected">
+  value: Extract<ApplicantStatus, "shortlisted" | "rejected">
   label: string
   icon: LucideIcon
   /** Tint when this one is the active decision. */
@@ -73,51 +65,36 @@ const DECISIONS: {
   resting: string
 }[] = [
   {
+    value: "rejected",
+    label: "Reject",
+    icon: XIcon,
+    active:
+      "bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive data-[pressed]:bg-destructive/10 data-[pressed]:text-destructive",
+    resting:
+      "[&_svg]:text-destructive hover:bg-destructive/10 hover:text-destructive",
+  },
+  {
     value: "shortlisted",
     label: "Shortlist",
     icon: CheckIcon,
     active:
       "bg-success/10 text-success hover:bg-success/20 hover:text-success data-[pressed]:bg-success/10 data-[pressed]:text-success",
-    resting: "text-success hover:bg-success/10 hover:text-success",
-  },
-  {
-    value: "maybe",
-    label: "Maybe",
-    icon: CircleHelpIcon,
-    active:
-      "bg-warning/10 text-warning hover:bg-warning/20 hover:text-warning data-[pressed]:bg-warning/10 data-[pressed]:text-warning",
-    resting: "text-warning hover:bg-warning/10 hover:text-warning",
-  },
-  {
-    value: "rejected",
-    label: "Not a fit",
-    icon: XIcon,
-    active:
-      "bg-destructive/10 text-destructive hover:bg-destructive/20 hover:text-destructive data-[pressed]:bg-destructive/10 data-[pressed]:text-destructive",
-    resting: "text-destructive hover:bg-destructive/10 hover:text-destructive",
+    resting: "[&_svg]:text-success hover:bg-success/10 hover:text-success",
   },
 ]
 
 /**
- * The segmented control on its own, so the response manager's cards and the
- * profile page cannot end up with two ideas of what a decision is.
+ * The decisions on their own, so the response manager's cards and the profile
+ * page cannot end up with two ideas of what a decision is.
  */
 export function DecisionGroup({
   applicant,
   onDecide,
   className,
-  labelClassName,
 }: {
   applicant: Applicant
   onDecide: (id: string, status: ApplicantStatus) => void
   className?: string
-  /**
-   * Draws each decision's word beside its icon, with these classes. Absent,
-   * the group is icons only. A caller that shows the words at some widths and
-   * not others hides them with `sr-only` rather than `hidden`, though the
-   * `aria-label` already names each one either way.
-   */
-  labelClassName?: string
 }) {
   const decided = DECISIONS.some(
     (decision) => decision.value === applicant.status
@@ -126,7 +103,8 @@ export function DecisionGroup({
   return (
     <ToggleGroup
       variant="outline"
-      spacing={0}
+      size="sm"
+      spacing={2}
       aria-label={`Decision for ${applicant.name}`}
       className={className}
       value={decided ? [applicant.status] : []}
@@ -136,27 +114,18 @@ export function DecisionGroup({
       }}
     >
       {DECISIONS.map((decision) => (
-        <Tooltip key={decision.value}>
-          <TooltipTrigger
-            render={
-              <ToggleGroupItem
-                value={decision.value}
-                aria-label={decision.label}
-                className={
-                  applicant.status === decision.value
-                    ? decision.active
-                    : decision.resting
-                }
-              />
-            }
-          >
-            <decision.icon />
-            {labelClassName !== undefined && (
-              <span className={labelClassName}>{decision.label}</span>
-            )}
-          </TooltipTrigger>
-          <TooltipContent>{decision.label}</TooltipContent>
-        </Tooltip>
+        <ToggleGroupItem
+          key={decision.value}
+          value={decision.value}
+          className={
+            applicant.status === decision.value
+              ? decision.active
+              : decision.resting
+          }
+        >
+          <decision.icon data-icon="inline-start" />
+          {decision.label}
+        </ToggleGroupItem>
       ))}
     </ToggleGroup>
   )
@@ -164,12 +133,8 @@ export function DecisionGroup({
 
 export function ApplicantStatusBadge({ status }: { status: ApplicantStatus }) {
   switch (status) {
-    case "maybe":
-      return <Badge variant="warning">Maybe</Badge>
     case "shortlisted":
       return <Badge variant="success">Shortlisted</Badge>
-    case "contacted":
-      return <Badge variant="secondary">Contacted</Badge>
     case "rejected":
       return <Badge variant="outline">Not a fit</Badge>
     // No badge for the absence of a decision. Whether they are NEW is the

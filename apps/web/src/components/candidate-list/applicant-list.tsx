@@ -62,8 +62,6 @@ export function ApplicantList({
   requiredSkills,
   selectedId,
   onSelect,
-  doc,
-  onDocChange,
   onOpenProfile,
   onDecide,
   verdicts,
@@ -88,8 +86,6 @@ export function ApplicantList({
   requiredSkills: string[]
   selectedId: string | null
   onSelect: (id: string) => void
-  doc: "profile" | "cv"
-  onDocChange: (next: "profile" | "cv") => void
   onOpenProfile: (id: string) => void
   onDecide: (id: string, status: ApplicantStatus) => void
   verdicts?: (applicant: Applicant) => Verdict[]
@@ -176,8 +172,6 @@ export function ApplicantList({
           requiredSkills={requiredSkills}
           selectedId={selectedId}
           onSelect={onSelect}
-          doc={doc}
-          onDocChange={onDocChange}
           onDecide={onDecide}
         />
       ) : view === "table" && table ? (

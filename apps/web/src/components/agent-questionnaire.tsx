@@ -65,6 +65,7 @@ export function AgentQuestionnaire({
   encode = encodeAnswers,
   frame = "docked",
   footer,
+  step,
 }: {
   items: AskedItem[]
   submit: string
@@ -89,6 +90,13 @@ export function AgentQuestionnaire({
    * while an answer is being changed.
    */
   footer?: React.ReactNode
+  /**
+   * The posting step these questions belong to, called out over each
+   * question — "Step 2/4 · Candidate details" (Chat v2.7), so the card says
+   * where in the posting it is, and how many steps there are, as well as
+   * which question it is.
+   */
+  step?: { number: number; total: number; label: string }
 }) {
   const page = frame === "page"
   // Each item's status, so the page frame's Next is disabled until there is
@@ -269,6 +277,11 @@ export function AgentQuestionnaire({
                 )}
               >
                 <div className="min-w-0 flex-1">
+                  {step ? (
+                    <p className="mb-1 text-xs font-medium text-primary">
+                      Step {step.number}/{step.total} · {step.label}
+                    </p>
+                  ) : null}
                   <Questionnaire.Title
                     className={cn(
                       "font-semibold text-balance",

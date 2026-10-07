@@ -51,9 +51,7 @@ export const VIEWS: { value: View; label: string; icon: LucideIcon }[] = [
  */
 export const BUCKETS: { value: ResponseBucket; label: string }[] = [
   { value: "undecided", label: "To review" },
-  { value: "maybe", label: "Maybe" },
   { value: "shortlisted", label: "Shortlisted" },
-  { value: "contacted", label: "Contacted" },
   { value: "rejected", label: "Not a fit" },
   { value: "all", label: "All" },
 ]

@@ -59,17 +59,9 @@ const COPY: Record<ListSource, ListCopy> = {
         title: "You are all caught up",
         body: "Everybody who has applied has a decision. New applicants will land here the next time you come in.",
       },
-      maybe: {
-        title: "Nothing in Maybe",
-        body: "The middle button on a card puts somebody here — the pile you want to come back to rather than decide on now.",
-      },
       shortlisted: {
         title: "Nothing in Shortlisted",
         body: "Nobody is shortlisted. Shortlisting somebody from any tab moves them here.",
-      },
-      contacted: {
-        title: "Nothing in Contacted",
-        body: "You have not reached out to anybody yet. Contacted candidates are the ones waiting on a reply from you.",
       },
       rejected: {
         title: "Nothing in Not a fit",
@@ -98,17 +90,9 @@ const COPY: Record<ListSource, ListCopy> = {
         title: "You are through all of them",
         body: "Everybody this search found has a decision. Run it again later to see who has joined since.",
       },
-      maybe: {
-        title: "Nothing in Maybe",
-        body: "The middle button on a card puts somebody here — the pile you want to come back to rather than decide on now.",
-      },
       shortlisted: {
         title: "Nothing in Shortlisted",
         body: "Nobody from this search is shortlisted yet.",
-      },
-      contacted: {
-        title: "Nothing in Contacted",
-        body: "You have not reached out to anybody from this search yet.",
       },
       rejected: {
         title: "Nothing in Not a fit",
@@ -137,17 +121,9 @@ const COPY: Record<ListSource, ListCopy> = {
         title: "Nobody undecided",
         body: "Everybody you saved has a decision on them.",
       },
-      maybe: {
-        title: "Nothing in Maybe",
-        body: "Nobody you saved is a maybe.",
-      },
       shortlisted: {
         title: "Nothing in Shortlisted",
         body: "Nobody you saved is shortlisted.",
-      },
-      contacted: {
-        title: "Nothing in Contacted",
-        body: "You have not reached out to anybody you saved.",
       },
       rejected: {
         title: "Nothing in Not a fit",

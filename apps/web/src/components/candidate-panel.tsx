@@ -38,6 +38,7 @@ import {
 import { CandidateDetail } from "@/components/candidate-detail"
 import { SaveToList } from "@/components/save-to-list"
 import { ScheduleInterview } from "@/components/schedule-interview"
+import { useMessageTo } from "@/components/messages-provider"
 import { isNew, type Applicant, type ApplicantStatus } from "@/lib/applicants"
 import { useListCopy } from "@/lib/list-source"
 
@@ -83,6 +84,7 @@ export function CandidatePanel({
   position: { index: number; total: number } | null
 }) {
   const copy = useListCopy()
+  const messageTo = useMessageTo()
 
   /**
    * WHICH candidate's tab was chosen, not just which tab — the same shape
@@ -194,12 +196,11 @@ export function CandidatePanel({
                     <SaveToList applicant={applicant} variant="icon" />
 
                     {/* Filled, because it is the one of the three a recruiter
-                        actually came here to do — and the only one that moves
-                        the candidate to Contacted. */}
+                        actually came here to do. It opens their thread. */}
                     <CircleAction
                       label="Message"
                       primary
-                      onClick={() => onDecide(applicant.id, "contacted")}
+                      onClick={() => messageTo(applicant)}
                     >
                       <MailIcon />
                     </CircleAction>

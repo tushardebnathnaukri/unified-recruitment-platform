@@ -3,7 +3,6 @@ import type { LucideIcon } from "lucide-react"
 import {
   CalendarPlusIcon,
   CheckIcon,
-  CircleHelpIcon,
   BookmarkIcon,
   ListPlusIcon,
   DownloadIcon,
@@ -62,13 +61,12 @@ const COMPARE_MAX = 3
 const BAR_BESIDE_ATHENA = "md:left-[calc((100vw-var(--athena-width))/2)]"
 
 const BULK_DECISIONS: {
-  value: Extract<ApplicantStatus, "shortlisted" | "maybe" | "rejected">
+  value: Extract<ApplicantStatus, "shortlisted" | "rejected">
   label: string
   icon: LucideIcon
 }[] = [
+  { value: "rejected", label: "Reject", icon: XIcon },
   { value: "shortlisted", label: "Shortlist", icon: CheckIcon },
-  { value: "maybe", label: "Maybe", icon: CircleHelpIcon },
-  { value: "rejected", label: "Not a fit", icon: XIcon },
 ]
 
 /** Ghost controls on the dark pill, where the system's ghost would vanish. */
@@ -78,8 +76,8 @@ const ON_BAR =
 /**
  * What to do with the ticked people.
  *
- * DECISIONS AND ATHENA ON THE BAR, THE REST BEHIND ⋯. The three decisions are
- * the card's own yes / maybe / no, in the same order and icons, because they
+ * DECISIONS AND ATHENA ON THE BAR, THE REST BEHIND ⋯. The two decisions are
+ * the card's own no / yes, in the same order and icons, because they
  * are what a recruiter ticks a dozen people to do. Athena is the other thing
  * worth a button — and only for one to three people, the most a comparison
  * holds; past that she steps off the bar rather than sitting there disabled.

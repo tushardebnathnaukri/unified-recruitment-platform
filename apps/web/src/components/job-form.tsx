@@ -54,7 +54,7 @@ import {
   draftOf,
   missingIn,
   payFrom,
-  WORK_FROM_HOME,
+  DIVERSITY,
   type JobFormValue,
   type Unit,
 } from "@/lib/job-form"
@@ -956,13 +956,6 @@ const COURSE_TYPES = [
   "Distance Learning Program",
   "Executive Program",
   "Certification",
-]
-const DIVERSITY = [
-  "Female Candidates",
-  "Women Joining back the workforce",
-  "Ex-defence personnel",
-  "Differently-abled candidates",
-  WORK_FROM_HOME,
 ]
 /** Newest first, as the live form lists them. */
 const BATCHES = range(1970, 2026).reverse()

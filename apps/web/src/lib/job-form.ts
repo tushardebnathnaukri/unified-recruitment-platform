@@ -17,6 +17,15 @@ import { INDUSTRIES } from "@/lib/taxonomy"
 
 export const WORK_FROM_HOME = "Work from Home"
 
+/** The live form's diversity-hiring options, in its own labels. */
+export const DIVERSITY = [
+  "Female Candidates",
+  "Women Joining back the workforce",
+  "Ex-defence personnel",
+  "Differently-abled candidates",
+  WORK_FROM_HOME,
+]
+
 export type Plan = "pro" | "basic"
 export type Unit = "Lakhs" | "Crores"
 export type Pay = {
@@ -62,7 +71,11 @@ export type JobFormValue = {
  */
 export function formFrom(
   draft: PostingDraft,
-  industries: string[] = []
+  industries: string[] = [],
+  /** A JD from the chat (`?jd=`), used as it is instead of drafting one. */
+  description: string | null = null,
+  /** Diversity-hiring options a JD in the chat asked for (`?div=`). */
+  diversity: string[] = []
 ): JobFormValue {
   return {
     plan: "pro",
@@ -72,7 +85,7 @@ export function formFrom(
     xpMin: text(draft.experience?.min),
     xpMax: text(draft.experience?.max),
     skills: [...new Set([...draft.skills, ...draft.niceSkills])],
-    description: draft.title ? describePosting(draft) : "",
+    description: description ?? (draft.title ? describePosting(draft) : ""),
     formatJd: true,
     videoJd: "",
     industries: industries
@@ -90,7 +103,11 @@ export function formFrom(
     questions: draft.screening,
     videoProfile: false,
     applyUrl: "",
-    diversity: draft.mode === "remote" ? [WORK_FROM_HOME] : [],
+    diversity: DIVERSITY.filter(
+      (option) =>
+        diversity.includes(option) ||
+        (option === WORK_FROM_HOME && draft.mode === "remote")
+    ),
     company: "",
     hideCompany: false,
     linkedIn: true,

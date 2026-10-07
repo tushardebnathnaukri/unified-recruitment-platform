@@ -641,7 +641,17 @@ function readSpan(value: string | null): Span | null {
  */
 export function postingHref(
   draft: PostingDraft,
-  { industries = [] }: { industries?: string[] } = {}
+  {
+    industries = [],
+    description = null,
+    diversity = [],
+  }: {
+    industries?: string[]
+    /** A JD given or drafted in the chat (Chat v2.5), instead of the form's own. */
+    description?: string | null
+    /** Diversity-hiring options a JD asked for (Chat v2.5), in the form's labels. */
+    diversity?: string[]
+  } = {}
 ) {
   const params = new URLSearchParams()
   if (draft.title) params.set("title", draft.title)
@@ -657,6 +667,8 @@ export function postingHref(
   // Not a posting field in the chat but a required one on the form, and the
   // chat's opener asks for it — so the brief's industries come along.
   for (const industry of industries) params.append("ind", industry)
+  if (description) params.set("jd", description)
+  for (const option of diversity) params.append("div", option)
   const query = params.toString()
   return query ? `/jobs/new?${query}` : "/jobs/new"
 }
@@ -891,8 +903,10 @@ export type IntakeState = {
    * refinement that follows sharpens who to look for (`job-refine.ts`); done
    * is the finished card. One state carries all three so the conversation is
    * one conversation — a correction during refinement still reaches the draft.
+   * Under Chat v2.5 (`jdStep`) a JD step sits between the posting and the
+   * refinement: "jd" asks whether there is one, or waits for it.
    */
-  stage: "posting" | "refine" | "screen" | "done"
+  stage: "posting" | "jd" | "refine" | "screen" | "done"
   draft: PostingDraft
   skipped: FieldId[]
   /** The private half — who to search for and screen on. Never posted. */
@@ -904,6 +918,14 @@ export type IntakeState = {
    * before the flag existed reads as on — test it with `criteriaOn`.
    */
   criteria?: boolean
+  /**
+   * CHAT V2.5 ONLY (`rail25` in `lib/posting-variant.ts`): once the posting
+   * fields are in, ask whether there is a JD before the selection criteria.
+   * Absent everywhere else, so every other layout reads as before.
+   */
+  jdStep?: boolean
+  /** Chat v2.5: how the JD step went. Absent until it is reached. */
+  jd?: JdState
   /** The refinement topics this posting gets, in asking order. At most four. */
   plan: RefineId[]
   /** Refinement topics answered or skipped. */
@@ -980,6 +1002,41 @@ export type IntakeState = {
 export type Phrasing = { ask: string; hint: string; options: string[] }
 
 /**
+ * The JD step (Chat v2.5). `ask` is the choice on screen, `paste` is waiting
+ * for the text; then `read` (their JD was read), `draft` (we draft one with
+ * them, from questions) or `skipped`.
+ */
+export type JdState = {
+  status: "ask" | "paste" | "read" | "draft" | "skipped"
+  /** Their JD's text, as given — the posting's description when there is one. */
+  text?: string
+  /**
+   * Questions written for this role by Gemini, beyond the fixed refinement
+   * topics, asked on the same card. Each answer becomes a criterion line
+   * (`HiringBrief.requirements`) and a line of the drafted JD.
+   */
+  probes?: Probe[]
+  /** Probes answered or skipped, by id. */
+  settledProbes?: string[]
+  /**
+   * Diversity-hiring options the JD or an answer asked for, in the form's
+   * labels (`DIVERSITY` in `lib/job-form.ts`) — a field of the posting, not a
+   * screening rule, so they go to the form rather than being refused.
+   */
+  diversity?: string[]
+}
+
+export type Probe = {
+  id: string
+  /** What the answer is filed under — "P&L ownership". */
+  label: string
+  ask: string
+  hint: string
+  options: string[]
+  multiple: boolean
+}
+
+/**
  * One question in a questionnaire, whichever stage it is from — the shape the
  * page draws, and the only thing it needs to know about a question.
  */
@@ -1026,9 +1083,11 @@ export function nextQuestion(draft: PostingDraft, skipped: FieldId[]) {
 
 export function startIntake({
   criteria = true,
-}: { criteria?: boolean } = {}): IntakeState {
+  jdStep = false,
+}: { criteria?: boolean; jdStep?: boolean } = {}): IntakeState {
   return {
     criteria,
+    ...(jdStep ? { jdStep } : {}),
     stage: "posting",
     draft: EMPTY_DRAFT,
     skipped: [],

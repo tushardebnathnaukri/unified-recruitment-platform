@@ -32,17 +32,15 @@ import type { Job } from "@/lib/jobs"
  * needs a decision from me", and whether a card was opened, or scrolled past,
  * or read off the card without opening anything, is not something the screen
  * can know or the recruiter cares about. Somebody skipped is simply still
- * undecided; somebody consciously parked is `maybe`. When they arrived is a
- * separate fact — see `newSinceVisit`.
+ * undecided. When they arrived is a separate fact — see `newSinceVisit`.
+ *
+ * THERE IS NO "MAYBE" OR "CONTACTED" EITHER (both removed 6 Oct 2026). The
+ * decision is yes or no; somebody not yet either is still `undecided` — no
+ * decision yet, looked at or not, which is the To review queue. Reaching out
+ * is something you do to a person (Message, an interview), not a place they
+ * sit: an interview shortlists them, a message moves nobody.
  */
-export type ApplicantStatus =
-  /** No decision yet, looked at or not. The To review queue. */
-  | "undecided"
-  /** "Not now, but do not lose them" — a decision to come back, not a gap. */
-  | "maybe"
-  | "shortlisted"
-  | "contacted"
-  | "rejected"
+export type ApplicantStatus = "undecided" | "shortlisted" | "rejected"
 
 /** One job somebody has held. `to` of `null` means they are still in it. */
 export type Position = {
@@ -142,11 +140,7 @@ export function responseCounts(job: Job) {
   const counts = {
     all: 0,
     undecided: 0,
-    // Nobody starts in Maybe: it is a decision, so it only exists once
-    // somebody makes it. The tab fills up as you work through the list.
-    maybe: 0,
     shortlisted: 0,
-    contacted: 0,
     rejected: 0,
     newSinceVisit: 0,
   }
@@ -155,21 +149,15 @@ export function responseCounts(job: Job) {
     counts.all = job.applicants
     counts.newSinceVisit = job.newSinceVisit
     counts.shortlisted = job.shortlisted
-    counts.contacted = job.followUp
     counts.rejected = job.notAFit
   } else if (job.status === "closed") {
     counts.all = job.applicants
     counts.shortlisted = job.shortlisted
-    counts.contacted = job.contacted
     counts.rejected = job.notAFit
   }
 
   counts.undecided = Math.max(
-    counts.all -
-      counts.maybe -
-      counts.shortlisted -
-      counts.contacted -
-      counts.rejected,
+    counts.all - counts.shortlisted - counts.rejected,
     0
   )
   // Nobody can be new and decided before the visit that would decide them.
@@ -554,7 +542,6 @@ export function applicantsFor(
 
   const older: ApplicantStatus[] = [
     ...Array<ApplicantStatus>(counts.shortlisted).fill("shortlisted"),
-    ...Array<ApplicantStatus>(counts.contacted).fill("contacted"),
     ...Array<ApplicantStatus>(counts.rejected).fill("rejected"),
     ...Array<ApplicantStatus>(counts.undecided - counts.newSinceVisit).fill(
       "undecided"
@@ -851,13 +838,7 @@ export type SortColumn =
   | "education"
   | "status"
 
-const STATUS_ORDER: ApplicantStatus[] = [
-  "undecided",
-  "maybe",
-  "shortlisted",
-  "contacted",
-  "rejected",
-]
+const STATUS_ORDER: ApplicantStatus[] = ["undecided", "shortlisted", "rejected"]
 
 export const COLUMN_SORTS: Record<
   SortColumn,

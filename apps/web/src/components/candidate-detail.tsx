@@ -144,7 +144,7 @@ function AtAGlance({
         </div>
       ) : (
         <Button variant="outline" size="sm" onClick={onReveal}>
-          View contact details
+          View contact
         </Button>
       )}
 

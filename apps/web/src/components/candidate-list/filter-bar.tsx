@@ -28,8 +28,10 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 import {
   EXPERIENCE_BANDS,
+  matchesFilters,
   NOTICE_BANDS,
   sortOptions,
+  type Applicant,
   type Filters,
 } from "@/lib/applicants"
 import { useListCopy } from "@/lib/list-source"
@@ -57,11 +59,15 @@ import { FilterPanel } from "@/components/candidate-list/filter-panel"
  * "Experience", so the row reads as a sentence about the list underneath it
  * instead of five labels that say nothing until each is opened.
  */
-export function FilterBar(
+export function FilterBar({
+  people,
+  ...props
+}: Omit<React.ComponentProps<typeof FilterPanel>, "layout"> & {
+  /** Everybody on the list, for the drawer's "Show N results". */
+  people: Applicant[]
+}) {
   // The bar takes exactly what the panel takes, because it hands the whole lot
-  // straight to it — `layout` is the one thing it decides for itself.
-  props: Omit<React.ComponentProps<typeof FilterPanel>, "layout">
-) {
+  // straight to it in the drawer — `layout` is the one thing it decides.
   const {
     filters,
     sort,
@@ -78,67 +84,50 @@ export function FilterBar(
   const [drawerOpen, setDrawerOpen] = React.useState(false)
 
   /**
-   * THE BAR IS A DRAFT, APPLIED ON A BUTTON. Picking a band no longer moves
-   * the list under you: the pills and the drawer write here, and only Apply
-   * puts it in the URL. Two filters that belong together — "12+ years, in
-   * Pune" — can be set as one thought and land as one change, instead of the
-   * list shuffling and the counts moving twice on the way to a question that
-   * was never asked.
+   * A PICK APPLIES AS IT IS MADE, the way the rail beside the cards does. It
+   * was a draft applied on an Apply button (with Clear beside it) until 6 Oct
+   * 2026, so that "12+ years, in Pune" landed as one change rather than two.
+   * It was dropped because most pills close on a single pick, so batching
+   * saved almost nothing; because the rail already applied as you picked, so
+   * the same filters behaved differently by view; and because the two buttons
+   * sat disabled most of the time — a greyed button in the brand colour, with
+   * nothing to press.
    *
-   * SORT IS NOT IN IT. It orders the list and removes nobody, so there is
-   * nothing to weigh before committing to it; holding it back behind Apply
-   * would be a button in front of a control that is already reversible by
-   * picking again.
-   *
-   * It FOLLOWS the URL when the URL changes from somewhere else — a chip
-   * dropped from the applied bar, a table header, the rail at a wider size, a
-   * pasted link. Derived during render rather than in an effect, the way the
-   * database's search box follows its query.
+   * TWO PLACES STILL HOLD A DRAFT. The location pickers are the only pick-many
+   * pills, so each popover applies when it closes (`picking`) — three cities
+   * land as one change. And the drawer on a phone covers the list, so it is
+   * edited as a draft (`draft`) and applied by "Show N results", the way a
+   * sheet of filters usually is. Sort is never in either: it orders the list
+   * and removes nobody.
    */
   const [draft, setDraft] = React.useState<Filters>(filters)
-  const [followed, setFollowed] = React.useState<Filters>(filters)
-  if (!sameFilters(followed, filters)) {
-    setFollowed(filters)
+  const [picking, setPicking] = React.useState<{
+    key: "location" | "preferred"
+    chosen: string[]
+  } | null>(null)
+
+  const openDrawer = () => {
     setDraft(filters)
+    setDrawerOpen(true)
   }
-
-  const edit = (updates: Partial<Filters>) =>
+  const editDraft = (updates: Partial<Filters>) =>
     setDraft((current) => ({ ...current, ...updates }))
-
-  const dirty = !sameFilters(draft, filters)
-  const active =
-    Boolean(draft.q) ||
-    Boolean(draft.exp) ||
-    Boolean(draft.notice) ||
-    draft.location.length > 0 ||
-    draft.preferred.length > 0
-
-  const apply = () => {
-    onChange(draft)
+  const showResults = () => {
+    if (!sameFilters(draft, filters)) onChange(draft)
     setDrawerOpen(false)
   }
-  const clear = () => {
-    setDraft(EMPTY_FILTERS)
-    onClear()
-    setDrawerOpen(false)
-  }
-
-  /** Apply and Clear, in the bar and again in the drawer's footer. */
-  const actions = (
-    <>
-      <Button size="sm" disabled={!dirty} onClick={apply}>
-        Apply
-      </Button>
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={!active && !dirty}
-        onClick={clear}
-      >
-        Clear
-      </Button>
-    </>
+  const draftMatches = React.useMemo(
+    () => people.filter((person) => matchesFilters(person, draft)).length,
+    [people, draft]
   )
+
+  /** Whether anything applied is narrowing the list — what Clear is for. */
+  const active =
+    Boolean(filters.q) ||
+    Boolean(filters.exp) ||
+    Boolean(filters.notice) ||
+    filters.location.length > 0 ||
+    filters.preferred.length > 0
 
   /**
    * Each pill carries its own options, so the same array drives the label it
@@ -162,23 +151,23 @@ export function FilterBar(
     {
       key: "exp",
       title: "Experience",
-      value: draft.exp,
+      value: filters.exp,
       options: [
         { value: "", label: "Any experience" },
         ...EXPERIENCE_BANDS.map(({ value, label }) => ({ value, label })),
       ],
-      onSelect: (exp: string) => edit({ exp }),
+      onSelect: (exp: string) => onChange({ exp }),
       narrows: true,
     },
     {
       key: "notice",
       title: "Notice period",
-      value: draft.notice,
+      value: filters.notice,
       options: [
         { value: "", label: "Any notice period" },
         ...NOTICE_BANDS.map(({ value, label }) => ({ value, label })),
       ],
-      onSelect: (notice: string) => edit({ notice }),
+      onSelect: (notice: string) => onChange({ notice }),
       narrows: true,
     },
   ]
@@ -189,14 +178,12 @@ export function FilterBar(
    * many cities are in it rather than name the one.
    */
   const places: {
-    key: string
+    key: "location" | "preferred"
     title: string
     empty: string
     one: (city: string) => string
     many: (count: number) => string
     options: string[]
-    chosen: string[]
-    onChange: (next: string[]) => void
   }[] = [
     {
       key: "location",
@@ -205,8 +192,6 @@ export function FilterBar(
       one: (city) => city,
       many: (count) => `${count} current locations`,
       options: locations,
-      chosen: draft.location,
-      onChange: (location) => edit({ location }),
     },
     {
       key: "preferred",
@@ -215,8 +200,6 @@ export function FilterBar(
       one: (city) => `Open to ${city}`,
       many: (count) => `Open to ${count} locations`,
       options: preferredLocations,
-      chosen: draft.preferred,
-      onChange: (preferred) => edit({ preferred }),
     },
   ]
 
@@ -233,8 +216,8 @@ export function FilterBar(
           <PillTrigger
             icon
             label={`${searchLabel} and filter`}
-            marked={Boolean(draft.q)}
-            onClick={() => setDrawerOpen(true)}
+            marked={Boolean(filters.q)}
+            onClick={openDrawer}
           />
         ) : (
           <Popover>
@@ -243,20 +226,16 @@ export function FilterBar(
                 <PillTrigger
                   icon
                   label={searchLabel}
-                  marked={Boolean(draft.q)}
+                  marked={Boolean(filters.q)}
                 />
               }
             />
             <PopoverContent align="start" className="w-72 p-2">
-              {/* Enter applies, so the common case — type a name, press
-                  Return — costs no trip to the button. */}
+              {/* Narrows as you type, like the rail's own search box. */}
               <Input
                 autoFocus
-                value={draft.q}
-                onChange={(event) => edit({ q: event.target.value })}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && dirty) apply()
-                }}
+                value={filters.q}
+                onChange={(event) => onChange({ q: event.target.value })}
                 placeholder="Search name, role or skill"
                 aria-label={searchLabel}
               />
@@ -281,7 +260,7 @@ export function FilterBar(
                 key={pill.key}
                 label={current.label}
                 marked={marked}
-                onClick={() => setDrawerOpen(true)}
+                onClick={openDrawer}
               />
             )
           }
@@ -330,29 +309,49 @@ export function FilterBar(
             a popover; on a phone it opens the drawer with everything else,
             because five popovers have nowhere to anchor at that width. */}
         {places.map((place) => {
+          const applied = filters[place.key]
+          // While its popover is open the picker holds a draft; the label and
+          // the list follow what is applied until it closes.
+          const chosen = picking?.key === place.key ? picking.chosen : applied
           const label =
-            place.chosen.length === 0
+            applied.length === 0
               ? place.empty
-              : place.chosen.length === 1
-                ? place.one(place.chosen[0])
-                : place.many(place.chosen.length)
+              : applied.length === 1
+                ? place.one(applied[0])
+                : place.many(applied.length)
 
           if (isMobile) {
             return (
               <PillTrigger
                 key={place.key}
                 label={label}
-                marked={place.chosen.length > 0}
-                onClick={() => setDrawerOpen(true)}
+                marked={applied.length > 0}
+                onClick={openDrawer}
               />
             )
           }
 
           return (
-            <Popover key={place.key}>
+            <Popover
+              key={place.key}
+              onOpenChange={(open) => {
+                if (open) {
+                  setPicking({ key: place.key, chosen: applied })
+                  return
+                }
+                // Closing applies the cities picked while it was open, as one
+                // change.
+                if (
+                  picking?.key === place.key &&
+                  picking.chosen.join() !== applied.join()
+                )
+                  onChange({ [place.key]: picking.chosen })
+                setPicking(null)
+              }}
+            >
               <PopoverTrigger
                 render={
-                  <PillTrigger label={label} marked={place.chosen.length > 0} />
+                  <PillTrigger label={label} marked={applied.length > 0} />
                 }
               />
               <PopoverContent align="start" className="w-64 gap-0 p-3">
@@ -360,49 +359,65 @@ export function FilterBar(
                   label={place.title}
                   placeholder="Search locations"
                   options={place.options}
-                  chosen={place.chosen}
-                  onChange={place.onChange}
+                  chosen={chosen}
+                  onChange={(next) =>
+                    setPicking({ key: place.key, chosen: next })
+                  }
                 />
               </PopoverContent>
             </Popover>
           )
         })}
 
-        {/* THE COUNT IS OF THE APPLIED LIST, so it steps aside while there are
-            unapplied changes rather than sitting beside pills it does not
-            describe. Apply is what makes it true again. */}
-        {active && !dirty && (
+        {active && (
           <span className="text-xs text-muted-foreground tabular-nums">
             {matched} of {total} match
           </span>
         )}
 
-        {/* Right of the row, so the pills read left to right as the filter and
-            the buttons are what you do about it. */}
-        <div className="ml-auto flex items-center gap-2">{actions}</div>
+        {/* ONLY WHEN SOMETHING IS ON, and quiet: a reset that is there when
+            there is something to reset, not a disabled button the rest of the
+            time. Each pill's own "Any …" option still undoes that one. Right
+            of the row, so the pills read left to right as the filter and this
+            is what you do about it. */}
+        {active && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto text-muted-foreground"
+            onClick={onClear}
+          >
+            Clear
+          </Button>
+        )}
       </div>
 
       <DrawerContent>
         <DrawerHeader>
           <DrawerTitle>{filterTitle}</DrawerTitle>
           <DrawerDescription>
-            {dirty ? "Not applied yet" : `${matched} of ${total} match`}
+            Nothing changes until you show the results.
           </DrawerDescription>
         </DrawerHeader>
 
-        {/* The same draft the pills write, so opening the drawer after setting
-            a pill shows what is pending rather than what is applied. */}
+        {/* A draft, started from what is applied each time the drawer opens.
+            The panel's own Clear resets the draft; the list follows only on
+            "Show N results". */}
         <div className="overflow-y-auto px-4 pb-4">
           <FilterPanel
             {...props}
             filters={draft}
-            onChange={edit}
-            onClear={clear}
+            onChange={editDraft}
+            onClear={() => setDraft(EMPTY_FILTERS)}
             layout="drawer"
           />
         </div>
 
-        <DrawerFooter className="flex-row justify-end">{actions}</DrawerFooter>
+        <DrawerFooter>
+          <Button onClick={showResults}>
+            Show {draftMatches} {draftMatches === 1 ? "result" : "results"}
+          </Button>
+        </DrawerFooter>
       </DrawerContent>
     </Drawer>
   )

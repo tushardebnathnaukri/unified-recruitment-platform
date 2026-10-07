@@ -376,9 +376,9 @@ function RecentSearches() {
  * job used to be.
  *
  * THE SAME CARDS ON PURPOSE. Deciding on people a search found is the same
- * work as deciding on people who applied — who is worth an hour, who is a
- * maybe, who is out — so it is the same `CandidateList`: the same card, three
- * decisions on it, the same filters and the same profile panel. Somebody who
+ * work as deciding on people who applied — who is worth an hour, who is out —
+ * so it is the same `CandidateList`: the same card, the same decisions on it,
+ * the same filters and the same profile panel. Somebody who
  * has learned one has learned both, and a change to the card lands on both.
  *
  * LAID OUT AS RESULTS, NOT A QUEUE (`layout="results"`). No decision tabs — a

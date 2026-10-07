@@ -5,23 +5,14 @@ import {
   DecisionGroup,
 } from "@/components/applicant-controls"
 import { CandidateCv } from "@/components/candidate-cv"
-import { CandidateDetail } from "@/components/candidate-detail"
 import {
   SnapshotSkills,
   SnapshotStats,
 } from "@/components/candidate-list/applicant-card"
-import { FloatingVariantSwitcher } from "@/components/floating-variant-switcher"
 import { SaveToList } from "@/components/save-to-list"
 import { Meta, MetaItem } from "@workspace/ui/components/meta"
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@workspace/ui/components/tabs"
 import { cn } from "@workspace/ui/lib/utils"
 import { isNew, type Applicant, type ApplicantStatus } from "@/lib/applicants"
-import { SPLIT_VARIANTS, useSplitVariant } from "@/lib/split-variant"
 import { type ListRun, SPLIT_CHROME } from "@/components/candidate-list/shared"
 
 /**
@@ -34,8 +25,9 @@ import { type ListRun, SPLIT_CHROME } from "@/components/candidate-list/shared"
  *
  * IT IS THE READING VIEW, where cards are the scanning one and the table is the
  * comparing one. A card gives you enough to triage and no more; this gives you
- * a whole profile without leaving the list, which is what you want once the
- * list is down to the ten people worth actually reading.
+ * the CV without leaving the list, under a summary of what it does not say at a
+ * glance — which is what you want once the list is down to the ten people worth
+ * actually reading. See `CardThenCv`.
  *
  * THE ROWS ARE DELIBERATELY THIN. Name, current role, and the one number that
  * decides whether to open somebody — everything else is three inches to the
@@ -55,8 +47,6 @@ export function SplitView({
   requiredSkills,
   selectedId,
   onSelect,
-  doc,
-  onDocChange,
   onDecide,
 }: {
   /** Height of the sticky tab block, which is all that is above this. */
@@ -67,18 +57,12 @@ export function SplitView({
   requiredSkills: string[]
   selectedId: string | null
   onSelect: (id: string) => void
-  doc: "profile" | "cv"
-  onDocChange: (next: "profile" | "cv") => void
   onDecide: (id: string, status: ApplicantStatus) => void
 }) {
   // The first row rather than nothing: an empty pane beside a full list is a
   // screen asking you to do something before it will show you anything.
   const selected =
     applicants.find((applicant) => applicant.id === selectedId) ?? applicants[0]
-  // /settings' "Split view": the CV and the profile behind tabs, both at once,
-  // or the card over the CV. `doc` only means anything under tabs.
-  const { variant, setVariant } = useSplitVariant()
-  const sideBySide = variant === "side-by-side"
 
   return (
     // `-mt-4`: the list column below is flush against the tab toolbar, the way
@@ -138,88 +122,21 @@ export function SplitView({
             ))}
           </React.Fragment>
         ))}
-
-        {/* The prototype's pane switcher, as the cards view has its card one —
-            but in the LIST column, sticking to its foot, rather than over the
-            pane: this is the reading view, and a pill over the CV covers the
-            thing being read. In flow, so the last row still scrolls clear. */}
-        <FloatingVariantSwitcher
-          name="Pane"
-          label="CV and profile layout"
-          options={SPLIT_VARIANTS}
-          value={variant}
-          onChange={setVariant}
-          className="sticky bottom-4 z-20 mx-3 mt-4 mb-4 shrink-0 self-start"
-        />
       </div>
 
-      {/* `p-px` is load-bearing. The card below is ringed, and a ring is a
-          box-shadow drawn OUTSIDE the border box — so with the card filling
-          this pane edge to edge, its outline lands in the overflow and
+      {/* `p-px` is load-bearing. The cards below are ringed, and a ring is a
+          box-shadow drawn OUTSIDE the border box — so with a card filling this
+          pane edge to edge, its outline lands in the overflow and
           `overflow-y-auto` (which clips both axes, not just the one named)
           cuts all four sides off. One pixel gives the ring somewhere to sit. */}
-      {/* SIDE BY SIDE, THE CARD FILLS THE PANE instead of running past it, so
-          its two columns can scroll on their own (`SidePane`). That needs the
-          pane to be a container — whether two columns fit is about the pane,
-          which the list column and the nav both take width from, not about
-          the window — and a flex column, so the card can take what is left
-          under the pane's top padding. `pb-4` gives the card a bottom edge
-          above the screen's. */}
-      <div
-        className={cn(
-          "relative min-w-0 flex-1 overflow-y-auto p-px @3xl/main:pt-4",
-          sideBySide && "@container/pane flex flex-col @3xl/main:pb-4"
-        )}
-      >
-        {selected && variant === "card-cv" ? (
+      <div className="relative min-w-0 flex-1 overflow-y-auto p-px @3xl/main:pt-4">
+        {selected ? (
           <CardThenCv
             key={selected.id}
             applicant={selected}
             requiredSkills={requiredSkills}
             onDecide={onDecide}
           />
-        ) : selected ? (
-          <div
-            className={cn(
-              "flex flex-col gap-5 rounded-2xl bg-card p-5 ring-1 ring-foreground/10",
-              sideBySide && "@3xl/pane:min-h-0 @3xl/pane:flex-1"
-            )}
-          >
-            <PaneHeader applicant={selected} onDecide={onDecide} />
-
-            {/* The tabs sit under the header, not above it: the name, the
-                decision buttons and Save act on the person whichever document
-                is showing, so they belong outside the thing that swaps. */}
-            {sideBySide ? (
-              <SidePane applicant={selected} requiredSkills={requiredSkills} />
-            ) : (
-              <Tabs
-                className="gap-4"
-                value={doc}
-                onValueChange={(value) =>
-                  onDocChange(String(value) === "profile" ? "profile" : "cv")
-                }
-              >
-                {/* CV first, in the same order as the profile panel's tabs. */}
-                <TabsList>
-                  <TabsTrigger value="cv">CV</TabsTrigger>
-                  <TabsTrigger value="profile">Profile</TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="profile">
-                  <CandidateDetail
-                    applicant={selected}
-                    required={requiredSkills}
-                    layout="pane"
-                  />
-                </TabsContent>
-
-                <TabsContent value="cv">
-                  <CandidateCv applicant={selected} required={requiredSkills} />
-                </TabsContent>
-              </Tabs>
-            )}
-          </div>
         ) : null}
       </div>
     </div>
@@ -227,13 +144,12 @@ export function SplitView({
 }
 
 /**
- * Who this is and what they do, over the pane: the name, the current role, the
- * decisions and Save. Every layout draws it, because they all act on the person
- * whichever document is showing.
+ * Who this is and what they do: the name, the current role, the decisions and
+ * Save, at the head of the summary card.
  *
- * NO "OPEN PROFILE". Every layout already has the profile in the pane — a tab,
- * a column, or the summary card — so a button opening the same facts in a panel
- * over them was a second way to the thing on screen.
+ * NO "OPEN PROFILE". The summary under it is the profile's at-a-glance facts,
+ * so a button opening the same facts in a panel over them was a second way to
+ * the thing on screen.
  */
 function PaneHeader({
   applicant,
@@ -278,7 +194,11 @@ function PaneHeader({
 }
 
 /**
- * A short summary card, then the CV: one column, one scroll.
+ * The pane: a short summary card, then the CV — one column, one scroll.
+ *
+ * IT WAS PICKED OVER TWO OTHER PANES, both tried as /settings variants and
+ * removed on 6 Oct 2026: the CV and the profile behind tabs, one at a time,
+ * and the two side by side in columns that scrolled on their own.
  *
  * THE SUMMARY IS ONLY WHAT THE CV DOES NOT SAY AT A GLANCE. The header, the
  * four numbers everybody compares (Snapshot's strip: experience, notice, pay,
@@ -328,64 +248,6 @@ function CardThenCv({
         <h3 className="text-sm font-medium">CV</h3>
         <CandidateCv applicant={applicant} required={requiredSkills} />
       </section>
-    </div>
-  )
-}
-
-/**
- * The profile and the CV at once, the profile on the left: the facts a
- * decision turns on come first, and the document is what you read them against.
- *
- * EACH COLUMN SCROLLS ON ITS OWN, which is what side by side is for: reading
- * the fourth role on the CV should not scroll away the notice period and pay
- * beside it. `grid-rows-1` is `minmax(0, 1fr)`, so the row is the card's
- * height rather than the taller column's. Each scroller is `relative` and
- * `p-px` for the reasons the pane is — an `sr-only` resolves against the
- * nearest positioned ancestor, and the CV's ring and the profile's cards draw
- * outside their boxes.
- *
- * Below a pane of 48rem the columns stack, profile then CV, in the pane's one
- * scroll: two columns of a phone's width each is neither a CV nor a profile.
- * The headings stand in for the tab labels, which said which was which.
- */
-function SidePane({
-  applicant,
-  requiredSkills,
-}: {
-  applicant: Applicant
-  requiredSkills: string[]
-}) {
-  const columns = [
-    {
-      title: "Profile",
-      body: (
-        <CandidateDetail
-          applicant={applicant}
-          required={requiredSkills}
-          layout="pane"
-        />
-      ),
-    },
-    {
-      title: "CV",
-      body: <CandidateCv applicant={applicant} required={requiredSkills} />,
-    },
-  ]
-
-  return (
-    <div className="flex flex-col gap-6 @3xl/pane:grid @3xl/pane:min-h-0 @3xl/pane:flex-1 @3xl/pane:grid-cols-2 @3xl/pane:grid-rows-1 @3xl/pane:gap-5">
-      {columns.map((column) => (
-        <section
-          key={column.title}
-          aria-label={column.title}
-          className="flex min-h-0 min-w-0 flex-col gap-3"
-        >
-          <h3 className="text-sm font-medium">{column.title}</h3>
-          <div className="relative min-h-0 flex-1 @3xl/pane:overflow-y-auto @3xl/pane:p-px">
-            {column.body}
-          </div>
-        </section>
-      ))}
     </div>
   )
 }

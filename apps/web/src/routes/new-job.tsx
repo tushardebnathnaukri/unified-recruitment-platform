@@ -21,7 +21,12 @@ export function NewJobPage() {
   const [params] = useSearchParams()
 
   const [value, setValue] = React.useState(() =>
-    formFrom(draftFrom(params), params.getAll("ind"))
+    formFrom(
+      draftFrom(params),
+      params.getAll("ind"),
+      params.get("jd"),
+      params.getAll("div")
+    )
   )
   const chat = chatFrom(params)
   // Anything besides the way back is a value the chat had gathered.

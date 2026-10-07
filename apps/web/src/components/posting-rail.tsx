@@ -560,17 +560,75 @@ function Glyph({
  * drawn, the step cut off at the edge being the affordance. It sits inside
  * the chat column, not across the rail, so it is the conversation's
  * progress and the rail stays the posting's record.
+ *
+ * `meter` (Chat v2.7) swaps the bottom border and the current step's
+ * underline for a PROGRESS BAR along the bar's bottom edge, a section under
+ * each step: full for a step that is done, part-filled for the current one by
+ * its own questions answered (`progress` on `RailStep` — Job details at 3 of 4
+ * is three quarters), empty for what is to come. The fill's width is a CSS
+ * transition, so it glides forward as answers land. One section per step
+ * rather than one bar across the whole, because the steps are not equal
+ * widths (each is sized by its label) and a single bar's quarter marks would
+ * not sit under them.
+ *
+ * `cheer` (Chat v2.7) is a step that has just finished in this visit: its
+ * tick badge pops in, its segment flashes the brand's tint, and the next
+ * step's tile pulses — the eye taken from what is done to what is next, while
+ * the meter fills. Web Animations on elements that are always there (the
+ * flash is an invisible layer in every segment), so nothing re-renders to
+ * play it and nothing plays on a reload. Skipped under reduced motion.
  */
 export function PlanBar({
   steps,
   reading,
+  cheer,
+  meter = false,
   className,
 }: {
   steps: RailStep[]
   reading: boolean
+  cheer?: { label: string; at: number } | null
+  meter?: boolean
   className?: string
 }) {
   const current = React.useRef<HTMLLIElement>(null)
+  const list = React.useRef<HTMLOListElement>(null)
+  const cheered = cheer?.label
+  const cheeredAt = cheer?.at
+  React.useEffect(() => {
+    if (!cheered || !list.current) return
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
+    const done = list.current.querySelector<HTMLElement>(
+      `[data-plan-step="${CSS.escape(cheered)}"]`
+    )
+    done?.querySelector("[data-plan-badge]")?.animate(
+      [
+        { transform: "scale(0.2)", opacity: 0 },
+        { transform: "scale(1.4)", opacity: 1, offset: 0.6 },
+        { transform: "scale(1)", opacity: 1 },
+      ],
+      { duration: 520, easing: "cubic-bezier(0.2, 0.8, 0.2, 1)" }
+    )
+    done
+      ?.querySelector("[data-plan-flash]")
+      ?.animate([{ opacity: 1 }, { opacity: 0 }], {
+        duration: 1200,
+        easing: "ease-out",
+      })
+    const next = list.current.querySelector<HTMLElement>(
+      '[aria-current="step"]'
+    )
+    next
+      ?.querySelector("[data-plan-tile]")
+      ?.animate(
+        [
+          { transform: "scale(1)" },
+          { transform: "scale(1.12)" },
+          { transform: "scale(1)" },
+        ],
+        { duration: 520, delay: 260, easing: "ease-out" }
+      )
+  }, [cheered, cheeredAt])
   const activeLabel = steps.find((step) => step.state === "active")?.label
   React.useEffect(() => {
     current.current?.scrollIntoView({
@@ -582,9 +640,11 @@ export function PlanBar({
 
   return (
     <ol
+      ref={list}
       aria-label="Plan"
       className={cn(
-        "flex shrink-0 snap-x [scrollbar-width:none] divide-x overflow-x-auto border-b bg-background [&::-webkit-scrollbar]:hidden",
+        "flex shrink-0 snap-x [scrollbar-width:none] divide-x overflow-x-auto bg-background [&::-webkit-scrollbar]:hidden",
+        !meter && "border-b",
         className
       )}
     >
@@ -597,19 +657,54 @@ export function PlanBar({
             key={step.label}
             ref={active ? current : undefined}
             aria-current={active ? "step" : undefined}
+            data-plan-step={step.label}
             className={cn(
               "relative flex flex-1 snap-start items-center gap-3 px-4 py-3",
               // The underline: a bar along the segment's bottom edge, over
-              // the rail's own border.
+              // the rail's own border — or, with `meter`, the progress bar
+              // below instead.
               active &&
+                !meter &&
                 "after:absolute after:inset-x-0 after:-bottom-px after:h-0.5 after:bg-primary"
             )}
           >
+            {meter ? (
+              <span
+                aria-hidden
+                className="pointer-events-none absolute inset-x-0 bottom-0 h-1 bg-muted"
+              >
+                <span
+                  className={cn(
+                    "block h-full transition-[width] duration-700 ease-out",
+                    step.state === "skipped"
+                      ? "bg-muted-foreground/40"
+                      : "bg-primary"
+                  )}
+                  style={{
+                    width: `${
+                      done || step.state === "skipped"
+                        ? 100
+                        : active
+                          ? Math.max((step.progress ?? 0) * 100, 6)
+                          : 0
+                    }%`,
+                  }}
+                />
+              </span>
+            ) : null}
+            {/* The flash `cheer` plays when this step finishes: the brand's
+                tint, invisible until then. */}
+            <span
+              data-plan-flash
+              aria-hidden
+              className="pointer-events-none absolute inset-0 bg-primary/10 opacity-0"
+            />
             {/* The step's own icon, always; done is a badge on the tile's
                 corner — a white tick in a brand circle — not a tick in
                 place of the icon, so a finished step still says what it
                 was. */}
             <span
+              data-plan-tile
               className={cn(
                 "relative grid size-10 shrink-0 place-items-center rounded-lg bg-muted",
                 step.state === "waiting"
@@ -624,6 +719,7 @@ export function PlanBar({
               )}
               {done ? (
                 <span
+                  data-plan-badge
                   aria-label="Done"
                   className="absolute -top-1 -right-1 grid size-4 place-items-center rounded-full bg-primary text-primary-foreground ring-2 ring-background"
                 >

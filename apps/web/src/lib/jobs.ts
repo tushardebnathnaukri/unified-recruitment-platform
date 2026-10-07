@@ -59,15 +59,12 @@ export type LiveJob = JobBase & {
   recommendations: number
   /** Of those, the ones nobody has looked at yet. */
   recommendationsNew: number
-  /** Candidates you moved forward who are now waiting on you. Also the
-   * "Contacted" bucket on the response manager — they are the same people. */
-  followUp: number
-  /** Marked worth talking to, not yet reached out to. */
+  /** Marked worth talking to — the Shortlisted bucket on the response
+   * manager. Those who were "Contacted" before that bucket was removed
+   * (6 Oct 2026) are counted here. */
   shortlisted: number
   /** Turned down. */
   notAFit: number
-  /** Age of the oldest of those, in days. 0 when nobody is waiting. */
-  followUpOldestDays: number
   /** Days until the posting expires. Under 7 gets called out. */
   expiresInDays: number
 }
@@ -82,7 +79,6 @@ export type ClosedJob = JobBase & {
   status: "closed"
   applicants: number
   shortlisted: number
-  contacted: number
   notAFit: number
   closedOn: string
   outcome: "Filled" | "Expired" | "Withdrawn"
@@ -122,10 +118,8 @@ const HIRIST_LIVE: LiveJob[] = [
     newSinceVisit: 32,
     recommendations: 42,
     recommendationsNew: 12,
-    followUp: 9,
-    shortlisted: 12,
+    shortlisted: 21,
     notAFit: 24,
-    followUpOldestDays: 6,
     expiresInDays: 6,
     plan: "Pro",
   },
@@ -139,10 +133,8 @@ const HIRIST_LIVE: LiveJob[] = [
     newSinceVisit: 0,
     recommendations: 28,
     recommendationsNew: 0,
-    followUp: 4,
-    shortlisted: 8,
+    shortlisted: 12,
     notAFit: 15,
-    followUpOldestDays: 2,
     expiresInDays: 3,
     plan: "Pro",
   },
@@ -156,10 +148,8 @@ const HIRIST_LIVE: LiveJob[] = [
     newSinceVisit: 7,
     recommendations: 31,
     recommendationsNew: 9,
-    followUp: 0,
     shortlisted: 0,
     notAFit: 0,
-    followUpOldestDays: 0,
     expiresInDays: 14,
     plan: "Basic",
   },
@@ -173,10 +163,8 @@ const HIRIST_LIVE: LiveJob[] = [
     newSinceVisit: 9,
     recommendations: 12,
     recommendationsNew: 0,
-    followUp: 3,
-    shortlisted: 6,
+    shortlisted: 9,
     notAFit: 12,
-    followUpOldestDays: 11,
     expiresInDays: 21,
     plan: "Basic",
   },
@@ -190,10 +178,8 @@ const HIRIST_LIVE: LiveJob[] = [
     newSinceVisit: 0,
     recommendations: 46,
     recommendationsNew: 46,
-    followUp: 0,
     shortlisted: 0,
     notAFit: 0,
-    followUpOldestDays: 0,
     expiresInDays: 29,
     plan: "Basic",
   },
@@ -207,10 +193,8 @@ const HIRIST_LIVE: LiveJob[] = [
     newSinceVisit: 0,
     recommendations: 0,
     recommendationsNew: 0,
-    followUp: 0,
     shortlisted: 0,
     notAFit: 0,
-    followUpOldestDays: 0,
     expiresInDays: 27,
     plan: "Pro",
   },
@@ -251,8 +235,7 @@ const HIRIST_CLOSED: ClosedJob[] = [
     title: "Senior Backend Engineer — Ads",
     location: "Bengaluru",
     applicants: 212,
-    shortlisted: 18,
-    contacted: 11,
+    shortlisted: 29,
     notAFit: 46,
     closedOn: "12 Aug",
     outcome: "Filled",
@@ -265,8 +248,7 @@ const HIRIST_CLOSED: ClosedJob[] = [
     title: "Regional Sales Head, West",
     location: "Mumbai",
     applicants: 34,
-    shortlisted: 4,
-    contacted: 2,
+    shortlisted: 6,
     notAFit: 9,
     closedOn: "28 Jul",
     outcome: "Expired",
@@ -279,8 +261,7 @@ const HIRIST_CLOSED: ClosedJob[] = [
     title: "Product Manager, Growth",
     location: "Bengaluru",
     applicants: 96,
-    shortlisted: 9,
-    contacted: 6,
+    shortlisted: 15,
     notAFit: 21,
     closedOn: "19 Jul",
     outcome: "Withdrawn",
@@ -338,9 +319,7 @@ const IIMJOBS_LIVE: LiveJob[] = [
     newSinceVisit: 11,
     recommendations: 18,
     recommendationsNew: 5,
-    followUp: 6,
-    followUpOldestDays: 4,
-    shortlisted: 9,
+    shortlisted: 15,
     notAFit: 18,
     expiresInDays: 9,
     plan: "Pro",
@@ -355,9 +334,7 @@ const IIMJOBS_LIVE: LiveJob[] = [
     newSinceVisit: 0,
     recommendations: 14,
     recommendationsNew: 0,
-    followUp: 3,
-    followUpOldestDays: 2,
-    shortlisted: 7,
+    shortlisted: 10,
     notAFit: 12,
     expiresInDays: 4,
     plan: "Pro",
@@ -372,8 +349,6 @@ const IIMJOBS_LIVE: LiveJob[] = [
     newSinceVisit: 22,
     recommendations: 9,
     recommendationsNew: 9,
-    followUp: 0,
-    followUpOldestDays: 0,
     shortlisted: 0,
     notAFit: 0,
     expiresInDays: 17,
@@ -389,9 +364,7 @@ const IIMJOBS_LIVE: LiveJob[] = [
     newSinceVisit: 5,
     recommendations: 6,
     recommendationsNew: 2,
-    followUp: 2,
-    followUpOldestDays: 3,
-    shortlisted: 4,
+    shortlisted: 6,
     notAFit: 9,
     expiresInDays: 24,
     plan: "Basic",
@@ -406,8 +379,6 @@ const IIMJOBS_LIVE: LiveJob[] = [
     newSinceVisit: 0,
     recommendations: 21,
     recommendationsNew: 21,
-    followUp: 0,
-    followUpOldestDays: 0,
     shortlisted: 0,
     notAFit: 0,
     expiresInDays: 30,
@@ -435,8 +406,7 @@ const IIMJOBS_CLOSED: ClosedJob[] = [
     title: "Head of Category, Personal Care",
     location: "Mumbai",
     applicants: 88,
-    shortlisted: 12,
-    contacted: 7,
+    shortlisted: 19,
     notAFit: 31,
     closedOn: "3 Aug",
     outcome: "Filled",
@@ -449,8 +419,7 @@ const IIMJOBS_CLOSED: ClosedJob[] = [
     title: "Zonal Manager, North",
     location: "Delhi NCR",
     applicants: 26,
-    shortlisted: 3,
-    contacted: 1,
+    shortlisted: 4,
     notAFit: 8,
     closedOn: "21 Jul",
     outcome: "Expired",

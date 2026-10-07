@@ -63,7 +63,7 @@ export const SOURCE_TAG: Record<
 }
 
 export const TAG_BASE =
-  "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap"
+  "inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium whitespace-nowrap"
 
 /** The field's look while the agent is still filling it, and when it errs. */
 export function fieldState({ shown, err }: { shown: boolean; err: boolean }) {

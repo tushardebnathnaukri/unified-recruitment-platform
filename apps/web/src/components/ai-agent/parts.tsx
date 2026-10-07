@@ -19,7 +19,13 @@ export function SourceChip({ tag }: { tag: SourceKey | "filling" }) {
   return <span className={cn(TAG_BASE, meta.tone)}>{meta.label}</span>
 }
 
-/** A field's lock: locked fields are left alone by the agent. */
+/**
+ * A field's lock: locked fields are left alone by the agent. An open lock on
+ * every field was a row of identical icons down the page, so it shows only
+ * on the field being pointed at or worked in (the field's wrapper carries
+ * `group/field`) — always when locked, and always on a touch screen, where
+ * there is no pointing at.
+ */
 export function LockButton({
   locked,
   label,
@@ -36,12 +42,17 @@ export function LockButton({
       onClick={onToggle}
       aria-label={aria}
       title={aria}
-      className="ml-auto grid size-7.5 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      className={cn(
+        "ml-auto grid size-7 place-items-center rounded-lg transition-[color,background-color,opacity]",
+        locked
+          ? "bg-primary/10 text-primary hover:bg-primary/15"
+          : "text-muted-foreground opacity-0 group-focus-within/field:opacity-100 group-hover/field:opacity-100 hover:bg-muted hover:text-foreground focus-visible:opacity-100 pointer-coarse:opacity-100"
+      )}
     >
       {locked ? (
-        <LockIcon className="size-4" />
+        <LockIcon className="size-3.5" />
       ) : (
-        <LockOpenIcon className="size-4" />
+        <LockOpenIcon className="size-3.5" />
       )}
     </button>
   )
@@ -70,7 +81,7 @@ export function FieldHead({
   const Label = htmlFor ? "label" : "span"
   return (
     <div className="flex items-center gap-2">
-      <Label htmlFor={htmlFor} className="text-[13px] font-semibold">
+      <Label htmlFor={htmlFor} className="text-sm font-medium">
         {label}
         {required ? (
           <span aria-hidden="true" className="ml-1 text-destructive">
@@ -103,19 +114,17 @@ export function FieldError({
 }
 
 /**
- * The insight source mark: "powered via calculus", three rising bars in the
- * AI's colours — the prototype's credit to Calculus, its salary and talent
- * intelligence, kept as it drew it.
+ * The insight source mark: three rising bars and "calculus" — the
+ * prototype's credit to Calculus, its salary and talent intelligence. It
+ * followed every insight as "powered via calculus"; the "powered via" is in
+ * the tooltip now, so a page of insights reads as insights, still credited.
  */
 export function CalcMark() {
   return (
     <span
       title="Insight from Calculus, salary & talent intelligence"
-      className="order-last ml-auto inline-flex shrink-0 items-center gap-1 pl-2.5 text-[11px] font-bold whitespace-nowrap text-primary/70 select-none"
+      className="order-last ml-auto inline-flex shrink-0 items-center gap-1 pl-2.5 text-[11px] font-medium whitespace-nowrap text-muted-foreground/80 select-none"
     >
-      <span className="mr-0.5 text-[10.5px] font-medium text-muted-foreground italic">
-        powered via
-      </span>
       <svg
         aria-hidden="true"
         width="11"

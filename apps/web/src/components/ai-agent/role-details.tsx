@@ -47,28 +47,41 @@ export function RoleDetails({
 
   return (
     <div className="flex flex-col gap-6.5 p-6">
-      <div className="flex flex-wrap items-center gap-2.5">
-        <span className="text-[11px] font-bold tracking-wider text-primary uppercase">
-          Role details
-        </span>
-        <span
-          className={cn(
-            "rounded-full px-2.5 py-0.5 text-xs font-bold",
-            view.progressDone
-              ? "bg-primary/10 text-primary"
-              : "bg-destructive/10 text-destructive"
-          )}
-        >
-          {view.progress}
-        </span>
-        <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-          <CheckIcon className="size-3" strokeWidth={2.5} />
-          Auto-saved
-        </span>
+      {/* The step band already names the step, so this says what to do on
+          it — including what the lock beside each field is for, now that the
+          lock only shows on the field you are pointing at. */}
+      <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <h2 className="text-base font-semibold">Check what I filled in</h2>
+          <p className="text-sm text-muted-foreground">
+            Each field says where it came from. Lock one and I’ll leave it
+            alone.
+          </p>
+        </div>
+        <div className="flex items-center gap-2.5 pt-0.5">
+          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+            <CheckIcon className="size-3" strokeWidth={2.5} />
+            Auto-saved
+          </span>
+          {/* While the agent is still filling, the footer and its column
+              say so; a red "Preparing…" here read as something wrong. */}
+          {!state.filling ? (
+            <span
+              className={cn(
+                "rounded-full px-2.5 py-0.5 text-xs font-medium",
+                view.progressDone
+                  ? "bg-primary/10 text-primary"
+                  : "bg-destructive/10 text-destructive"
+              )}
+            >
+              {view.progress}
+            </span>
+          ) : null}
+        </div>
       </div>
 
       {/* Title */}
-      <div className="flex flex-col gap-2">
+      <div className="group/field flex flex-col gap-2">
         <FieldHead
           htmlFor="f-title"
           label="Job title"
@@ -99,7 +112,7 @@ export function RoleDetails({
       </div>
 
       {/* Company */}
-      <div className="flex flex-col gap-2">
+      <div className="group/field flex flex-col gap-2">
         <FieldHead
           htmlFor="f-company"
           label="Which company are you hiring for?"
@@ -116,7 +129,7 @@ export function RoleDetails({
       </div>
 
       {/* Locations */}
-      <div className="flex flex-col gap-2">
+      <div className="group/field flex flex-col gap-2">
         <FieldHead
           htmlFor="f-loc"
           label="Location"
@@ -180,7 +193,7 @@ export function RoleDetails({
 
       <div className="grid gap-5 sm:grid-cols-2">
         {/* Experience */}
-        <div className="flex flex-col gap-2">
+        <div className="group/field flex flex-col gap-2">
           <FieldHead label="Years of experience" required {...lock("exp")} />
           <div className="flex items-center gap-2">
             <PickSelect
@@ -214,7 +227,7 @@ export function RoleDetails({
         </div>
 
         {/* Salary */}
-        <div className="flex flex-col gap-2">
+        <div className="group/field flex flex-col gap-2">
           <FieldHead
             label="Annual salary (₹ lakhs)"
             required

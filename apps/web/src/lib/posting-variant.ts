@@ -16,6 +16,18 @@ import { persistedAtom } from "@/lib/persisted"
  * - `rail2` is the rail with its Plan lifted out and laid across the top of
  *   the page as a horizontal stepper, so the rail is only the posting: the
  *   stages are the page's progress, not the rail's.
+ * - `rail25` ("Chat v2.5") is `rail2` with a JD step between the posting and
+ *   the selection criteria: a JD the recruiter has is read (its must-haves
+ *   become criteria, its diversity options go to the form), and one they do
+ *   not have is drafted from questions Gemini writes for the role. The JD
+ *   step lives in `lib/job-refine.ts` and is switched on by `answersFor`'s
+ *   `jd` option, so every other layout reads exactly as before.
+ * - `rail27` ("Chat v2.7") is `rail25` that makes progress felt: when a step
+ *   finishes in this visit its tick pops on the plan bar, the underline
+ *   sweeps to the next step, a chime plays and confetti bursts from the tick
+ *   (a bigger burst and chime when the last step does), and the transcript
+ *   carries a milestone line at every step's end — what it recorded, and
+ *   what is next (`lib/step-milestones.ts`). Reads exactly as `rail25`.
  * - `rail3` ("Chat v3") is `rail2` with the AI Agent's ideas on our own
  *   conversation: the agent fills what the pool can tell it, every value says
  *   where it came from and can be locked, the requirements are Must have /
@@ -48,6 +60,8 @@ import { persistedAtom } from "@/lib/persisted"
 export type PostingVariant =
   | "rail"
   | "rail2"
+  | "rail25"
+  | "rail27"
   | "rail3"
   | "form"
   | "hybrid"
@@ -69,6 +83,16 @@ export const POSTING_VARIANTS: {
     value: "rail2",
     label: "Chat with rail v2",
     hint: "The steps across the top; the rail holds the posting.",
+  },
+  {
+    value: "rail25",
+    label: "Chat v2.5",
+    hint: "Chat v2, plus a JD step before the selection criteria: read yours, or draft one from questions written for the role.",
+  },
+  {
+    value: "rail27",
+    label: "Chat v2.7",
+    hint: "Chat v2.5, with each finished step celebrated: the tick pops, a chime, confetti, and a milestone line saying what is next.",
   },
   {
     value: "rail3",

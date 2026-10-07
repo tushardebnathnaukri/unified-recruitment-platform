@@ -29,10 +29,10 @@ import { liveJobsFor, type LiveJob } from "@/lib/jobs"
  * show — the applicant page, or the profile over the search's results — not a
  * fourth copy of a candidate, and each row says which door they came through.
  *
- * ONLY CONTACTED APPLICANTS GET A SLOT. Booking an interview implies the
- * recruiter already reached out, so a posting's slots go to its Contacted
- * bucket rather than anybody still undecided. A search has no Contacted people
- * in the mock, so its slots go to its best matches — see below.
+ * ONLY SHORTLISTED APPLICANTS GET A SLOT. Booking an interview is a yes — it
+ * shortlists whoever is booked — so a posting's slots go to its Shortlisted
+ * bucket rather than anybody still undecided. A search has no shortlisted
+ * people in the mock, so its slots go to its best matches — see below.
  */
 
 export type InterviewStatus = "confirmed" | "pending" | "completed"
@@ -191,20 +191,20 @@ export function interviewsFor(brand: Brand): Interview[] {
     })
   }
 
-  // Applied: the posting's own Contacted bucket.
+  // Applied: the posting's own Shortlisted bucket.
   for (const job of jobs) {
-    const contacted = applicantsFor(job).filter(
-      (applicant) => applicant.status === "contacted"
+    const shortlisted = applicantsFor(job).filter(
+      (applicant) => applicant.status === "shortlisted"
     )
-    for (const candidate of contacted.slice(0, 2))
+    for (const candidate of shortlisted.slice(0, 2))
       book(job, candidate, jobSource(job, candidate.id))
   }
 
   // Sourced: somebody a search found, booked against one of the recruiter's
   // live postings. Their profile opens over the search's results, because they
   // never applied — there is no applicant page for them. A search deals nobody
-  // as contacted (its stand-in posting has no follow-ups), so its best two
-  // matches stand in for the people the recruiter reached out to.
+  // as shortlisted (its stand-in posting has none), so its best two matches
+  // stand in for the people the recruiter said yes to.
   for (const search of recentSearchesFor(brand).slice(0, 3)) {
     if (jobs.length === 0) break
     const href = searchHref(search)

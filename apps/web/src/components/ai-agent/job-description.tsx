@@ -62,7 +62,7 @@ export function JobDescription({
         </Button>
       ) : null}
 
-      <div className="flex flex-col gap-2">
+      <div className="group/field flex flex-col gap-2">
         <FieldHead
           htmlFor="f-skill"
           label="Skills"

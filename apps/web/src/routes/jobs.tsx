@@ -373,9 +373,10 @@ function Where({ children }: { children: React.ReactNode }) {
  * the card is now read for what it holds rather than scanned for what is wrong.
  * The dashboard's "Live jobs" list renders this same row, so the two agree.
  *
- * Recommendations and the follow-up age have both come off the card. Both are
- * still in `lib/jobs.ts` — nothing reads `followUpOldestDays` now — if this
- * line should carry either again.
+ * Recommendations, the follow-up count and its age have all come off the card.
+ * Recommendations are still in `lib/jobs.ts` if this line should carry them
+ * again; the follow-up count went with the Contacted bucket (6 Oct 2026), its
+ * people folded into `shortlisted`.
  */
 export function LiveRow({ job }: { job: LiveJob }) {
   return (
@@ -403,11 +404,6 @@ export function LiveRow({ job }: { job: LiveJob }) {
             )}
             {job.newSinceVisit > 0 && (
               <Count value={job.newSinceVisit} label="new" />
-            )}
-            {job.followUp === 0 ? (
-              <MetaItem>Nobody to follow up</MetaItem>
-            ) : (
-              <Count value={job.followUp} label="to follow up" />
             )}
           </Meta>
         </>

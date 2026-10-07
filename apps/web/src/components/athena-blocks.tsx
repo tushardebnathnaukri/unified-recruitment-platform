@@ -116,13 +116,6 @@ function CandidatesBlock({
                 >
                   Shortlist
                 </Button>
-                <Button
-                  size="xs"
-                  variant="outline"
-                  onClick={() => decide(person.id, "maybe")}
-                >
-                  Maybe
-                </Button>
               </div>
             ) : (
               <div className="flex items-center gap-1.5">

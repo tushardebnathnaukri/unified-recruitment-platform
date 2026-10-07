@@ -697,8 +697,6 @@ export const FILTER_KEYS = [
  */
 export const EXCLUSIONS = [
   { value: "shortlisted", label: "Shortlisted" },
-  { value: "maybe", label: "Maybe" },
-  { value: "contacted", label: "Contacted" },
   { value: "rejected", label: "Not a fit" },
 ] as const
 

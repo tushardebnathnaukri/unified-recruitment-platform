@@ -124,7 +124,7 @@ export function savedListsFor(brand: Brand): SavedList[] {
 
 export function savedCandidatesFor(brand: Brand): SavedCandidate[] {
   const worthKeeping = (applicant: Applicant) =>
-    applicant.status === "shortlisted" || applicant.status === "maybe"
+    applicant.status === "shortlisted"
 
   const found: { applicant: Applicant; from: SavedFrom; bench?: string }[] = []
 

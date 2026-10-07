@@ -72,9 +72,14 @@ import {
   advance,
   decodeAnswers,
   decodeChange,
+  descriptionFor,
+  JD_DRAFT,
+  jdItem,
   LABELS,
+  pendingProbes,
   pendingTopics,
   POST_NOW,
+  probeItem,
   refineItem,
   screeningItem,
   searchHrefFor,
@@ -1612,7 +1617,43 @@ export function askAssist(skill: string, brand: Brand): ComposeAssist {
  * leaving the chat half-way through loses nothing.
  */
 export function intakeReply(state: IntakeState, brand: Brand): Answer {
-  const to = postingHref(state.draft, { industries: state.brief.industries })
+  const to = postingHref(state.draft, {
+    industries: state.brief.industries,
+    description: descriptionFor(state),
+    diversity: state.jd?.diversity,
+  })
+
+  // CHAT V2.5: WHETHER THERE IS A JD, between the posting and the criteria.
+  if (state.stage === "jd" && state.jd?.status === "paste") {
+    return {
+      said: [
+        state.heard,
+        "Paste the JD below, or attach it with the paperclip — a PDF or Word doc works.",
+      ]
+        .filter(Boolean)
+        .join(" "),
+      blocks: [],
+    }
+  }
+  if (state.stage === "jd") {
+    return {
+      said: [
+        state.heard,
+        "That's the posting. Before the selection criteria — do you have a JD for this role?",
+      ]
+        .filter(Boolean)
+        .join(" "),
+      noted: state.noted,
+      blocks: [
+        {
+          kind: "questionnaire",
+          items: [jdItem(state)],
+          submit: "Continue",
+          postNow: POST_NOW,
+        },
+      ],
+    }
+  }
 
   // FIRST, HOW IT STARTS — a clarifying card, because a JD or an old posting
   // changes every question after it (`lib/job-start.ts`).
@@ -1695,7 +1736,13 @@ export function intakeReply(state: IntakeState, brand: Brand): Answer {
           postingItem(id, state, brand)
         )
       : state.stage === "refine"
-        ? pendingTopics(state).map((topic) => refineItem(topic, state, brand))
+        ? [
+            ...pendingTopics(state).map((topic) =>
+              refineItem(topic, state, brand)
+            ),
+            // Chat v2.5: the questions written for this role, after the topics.
+            ...pendingProbes(state).map(probeItem),
+          ]
         : state.stage === "screen"
           ? [screeningItem(state)]
           : []
@@ -1711,9 +1758,13 @@ export function intakeReply(state: IntakeState, brand: Brand): Answer {
           ? criteriaOn(state)
             ? "That's the selection criteria. One optional addition — should candidates answer a few questions when they apply?"
             : "That's the posting. One optional addition — should candidates answer a few questions when they apply?"
-          : state.settled.length === 0
-            ? "That's the posting. Before it goes up, a few quick questions to sharpen who we look for."
-            : "One more go at these."
+          : state.settled.length === 0 && state.jd?.status === "draft"
+            ? "To draft your JD, a few things only you can tell me."
+            : state.settled.length === 0 && state.jd?.status === "read"
+              ? "I've read your JD. A few things it doesn't say:"
+              : state.settled.length === 0
+                ? "That's the posting. Before it goes up, a few quick questions to sharpen who we look for."
+                : "One more go at these."
     return {
       said: [state.heard, lead].filter(Boolean).join(" "),
       noted: state.noted,
@@ -1726,7 +1777,9 @@ export function intakeReply(state: IntakeState, brand: Brand): Answer {
               ? "Continue"
               : state.stage === "screen"
                 ? "Set questions"
-                : "Finish",
+                : state.jd?.status === "draft"
+                  ? "Draft my JD"
+                  : "Finish",
           ...(state.stage === "posting"
             ? { form: { label: "Fill in a form instead", to } }
             : { postNow: POST_NOW }),
@@ -1768,7 +1821,8 @@ export function intakeReply(state: IntakeState, brand: Brand): Answer {
       {
         kind: "posting",
         rows: summaryRows(state.draft),
-        description: describePosting(state.draft),
+        // Chat v2.5: their own JD, or the one drafted from the answers.
+        description: descriptionFor(state) ?? describePosting(state.draft),
         to,
         brief,
         briefNote: notes.join(" "),
@@ -1836,9 +1890,15 @@ export function answersFor(
   {
     criteria = true,
     suggest = false,
+    jd = false,
     routes = {},
   }: {
     criteria?: boolean
+    /**
+     * Chat v2.5 (`rail25`): ask whether there is a JD between the posting and
+     * the selection criteria. Off for every other layout.
+     */
+    jd?: boolean
     /** Where Gemini (or the rules standing in) sent sentences the keywords could not. */
     routes?: Record<string, RouteDecision>
     /**
@@ -2080,7 +2140,7 @@ export function answersFor(
     }
 
     if ((exact && exact.id === "posting") || routed?.id === "posting") {
-      intake = startIntake({ criteria })
+      intake = startIntake({ criteria, jdStep: jd })
       posting = intake
       searching = null
       flow = "posting"
@@ -2131,6 +2191,8 @@ export function answersFor(
         // Chat v3's readers see a different state (the agent's fills taken
         // out), so its readings are its own.
         ...(suggest ? ["v3"] : []),
+        // Chat v2.5's readings pass through a step the others never reach.
+        ...(jd ? ["v25"] : []),
         ...turns,
       ].join("\u0001")
       const reading = readings[key]
@@ -2153,8 +2215,13 @@ export function answersFor(
       // copied — so a "Read by rules" step over them would describe a click.
       // Keyed on the turn itself, so a sentence typed INSTEAD of choosing (a
       // real reading) still gets its step.
+      // Chat v2.5's JD choice is a button too — except drafting, which
+      // asks Gemini for the questions and so has a reading to show.
       const chose = Boolean(
-        submitted && ("start" in submitted || "base" in submitted)
+        submitted &&
+        ("start" in submitted ||
+          "base" in submitted ||
+          ("jd" in submitted && submitted.jd !== JD_DRAFT))
       )
       answers.push({
         ...intakeReply(intake, brand),

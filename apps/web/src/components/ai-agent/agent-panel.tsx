@@ -1,12 +1,13 @@
 import {
+  ArrowRightIcon,
   BuildingIcon,
   CheckIcon,
+  CircleAlertIcon,
   ChevronDownIcon,
   LoaderCircleIcon,
   PencilIcon,
   SparklesIcon,
   UserIcon,
-  XIcon,
 } from "lucide-react"
 
 import { cn } from "@workspace/ui/lib/utils"
@@ -36,25 +37,29 @@ const KIND = {
 export function AgentPanel({ panel, log }: { panel: Panel; log: Log }) {
   const { brandName } = useAgent()
   return (
-    <div className="flex flex-col gap-3.5">
-      <section className="flex flex-col gap-3.5 rounded-2xl border border-border bg-background p-4">
-        <div className="flex items-center gap-2.5">
-          <AiTile className="size-7.5 rounded-[9px]" iconClassName="size-4" />
-          <div className="flex flex-col">
-            <span className="text-[15px] font-bold">
-              Your {brandName} AI Agent
-            </span>
-            <span
-              className={cn(
-                "text-xs font-semibold",
-                panel.statusAi ? "text-primary" : "text-muted-foreground"
-              )}
-            >
-              {panel.status}
-            </span>
-          </div>
+    <div className="flex flex-col">
+      {/* As tall as the step band beside it, so the two read as one row. */}
+      <div className="flex h-14 shrink-0 items-center gap-2.5 border-b px-4">
+        <AiTile className="size-8 rounded-lg" iconClassName="size-4" />
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate text-sm font-semibold">
+            Your {brandName} AI Agent
+          </span>
+          <span
+            className={cn(
+              "inline-flex items-center gap-1.5 truncate text-xs",
+              panel.statusAi ? "text-primary" : "text-muted-foreground"
+            )}
+          >
+            {panel.filling ? (
+              <LoaderCircleIcon className="size-3 shrink-0 animate-spin" />
+            ) : null}
+            {panel.status}
+          </span>
         </div>
+      </div>
 
+      <section className="flex flex-col gap-3.5 p-4">
         {panel.filling ? (
           <div className="flex flex-col">
             {panel.think.map((step) => (
@@ -102,7 +107,7 @@ export function AgentPanel({ panel, log }: { panel: Panel; log: Log }) {
           <div className="flex animate-in flex-col gap-1 fade-in">
             {panel.todo.length ? (
               <>
-                <span className="text-xs font-bold text-destructive">
+                <span className="pb-0.5 text-xs font-semibold text-destructive">
                   Needs you · {panel.todo.length}
                 </span>
                 {panel.todoShown.map((todo) => (
@@ -110,22 +115,23 @@ export function AgentPanel({ panel, log }: { panel: Panel; log: Log }) {
                     key={todo.t}
                     type="button"
                     onClick={todo.go}
-                    className="flex min-h-10 w-full items-center gap-2.5 rounded-xl border border-destructive/25 bg-destructive/5 px-2.5 py-2 text-left text-destructive transition-colors hover:bg-destructive/10"
+                    className="group/todo flex min-h-10 w-full items-center gap-2.5 rounded-xl border bg-background px-3 py-2 text-left shadow-xs transition-colors hover:border-primary/30 hover:bg-muted/50"
                   >
-                    <span className="grid size-5 shrink-0 place-items-center rounded-full bg-destructive text-background">
-                      <XIcon className="size-2.5" strokeWidth={4} />
-                    </span>
-                    <span className="flex-1 text-[13px] font-semibold">
+                    <CircleAlertIcon className="size-4 shrink-0 text-destructive" />
+                    <span className="flex-1 text-[13px] font-medium">
                       {todo.t}
                     </span>
-                    <span className="text-xs font-bold">Add →</span>
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary">
+                      Add
+                      <ArrowRightIcon className="size-3 transition-transform group-hover/todo:translate-x-0.5" />
+                    </span>
                   </button>
                 ))}
                 {panel.todoMore ? (
                   <button
                     type="button"
                     onClick={panel.toggleTodoAll}
-                    className="self-start py-0.5 text-xs font-bold text-destructive"
+                    className="self-start py-0.5 text-xs font-semibold text-destructive hover:underline"
                   >
                     {panel.todoMore}
                   </button>
@@ -134,14 +140,14 @@ export function AgentPanel({ panel, log }: { panel: Panel; log: Log }) {
             ) : null}
 
             <div className="mt-1.5 flex items-center gap-2">
-              <span className="flex-1 text-xs font-bold text-muted-foreground">
+              <span className="flex-1 text-xs font-semibold text-muted-foreground">
                 {panel.doneHead}
               </span>
               {panel.doneMore ? (
                 <button
                   type="button"
                   onClick={panel.toggleDoneAll}
-                  className="py-0.5 text-xs font-bold text-primary"
+                  className="py-0.5 text-xs font-semibold text-primary hover:underline"
                 >
                   {panel.doneMore}
                 </button>
@@ -157,7 +163,7 @@ export function AgentPanel({ panel, log }: { panel: Panel; log: Log }) {
                   <span className="grid size-5 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground">
                     <CheckIcon className="size-2.5" strokeWidth={4} />
                   </span>
-                  <span className="flex-1 font-semibold">{done.t}</span>
+                  <span className="flex-1 font-medium">{done.t}</span>
                   <span
                     role="img"
                     aria-label={done.src}
@@ -205,7 +211,7 @@ export function AgentPanel({ panel, log }: { panel: Panel; log: Log }) {
 
             {panel.upcoming.length ? (
               <>
-                <span className="mt-1.5 text-xs font-bold text-primary">
+                <span className="mt-2 text-xs font-semibold text-muted-foreground">
                   Working on next
                 </span>
                 {panel.upcoming.map((next) => (
@@ -230,7 +236,7 @@ export function AgentPanel({ panel, log }: { panel: Panel; log: Log }) {
 
 function ActivityLog({ log }: { log: Log }) {
   return (
-    <section className="flex flex-col gap-1.5 rounded-2xl border bg-background px-3.5 py-2.5">
+    <section className="flex flex-col gap-1.5 border-t px-4 py-2.5">
       <button
         type="button"
         onClick={log.toggle}
@@ -239,7 +245,7 @@ function ActivityLog({ log }: { log: Log }) {
       >
         <AiTile className="size-4 rounded-[5px]" iconClassName="size-2.5" />
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className="text-[13px] font-bold">{log.title}</span>
+          <span className="text-[13px] font-semibold">{log.title}</span>
           <span className="truncate text-xs text-muted-foreground">
             {log.latest}
           </span>

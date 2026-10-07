@@ -82,6 +82,62 @@ export async function askIntake(
   return { model: body.model ?? "", result: body.result }
 }
 
+/** What `/api/probe` is asked: the posting so far, and the topics it may pick. */
+export type ProbePayload = {
+  brand: string
+  draft: unknown
+  brief: unknown
+  /** The fixed refinement topics still open, with the rules' wording. */
+  topics: { id: string; prompt: string }[]
+}
+
+/**
+ * A JD's must-haves, good-to-haves and diversity options, read by the model
+ * (Chat v2.5) — asked beside `askIntake`, which fills the brief's fixed slots
+ * from the same JD. Throws with the server's reason on failure.
+ */
+export async function askJdRead(payload: {
+  text: string
+  title: string | null
+}): Promise<{ model: string; result: unknown }> {
+  const response = await fetch(`${BASE}/api/jd`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  const body = (await response.json().catch(() => ({}))) as {
+    error?: string
+    model?: string
+    result?: unknown
+  }
+  if (!response.ok)
+    throw new Error(body.error ?? `AI server returned ${response.status}`)
+  return { model: body.model ?? "", result: body.result }
+}
+
+/**
+ * The questions to draft a JD with (Chat v2.5): which of the fixed topics
+ * matter most for this role, and a few written for it. Throws with the
+ * server's reason on failure.
+ */
+export async function askProbe(
+  payload: ProbePayload
+): Promise<{ model: string; result: unknown }> {
+  const response = await fetch(`${BASE}/api/probe`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+  const body = (await response.json().catch(() => ({}))) as {
+    error?: string
+    model?: string
+    result?: unknown
+  }
+  if (!response.ok)
+    throw new Error(body.error ?? `AI server returned ${response.status}`)
+  return { model: body.model ?? "", result: body.result }
+}
+
 /**
  * Which Dashboard skill a sentence asks for, read by the model — only asked
  * when the page's keywords tie or miss (`lib/agent-route-ai.ts`). Throws with

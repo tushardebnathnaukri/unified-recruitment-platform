@@ -443,10 +443,8 @@ export function resultsFor(
     newSinceVisit: recent?.newSince ?? 0,
     recommendations: 0,
     recommendationsNew: 0,
-    followUp: 0,
     shortlisted: 0,
     notAFit: 0,
-    followUpOldestDays: 0,
     expiresInDays: 0,
   }
 

@@ -96,8 +96,9 @@ and `PageHeaderProvider` (a portal slot, not state).
 - **`packages/ui`** (`@workspace/ui`) — shadcn/ui components on Base UI primitives, documented in Storybook.
 - **`apps/ai`** — a small Node server that holds the Gemini key, so the page never does. Node ≥
   22.18 runs its TypeScript directly (type stripping): no dependencies, no build, `tsc --noEmit`
-  only to check. Five routes — `GET /api/health`, `POST /api/intake`, `POST /api/route` (which
-  Dashboard skill a sentence asks for), `POST /api/transcribe`, and
+  only to check. Seven routes — `GET /api/health`, `POST /api/intake`, `POST /api/route` (which
+  Dashboard skill a sentence asks for), `POST /api/jd` and `POST /api/probe` (Chat v2.5's JD
+  step, `jd.ts`), `POST /api/transcribe`, and
   `GET|PUT /api/sessions/:id` (an Agent conversation's turns, no key needed) —
   each deliberately narrow (a fixed schema in, a fixed shape out), with a per-IP rate limit
   (40 per 5 minutes) and CORS from `ALLOWED_ORIGINS` (localhost when unset). Vite's dev and
@@ -301,21 +302,16 @@ puts that gap back for itself with `pt-4`. Below the breakpoint the columns stac
 to being a card, because nothing is beside it to be a column against — a narrow band of widths
 (roughly 768–816px, since `CandidateList` has already collapsed the nav to its icon rail by then).
 
-**The pill row is a draft, applied on a button; the rail is not.** The pills and the drawer write
-local state in `FilterBar`, and only **Apply** puts it in the URL — so "12+ years, in Pune" lands as
-one change instead of the list shuffling and the counts moving twice on the way to a question nobody
-asked. **Clear** sits beside it; both are disabled until there is something to apply or clear, and
-the menus keep their "Any …" reset option as well. Enter in the search popover applies. Sort is
-deliberately **not** in the draft: it orders the list and removes nobody, so there is nothing to
-weigh before committing to it. The row's "N of M match" hides while changes are pending, because it
-counts the applied list and Apply is what makes it true again.
-
-The rail still applies as you pick, because it has the room to print the consequence beside each
-choice ("Pune 12") — the number is the preview a draft would otherwise be for. The two are never on
-screen together, and the draft **follows the URL** whenever it changes from somewhere else: a chip
-dropped from the applied bar, a table header, the rail at a wider size, a pasted link. That is
-derived during render rather than in an effect, the way the database's search box follows its query.
-If the rail should hold back too, that is a one-line change to where its `onChange` goes.
+**The pill row applies as you pick, like the rail.** It was a draft behind **Apply** and **Clear**
+until 6 Oct 2026, so "12+ years, in Pune" landed as one change; that went because most pills close
+on one pick (so batching saved almost nothing), the rail already applied as you picked, and the two
+buttons sat disabled most of the time. Two places still hold a draft: each **location picker's
+popover applies when it closes** (the only pick-many pills, so three cities land as one change),
+and the **drawer on a phone** is edited as a draft, started from what is applied each time it
+opens, and applied by **"Show N results"** (N counted over the draft with `matchesFilters`, which
+is why `FilterBar` takes `people`). Closing the drawer any other way discards it. The search
+popover narrows as you type. **Clear** shows only while a filter is on, as a quiet ghost button;
+each pill's "Any …" option still undoes that one. Sort was never in a draft: it removes nobody.
 
 **The database has two filter designs, picked on /settings** ("Database filters", via
 `useFilterVariant` in `lib/filter-variant.ts` — localStorage, no provider). **Refine panel** (the
@@ -365,8 +361,8 @@ exactly the ones the search named (`skillsIn`) — none if it named none. Recent
 too; the Dashboard shows the first three through the shared `SearchRow`, so those three are what its
 Storybook composition and Figma frame copy.
 
-The response manager keeps its tab, view, sort, filters, selected candidate, open profile panel and
-CV/profile tab in the query string, so any state worth showing someone is in the URL;
+The response manager keeps its tab, view, sort, filters, selected candidate and open profile panel
+in the query string, so any state worth showing someone is in the URL;
 `applicants.ts` generates its people from a seeded LCG so a row can be pointed at in a review, and
 their bucket sizes come from the job's own counts so the Jobs list and the detail page cannot
 disagree.
@@ -391,7 +387,9 @@ My Lists does not yet. Its header filters are the refine panel's own sections, p
 filter in three places. The Candidate header keeps the list's `find` box.
 
 **The response manager is organised by decision, not by reading.** Statuses are `undecided`,
-`maybe`, `shortlisted`, `contacted`, `rejected` — there is no unread or seen, because the screen
+`shortlisted`, `rejected` — a yes or a no; Maybe and Contacted were removed on 6 Oct 2026, and
+reaching out (Message, an interview) is something done to a person rather than a place they sit.
+There is no unread or seen, because the screen
 cannot know what was read and a recruiter's daily question is "who still needs a decision from me".
 Arrival is a separate fact: `newSinceVisit`, against a constant `LAST_VISIT` (one user, no
 accounts). The page opens on **To review** — everybody undecided — as two runs, "New since …" then
@@ -433,7 +431,7 @@ the card icon, the overflow item, the panel, the candidate page). An applicant's
 sourced person picks one of the live postings. It warns on a calendar clash, lands as Awaiting
 Candidate Response, and booking again reschedules (one interview per person per posting). State is
 `useInterviews` (atoms), the same seeded-plus-overlay shape as the other overlays, and /interviews
-reads it. **Booking moves the person to Contacted only when the dialog closes**: on a queue the
+reads it. **Booking shortlists the person only when the dialog closes**: on a queue the
 decision takes the card away, and the dialog lives inside the card. The overflow item's dialog sits
 around the whole menu for the same reason — menu items unmount when the menu closes.
 
@@ -520,7 +518,7 @@ an `answer()` run at the moment it is asked, against the page's current data. Th
 in `lib/athena.ts` from the same mock data and decisions overlay (`useDecisions`) the screen reads, so "the
 strongest five" are Best match's top five, and shortlisting from the pane moves the tab count
 behind it. Free text gets `CANNOT_ANSWER`, never a plausible invention. Replies are **blocks**
-(`athena-blocks.tsx`): text, candidate rows with Shortlist/Maybe, a **proposal** (a batch decision
+(`athena-blocks.tsx`): text, candidate rows with Shortlist, a **proposal** (a batch decision
 that does nothing until Apply, and has Undo), link rows (to a route or to a message thread), and a
 **draft**. The job page, the candidate page, Search Resume's results and the Dashboard register contexts so
 far. Every other page shows only the "Looking at" line.
@@ -537,7 +535,7 @@ question**, because every mock slot is dated after today, so the answer could on
 posting for anyone found through a search) and lays people into that calendar's free slots in tick
 order, skipping taken slots. The whole plan is shown before Send. Anyone who already has a slot is
 skipped rather than moved, and anyone who doesn't fit says so. Invites go out as Awaiting Candidate
-Response. The people booked move to Contacted only when the dialog closes, and the selection clears
+Response. The people booked are shortlisted only when the dialog closes, and the selection clears
 only if invites went out.
 
 **On Search Resume, Athena reads the same numbers the page does.** "Why is the best match first?"
@@ -597,15 +595,16 @@ whole pool, not the first page, because a rule that fires on one card in ten loo
 ("which threads are waiting" drops somebody the moment you reply) and fill drafts. A draft card puts
 text into each recipient's composer and goes to `/messages` — one recipient lands on that thread,
 several on the list. The recruiter sends it from the thread, and
-the list row says "Draft:" until they do. A thread started for an applicant carries `applicantId`,
-and its first send moves them to Contacted, as the candidate page's Message button does. The body may
+the list row says "Draft:" until they do. A thread started for an applicant carries `applicantId`;
+sending moves nobody. The Message button on a card, the profile panel and the candidate page opens
+that person's thread the same way (`useMessageTo`), with a first message drafted. The body may
 say `{first name}`, filled in per recipient, so one draft serves a shortlist. The composer is
 a textarea because a draft is read before it is sent.
 
 **Questions also come from the list, not only the page.** Every card and table row in
 `CandidateList` has a checkbox, plus "Select all N" over the cards and in the table header (the
 whole tab, not the page on screen). The ticked people are `?picked=`, in tick order. The selection
-bar carries the card's three decisions (Shortlist / Maybe / Not a fit, with one Undo for the whole
+bar carries the card's two decisions (Reject / Shortlist, with one Undo for the whole
 batch, on results as well as queues), a ⋯ menu, and Athena. The ⋯ menu has Save to list, Message and
 Download CVs. **Save to list adds everyone to a list and removes nobody from any**, unlike the card's
 menu, which toggles. **Message writes drafts** into each thread with `firstMessageTo` and opens the
@@ -657,13 +656,19 @@ questionnaire is ONE turn, encoded as `Answers: {json}` (`encodeAnswers` / `deco
 `lib/job-refine.ts`). `answersFor` in `lib/agent.ts` folds the turns into the replies on every
 render.
 
-**The landing has two designs, picked on /settings** ("Dashboard landing", `useAgentLandingVariant` in
+**The landing has three designs, picked on /settings** ("Dashboard landing", `useAgentLandingVariant` in
 `lib/agent-landing-variant.ts`). **Chat** (the default) is the Aura centred over the cards
 landing's own heading and subheading, four action pills (`HERO_ACTIONS` in `lib/agent.ts`) and `AgentComposer size="hero"` — a
 taller box, attach and quick actions behind a "+", the mic on the right, and a send arrow only once
 there is something to send. Under the box it shows **the Dashboard's own overview** — the four
 tiles, Live jobs and Recent searches — from `components/overview.tsx`, which the Dashboard now
-draws too, so the two cannot disagree. **Cards** is the first design. The pills are Create Job, Search Resume,
+draws too, so the two cannot disagree. **Chat with tabs** is Chat with the pills merged into the box as
+shadcn's `line` tabs along its top edge, pipes between them (`LandingTabs` in `routes/agent.tsx`,
+the composer's `header` slot): an **Ask** tab comes first and is "no pill pressed", so exactly one
+tab is always selected; the selected tab is the mode, so the box draws no mode chip
+(`modeChip={false}`), and Esc or Backspace in an empty box goes back to Ask. A tab the text heads
+for lights as a pill would. Attach and quick actions are their own buttons beside the mic
+(`inlineTools`) rather than behind the "+". **Cards** is the first design. The pills are Create Job, Search Resume,
 Review applicants and Hiring Insights, and every one asks a question a skill already answers.
 Review applicants prints the number its answer opens on ("92 waiting") from `undecidedTotal`,
 which the answer uses too, so the pill and its reply cannot disagree. A "Job updates" pill (new
@@ -824,6 +829,81 @@ Gemini reader for it: **a card can only skip what it asked** — shown one quest
 reported the fields it was not shown as skipped, so `reply.skipped` is filtered to the answered
 keys.
 
+**"Chat v2.5" is Chat with rail v2 with a JD step between the posting and the selection criteria**
+(`rail25` in `lib/posting-variant.ts`; the step is `stage: "jd"` in `lib/job-refine.ts`, switched on
+by `answersFor`'s `jd` option and `IntakeState.jdStep`, so every other layout reads as before). Once
+the six posting fields are in, `enterRefine` detours ONCE to "Do you have a JD for this role?"
+(`jdItem`; skipped with Selection criteria off, or when the posting started from a JD), and the
+choice is a button the page reads. **Pasting or attaching one** reads it twice at once: the intake
+reader fills the brief's fixed slots and the posting's EMPTY fields (an answer always wins over the
+JD), and `/api/jd` returns what fits no slot — the must-have and good-to-have lines ("Must have
+handled USFDA audits"), which become `HiringBrief.requirements`, ranked as `crit` lines and removing
+nobody. The rules stand in with `requirementsIn` (`lib/jd-read.ts`: by the section a line sits in, or
+its own words; duties, soft skills and years-led lines left out). Refinement then asks only what the
+JD did not cover. **Drafting one** asks `/api/probe` for at most four questions — the open
+refinement topics that matter most for the role, plus custom ones (`Probe`, on the same card,
+`probe-N` ids, their labels in the answer bubble) steered towards what JDs leave out: notice period,
+non-negotiables, P&L and business size, markets, company type, certifications, reporting line.
+Their answers are criterion lines ("Annual marketing budget: ₹50–100 Cr") and the "What we're
+looking for" section of the JD drafted at the end (`descriptionFor`, the rules' `describePosting`
+plus those lines). Probing replaces refinement on that road, so the question count stays the same;
+with the server down it is refinement as ever. The JD — theirs or drafted — reaches the form as
+`?jd=`.
+
+The step was shaped by reading 37 live iimjobs JDs (5 Oct 2026): duties are generic, the "must
+have" block is the signal, salary was hidden on 31, notice period was never mentioned — and real
+JDs carry things that cannot be screened on. **Everything read out of a JD is checked**: `jdLines`
+refuses protected lines (the model's `declined` too), and `postable` takes them, and any contact
+details, out of the JD before it is posted — cleaned where it is used, so a cached reading is posted
+under today's rules. `protectedIn` gained "where someone is from" ("originating from Punjab or
+with family connections to the region") and an age band hidden in a years line ("typically 40–50
+years"). **Diversity hiring is not screening**: "women candidates preferred", "only diversity
+candidates", a retired colonel map (`diversityIn`) onto the posting form's own Diversity hiring
+options (`DIVERSITY` in `lib/job-form.ts`, now shared) as `?div=`, and are not refused. That holds
+for the JD step only; elsewhere a typed gender preference is still refused.
+
+**"Chat v2.7" is Chat v2.5 that makes progress felt** (`rail27` in `lib/posting-variant.ts`; it
+reads exactly as `rail25`, JD step and all). **Which steps finished on which turn is derived, not
+stored**: `milestonesFor` in `lib/step-milestones.ts` steps through `answersFor`'s `states` with
+`railSteps` (split out of `railFor` in `lib/posting-rail.ts`, because `railFor` also counts the
+pool and is far too heavy per turn), and a step done or skipped after a turn but not before it
+finished there. That gives the **milestone** in the transcript, between the answer and the reply:
+a rule across the chat with "✓ Step 1/4 done · Job details" in a brand-tinted pill at its middle,
+the recap under it ("Product Manager · Pune · ₹30–40L · Hybrid") and "Next: Step 2/4 · Candidate
+details" — it comes back on a reload. Each question card names its step too ("Step 2/4 · Candidate
+details" over the question, `step` on `AgentQuestionnaire`, from the plan bar's active step). **The
+plan bar is a meter** (`meter` on `PlanBar`): its bottom border and the current step's underline
+give way to a progress bar along its bottom edge, a section per step — full when done, the current
+one part-filled by its own questions answered (`progress` on `RailStep`, from `railSteps`), empty
+to come — whose width transitions as answers land. Sections, not one bar, because the steps are
+sized by their labels and a single bar's quarters would not sit under them. **The cheer is live only**: when a turn asked in this visit lands
+while the tab is visible and finished a step, it chimes (`play("step")`, `"done"` for the last)
+instead of the reply's pop, the plan bar's tick pops, its segment flashes the brand tint, the next
+step's tile pulses while the meter fills (`cheer` on `PlanBar`, Web Animations), the chat's milestone pill
+pops in, and confetti bursts from the pill's tick — where the recruiter is looking; from the plan
+bar's tick only if the pill is off screen (`lib/confetti.ts`) — **at every step, and a second, bigger burst for the last**, as the
+design team asked. The confetti is hand-written rather than `canvas-confetti`, because `npm
+install` can strip rolldown's bindings from the lockfile; its colours are read from `--primary`
+(plus a lighter mix) and two chart neutrals at the moment of the burst. The two chimes are
+synthesised with Web Audio until a `step.mp3` / `done.mp3` from the same Pixabay set is dropped
+into `assets/sounds/`, which takes over with no code change. Reduced motion: no confetti and no
+animation; the milestone line still says it.
+
+**Every answer gets a work card in v2.7, inline where "Reading your answer…" was**
+(`AgentWorkCard` in `components/agent-work.tsx`, built by `workFor` in `lib/step-milestones.ts`):
+a dark "Step 2/4 · Candidate details" pill — the step the answer was FOR, read off the state
+before it — and a checklist that runs waiting → spinner → tick: Reading your answer (who read it
+and how long it took), Updating the posting (the fields it recorded), Checking who this would find
+(the rail's count, once the answer is in, on the newest turn only — counting the pool per turn is
+too heavy), Choosing what to ask next (the next question's own words). **What it says is never
+staged; the PACE is**: the first task holds until the answer is in and at least `READ_MS` (1s) has
+passed, each after takes `TASK_MS` (0.65s), and only then does the reply, the milestone, the
+question card and the cheer appear (`held` in `routes/agent.tsx` gates `landed` and `docked`).
+Live only on the newest turn asked in this visit (`liveTurn`, set in `ask`); done, it folds to one
+line ("Step 2/4 · Candidate details · 4 done · Read by Gemini in 3.6s ›") that opens back into the
+checklist. A turn opened cold and still being read keeps the plain marker, because a folded "done"
+would be a claim before the fact. Pencil changes are answers too, so they get a card.
+
 **"Chat v3" is Chat with rail v2 with the AI Agent's best ideas, on our own conversation**
 (`rail3` in `lib/posting-variant.ts`; logic in `lib/chat-v3.ts`, drawing in `components/chat-v3/`).
 Same turns, same Gemini readers with rules fallback, same `PlanBar` and inline cards; what it adds is
@@ -876,7 +956,11 @@ state keys and a template runtime. It is rebuilt here in this system's component
 product), its own pools, companies, colleges and "calculus" insights in `lib/ai-agent/data.ts`, no
 Gemini, no turns, no Search Resume. The flow is a brief, five steps the agent fills in with a staged
 "thinking" reveal (Role details, Job description, Screening questions, Targeting, Candidates) beside
-its 400px agent panel (a Drawer below `@5xl/main`), then Review, "Choose how your agents source" and
+the agent's own column (380px, flush and white like the app's other rails, scrolling on its own; a
+Drawer below `@5xl/main`) — the steps as one band across the top and the footer docked under the
+column, neither of which scrolls, so the band, the footer and the agent's column are the only places
+progress is said; fields show their lock only on hover or focus (always when locked, always on touch) —
+then Review, "Choose how your agents source" and
 done. **The controller is the class, kept line for line**: `AgentController` in `controller.ts`
 extends `Store` (`store.ts`), a `state` / `setState` / timers class read through
 `useSyncExternalStore`, because rewriting forty methods that chain timers and re-read `this.state`

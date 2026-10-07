@@ -10,6 +10,7 @@ import { criteriaFrom, searchHref } from "@/lib/database"
 import { INSTITUTE_GROUPS, writeRange } from "@/lib/database-filters"
 import {
   advanceIntake,
+  describePosting,
   filled,
   notedFrom,
   isSkip,
@@ -33,8 +34,15 @@ import {
   type IntakeState,
   type Noted,
   type PostingDraft,
+  type Probe,
 } from "@/lib/job-intake"
 import { advanceStart } from "@/lib/job-start"
+import {
+  diversityIn,
+  IDEALLY,
+  requirementsIn,
+  withoutContacts,
+} from "@/lib/jd-read"
 
 /**
  * Refinement — the questions between "that's the posting" and posting it.
@@ -122,16 +130,17 @@ export type HiringBrief = {
    * it and removes nobody for it. Absent everywhere else.
    */
   relaxed?: FilterId[]
+  /**
+   * CHAT V2.5 ONLY: what the JD step's own questions asked beyond the fixed
+   * topics, as criterion lines ("P&L ownership: ₹50Cr+"). Each ranks the
+   * search as a `crit` line and removes nobody. Absent everywhere else.
+   */
+  requirements?: string[]
 }
 
 /** The posting's filters: the things that narrow the pool rather than rank it. */
 export type FilterId =
-  | "city"
-  | "years"
-  | "industries"
-  | "team"
-  | "companies"
-  | "budget"
+  "city" | "years" | "industries" | "team" | "companies" | "budget"
 
 export const POST_NOW = "Skip, post it now"
 
@@ -197,7 +206,7 @@ export function readInstitutes(answer: string, brand: Brand): string[] | null {
  */
 const PROTECTED: [RegExp, string][] = [
   [
-    /\b(ages?|aged|years? old|young(er|sters?)?|born (in|before|after)|batch(es)? (of|before|after)|graduated (before|after|in))\b/i,
+    /\b(ages?|aged|years? old|young(er|sters?)?|born (in|before|after)|batch(es)? (of|before|after)|graduated (before|after|in)|typically \d{2}\s*(-|–|to)\s*\d{2}\s*(years|yrs))\b/i,
     "age",
   ],
   [/\b(male|female|men|women|woman|gender|girls?|boys?|ladies)\b/i, "gender"],
@@ -213,6 +222,12 @@ const PROTECTED: [RegExp, string][] = [
   [
     /\b(career gaps?|gaps? in (their )?(career|cv|resume|employment)|career breaks?)\b/i,
     "career gaps",
+  ],
+  // Seen in a live JD: "individuals originating from Punjab or having strong
+  // personal, cultural, or family connections to the region".
+  [
+    /\b(originat\w* from|natives? of|hails? from|domicile\w*|(personal|cultural|family) (ties|connections?|roots) to)\b/i,
+    "where someone is from",
   ],
 ]
 
@@ -305,7 +320,7 @@ export function screeningItem(
 // --- The plan -------------------------------------------------------------------
 
 /** Whether a topic means anything for this draft. */
-function eligible(topic: RefineId, draft: PostingDraft) {
+export function eligible(topic: RefineId, draft: PostingDraft) {
   if (topic === "skillsSplit") return draft.skills.length >= 2
   if (topic === "relocation")
     return (
@@ -373,6 +388,18 @@ export function enterRefine(
   suggested: unknown,
   { model }: { model: boolean }
 ): IntakeState {
+  // CHAT V2.5: before the criteria, whether there is a JD. Asked once — the
+  // step records how it went, and leaving it calls this again.
+  if (jdStepOn(state) && !state.jd)
+    return {
+      ...state,
+      stage: "jd",
+      jd: { status: "ask" },
+      plan: [],
+      settled: [],
+      asking: null,
+      missed: false,
+    }
   // SELECTION CRITERIA SWITCHED OFF: no topics, straight to screening.
   // Both readers enter refinement here and only here, so this one line is
   // the whole of the behaviour; everything else just draws less.
@@ -680,11 +707,12 @@ export function refineItem(
 
 /** What each question is called in the recruiter's answer bubble. */
 export const LABELS: Record<
-  FieldId | RefineId | "screening" | "start" | "base",
+  FieldId | RefineId | "screening" | "start" | "base" | "jd",
   string
 > = {
   start: "Start",
   base: "Based on",
+  jd: "JD",
   title: "Role",
   locations: "Location",
   experience: "Experience",
@@ -1119,6 +1147,379 @@ export type IntakeTurn = IntakeInput | { change: Answers }
  * stage it is read like a description (it may cover several questions at
  * once); in refinement it answers the first open topic.
  */
+// --- The JD step (Chat v2.5) -------------------------------------------------
+
+/**
+ * WHETHER THERE IS A JD, ASKED BETWEEN THE POSTING AND THE CRITERIA. A real
+ * JD says what refinement would otherwise ask — the team, the sectors that
+ * count, who to rule out — so it is read first and refinement drops whatever
+ * it covered (`coveredTopics`). Drafting one is the other answer: the drafting
+ * is a reason to ask, so the questions come next, written for the role when
+ * Gemini is up (`advanceWithAi` asks `/api/probe`), and the JD is drafted
+ * from the answers at the end (`descriptionFor`). A drafted JD is never read
+ * back for criteria — it would only say what was already said.
+ *
+ * Only under Chat v2.5 (`jdStep`), only with Selection criteria on, and never
+ * for a posting that started from a JD.
+ */
+export const JD_HAVE = "I have one — I'll paste or attach it"
+export const JD_DRAFT = "Draft one with me"
+
+/** A JD shorter than this is a sentence typed beside the card, not a JD. */
+export const JD_MIN = 80
+
+export function jdStepOn(state: IntakeState) {
+  return state.jdStep === true && criteriaOn(state) && state.origin !== "jd"
+}
+
+export function jdItem(state: IntakeState): AskedItem {
+  return {
+    id: "jd",
+    prompt: "Do you have a JD for this role?",
+    hint: "A JD usually answers what I'd ask next — the team, the sectors that count, who to rule out. Or I can draft one with you.",
+    options: [JD_HAVE, JD_DRAFT],
+    multiple: false,
+    required: false,
+    note: state.missed
+      ? "Paste the JD itself, or pick one of these."
+      : undefined,
+  }
+}
+
+/** A probe as a questionnaire item. Its answer is the page's to read. */
+export function probeItem(probe: Probe): AskedItem {
+  return {
+    id: probe.id,
+    prompt: probe.ask,
+    hint: probe.hint,
+    options: probe.options,
+    multiple: probe.multiple,
+    required: false,
+  }
+}
+
+/** The probes still to answer. */
+export function pendingProbes(state: IntakeState) {
+  const done = state.jd?.settledProbes ?? []
+  return (state.jd?.probes ?? []).filter((probe) => !done.includes(probe.id))
+}
+
+/**
+ * Leaving the step to draft one: the questions are the refinement topics
+ * chosen for this role (`plan`, or the rules' own plan when null) and the
+ * probes Gemini wrote, on one card. Without probes it is refinement as ever,
+ * and the JD is still drafted from the answers.
+ */
+export function startDraft(
+  state: IntakeState,
+  probes: Probe[],
+  plan: RefineId[] | null
+): IntakeState {
+  const drafting: IntakeState = {
+    ...state,
+    jd: { status: "draft", probes, settledProbes: [] },
+  }
+  if (plan === null)
+    return enterRefine(drafting, null, { model: drafting.engine === "gemini" })
+  const covered = coveredTopics(drafting)
+  const kept = plan.filter(
+    (topic) => eligible(topic, state.draft) && !covered.includes(topic)
+  )
+  const asking = kept[0] ?? null
+  return {
+    ...drafting,
+    stage: asking || probes.length ? "refine" : "screen",
+    plan: kept,
+    settled: [],
+    asking,
+    missed: false,
+  }
+}
+
+/**
+ * A JD, read by the rules: the posting fields it states (into empty ones
+ * only — an answer already given wins), the industries it names, and a team
+ * it says they will lead. Then refinement, less what it covered.
+ */
+export function readJdText(
+  state: IntakeState,
+  text: string,
+  brand: Brand
+): IntakeState {
+  const read = readDescription(text, brand, { document: true })
+  const draft = { ...state.draft }
+  const kept: Partial<PostingDraft> = {}
+  for (const key of FIELD_IDS) {
+    if (filled(draft, key) || read[key] === undefined) continue
+    Object.assign(draft, { [key]: read[key] })
+    Object.assign(kept, { [key]: read[key] })
+  }
+  const brief = { ...state.brief }
+  if (!brief.industries.length)
+    brief.industries = named(text, industriesFor(brand), industryLabel)
+  const team = text.match(
+    /\b(?:lead|leading|manage|managing)\s+a\s+team\s+of\s+(\d{1,3})/i
+  )
+  if (team && brief.ledTeam === null) {
+    brief.ledTeam = true
+    if (!draft.teamScale) draft.teamScale = `Leads a team of ${team[1]}`
+  }
+  const lines = requirementsIn(text)
+  return withJdRead(state, draft, brief, text, notedFrom(kept), {
+    must: lines.must,
+    nice: lines.nice,
+    diversity: diversityIn(text),
+  })
+}
+
+/**
+ * A JD's requirement lines and diversity options, checked: a line asking for
+ * a diversity option is that option and not a requirement; a line screening
+ * on who someone is ("Age: 40–50", "originating from Punjab") is refused and
+ * never recorded — real JDs carry both.
+ */
+export function jdLines(
+  found: {
+    must: string[]
+    nice: string[]
+    diversity: string[]
+    /** What the model already refused to read out of the JD. */
+    declined?: string[]
+  },
+  known: string[] = []
+) {
+  const refused: string[] = []
+  const diversity = unique([...found.diversity])
+  const keep = (line: string) => {
+    const options = diversityIn(line)
+    if (options.length) {
+      diversity.push(...options)
+      return false
+    }
+    const kind = protectedIn(line)
+    if (kind) refused.push(kind)
+    return !kind
+  }
+  const must = found.must.filter(keep)
+  const nice = found.nice.filter(keep)
+  const lines = unique([
+    ...known,
+    ...must,
+    ...nice.map((line) => IDEALLY + line),
+  ])
+  // A women-candidates line the model "declined" is the diversity option it
+  // also reported — said back as refused, it would contradict the form.
+  const declined = (found.declined ?? []).filter(
+    (kind) => !(kind === "gender" && diversity.length)
+  )
+  return {
+    lines,
+    diversity: unique(diversity),
+    refused: unique([...refused, ...declined]),
+  }
+}
+
+/**
+ * A JD as it can be posted: no contact details, and no line — or, on a
+ * "Location: Mumbai | Age: 40–50" line, no part of one — that screens on who
+ * someone is, since the JD becomes the posting's description. A diversity
+ * line goes too: the form's own option says it.
+ */
+export function postable(text: string): string {
+  const out = (part: string) =>
+    Boolean(protectedIn(part)) || diversityIn(part).length > 0
+  return withoutContacts(text)
+    .split("\n")
+    .flatMap((line) => {
+      if (!out(line)) return [line]
+      const parts = line.split(/\s+\|\s+/)
+      const kept = parts.filter((part) => !out(part))
+      return parts.length > 1 && kept.length ? [kept.join(" | ")] : []
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+}
+
+/** The JD's reading applied — by either reader — and on to refinement. */
+export function withJdRead(
+  state: IntakeState,
+  draft: PostingDraft,
+  brief: HiringBrief,
+  text: string,
+  noted: Noted,
+  found: {
+    must: string[]
+    nice: string[]
+    diversity: string[]
+    declined?: string[]
+  }
+): IntakeState {
+  const { lines, diversity, refused } = jdLines(found, brief.requirements ?? [])
+  const next = enterRefine(
+    {
+      ...state,
+      draft,
+      brief: { ...brief, requirements: lines },
+      jd: { status: "read", text: postable(text), diversity },
+      heard: null,
+      unread: [],
+    },
+    null,
+    { model: state.engine === "gemini" }
+  )
+  const added = lines.filter(
+    (line) => !(state.brief.requirements ?? []).includes(line)
+  )
+  const rows = mergeNoted(noted, refineNoted(state, draft, brief))
+  const extra: Noted = [
+    ...(added.length
+      ? [{ label: "Looking for", value: added.join("; ") }]
+      : []),
+    ...(diversity.length
+      ? [{ label: "Diversity hiring", value: diversity.join(", ") }]
+      : []),
+  ]
+  const all = [...rows, ...extra]
+  return {
+    ...next,
+    noted: all,
+    heard: refused.length
+      ? refusalFor(refused)
+      : all.length
+        ? null
+        : "I read it, but it didn't answer anything I'd ask — so a few questions.",
+  }
+}
+
+/**
+ * The JD step's answer, by the rules — the choice, a pasted JD, or a skip.
+ * `draft` is what choosing to draft does; the AI reader passes its own, which
+ * asks Gemini for the questions first.
+ */
+export function advanceJd(
+  state: IntakeState,
+  input: IntakeInput,
+  brand: Brand,
+  draft: (state: IntakeState) => IntakeState = (given) =>
+    startDraft(given, [], null)
+): IntakeState {
+  const ruled = {
+    engine: "rules" as const,
+    phrasings: undefined,
+    fallback: undefined,
+  }
+  const skip = (): IntakeState =>
+    enterRefine(
+      { ...state, ...ruled, jd: { status: "skipped" }, heard: null },
+      null,
+      { model: false }
+    )
+
+  const value =
+    "answers" in input ? (input.answers.jd ?? null) : input.text.trim()
+  const document = "text" in input && input.document === true
+
+  if (value === null || (!document && isSkip(value))) return skip()
+  if (value === POST_NOW) return { ...finish(state, null), ...ruled }
+  if (value === JD_HAVE)
+    return {
+      ...state,
+      ...ruled,
+      jd: { status: "paste" },
+      heard: null,
+      missed: false,
+    }
+  if (value === JD_DRAFT) return draft({ ...state, ...ruled })
+  // Anything else is the JD itself — attached, pasted into the box, or typed
+  // into "Something else". Waiting for it, any text is it.
+  if (document || state.jd?.status === "paste" || value.length >= JD_MIN)
+    return { ...readJdText(state, value, brand), ...ruled }
+  return { ...state, ...ruled, heard: null, missed: true }
+}
+
+/**
+ * The probes' answers, read by the page: each becomes a criterion line,
+ * "label: answer", replacing one of the same label. A protected trait is
+ * refused and never recorded. Returns what is left for the topic readers.
+ */
+export function readProbes(
+  state: IntakeState,
+  answers: Answers
+): { state: IntakeState; rest: Answers; refused: string[] } {
+  const probes = state.jd?.probes ?? []
+  if (!probes.length) return { state, rest: answers, refused: [] }
+  const rest: Answers = {}
+  const refused: string[] = []
+  let lines = state.brief.requirements ?? []
+  const settled = [...(state.jd?.settledProbes ?? [])]
+  let diversity = state.jd?.diversity ?? []
+  const noted: Noted = []
+  for (const [id, value] of Object.entries(answers)) {
+    const probe = probes.find((entry) => entry.id === id)
+    if (!probe) {
+      rest[id] = value
+      continue
+    }
+    settled.push(id)
+    if (value === null || isSkip(value)) continue
+    // "Women candidates preferred" is the posting's diversity option.
+    const options = diversityIn(value)
+    if (options.length) {
+      diversity = unique([...diversity, ...options])
+      noted.push({ label: "Diversity hiring", value: options.join(", ") })
+      continue
+    }
+    const kind = protectedIn(value)
+    if (kind) {
+      refused.push(kind)
+      continue
+    }
+    const line = `${probe.label}: ${value.trim()}`
+    lines = [
+      ...lines.filter((entry) => !entry.startsWith(`${probe.label}:`)),
+      line,
+    ]
+    noted.push({ label: probe.label, value: value.trim() })
+  }
+  return {
+    state: {
+      ...state,
+      brief: { ...state.brief, requirements: lines },
+      jd: { ...state.jd!, settledProbes: unique(settled), diversity },
+      noted: [...(state.noted ?? []), ...noted],
+    },
+    rest,
+    refused,
+  }
+}
+
+/**
+ * The posting's description, when the JD step produced one: their own JD as
+ * given, or one drafted from the answers — the rules' draft of the posting
+ * fields, plus what the probes found out. Null otherwise, and the form drafts
+ * its own as it always has.
+ */
+export function descriptionFor(state: IntakeState): string | null {
+  const jd = state.jd
+  // Cleaned here, where it is used, so a reading cached before a rule
+  // changed is posted under today's rules.
+  if (jd?.status === "read" && jd.text) return postable(jd.text)
+  if (jd?.status !== "draft" || !state.draft.title) return null
+  const base = describePosting(state.draft)
+  const lines = state.brief.requirements ?? []
+  if (!lines.length) return base
+  // Before the pay, which closes the rules' draft.
+  const section = [
+    "What we're looking for",
+    ...lines.map((line) => `• ${line}`),
+  ].join("\n")
+  const pay = base.lastIndexOf("\n\nPay\n")
+  return pay === -1
+    ? `${base}\n\n${section}`
+    : `${base.slice(0, pay)}\n\n${section}${base.slice(pay)}`
+}
+
 export function advance(
   state: IntakeState,
   given: IntakeTurn,
@@ -1223,16 +1624,25 @@ function advanceRead(
     return asking === null ? enterRefine(next, null, { model: false }) : next
   }
 
+  if (state.stage === "jd") return advanceJd(state, input, brand)
+
   if (state.stage === "refine") {
-    let next: IntakeState = state
-    const unread: string[] = []
-    const refused: string[] = []
-    const entries: [RefineId, string | null][] =
+    // Chat v2.5's probes are the page's to read; the topics go on as ever.
+    const probed =
       "answers" in input
-        ? pendingTopics(state)
-            .filter((topic) => topic in input.answers)
-            .map((topic) => [topic, input.answers[topic]])
-        : [[pendingTopics(state)[0], input.text]]
+        ? readProbes({ ...state, noted: undefined }, input.answers)
+        : null
+    let next: IntakeState = probed?.state ?? state
+    const unread: string[] = []
+    const refused: string[] = [...(probed?.refused ?? [])]
+    const answers = probed?.rest
+    const entries: [RefineId, string | null][] = answers
+      ? pendingTopics(state)
+          .filter((topic) => topic in answers)
+          .map((topic) => [topic, answers[topic]])
+      : "text" in input
+        ? [[pendingTopics(state)[0], input.text]]
+        : []
 
     for (const [topic, value] of entries) {
       if (!topic) continue
@@ -1255,7 +1665,10 @@ function advanceRead(
       unread,
       missed: false,
       heard: refused.length ? refusalFor(refused) : null,
-      noted: refineNoted(before, next.draft, next.brief),
+      noted: mergeNoted(
+        refineNoted(before, next.draft, next.brief),
+        probed?.state.noted ?? []
+      ),
     }
   }
 
@@ -1302,7 +1715,7 @@ function screeningSaid(questions: string[]) {
 /** The private brief as rows — only what was said, nothing defaulted. */
 export function briefRows(state: IntakeState) {
   const { brief, draft } = state
-  const rows: { label: string; value: string; topic: RefineId }[] = []
+  const rows: { label: string; value: string; topic?: RefineId }[] = []
   // Off, the brief is not a thing on screen — even what the opening sentence
   // happened to fill in (an industry) stays out of sight.
   if (!criteriaOn(state)) return rows
@@ -1357,6 +1770,16 @@ export function briefRows(state: IntakeState) {
       topic: "exclusions",
       label: "Rule out",
       value: brief.exclusions.join("; "),
+    })
+  // Chat v2.5: what the JD or its questions said, beyond the topics. No
+  // topic, so no pencil — a line is a sentence from the JD, not an answer to
+  // one question that could be asked again.
+  if (brief.requirements?.length)
+    rows.push({ label: "Looking for", value: brief.requirements.join("; ") })
+  if (state.jd?.diversity?.length)
+    rows.push({
+      label: "Diversity hiring",
+      value: state.jd.diversity.join(", "),
     })
   return rows
 }
@@ -1429,6 +1852,8 @@ export function searchHrefFor(state: IntakeState, brand: Brand) {
     )
   for (const exclusion of brief.exclusions)
     params.append("crit", `Not: ${exclusion}`)
+  // Chat v2.5's own questions, as they were answered.
+  for (const line of brief.requirements ?? []) params.append("crit", line)
 
   // The relaxed filters, as the lines they became — ranked after the skills.
   if (relaxed.has("city") && city) params.append("crit", `Based in ${city}`)
